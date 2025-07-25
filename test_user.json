@@ -1,0 +1,45 @@
+{
+  "eventId": "test_event_123",
+  "eventType": "FORM_RESPONSE",
+  "createdAt": "2025-07-25T05:30:00.000Z",
+  "data": {
+    "responseId": "TEST123",
+    "submissionId": "test_submission_456",
+    "respondentId": "test_respondent_789",
+    "formId": "test_form_001",
+    "formName": "Chat Platform Registration",
+    "createdAt": "2025-07-25T05:30:00.000Z",
+    "fields": [
+      {
+        "key": "question_mRgoj",
+        "label": "What's your name?",
+        "type": "INPUT_TEXT",
+        "value": "John Doe"
+      },
+      {
+        "key": "question_nP9kL",
+        "label": "What's your email?",
+        "type": "INPUT_EMAIL",
+        "value": "john.doe@example.com"
+      },
+      {
+        "key": "question_wE8mN",
+        "label": "Tell us about yourself",
+        "type": "TEXTAREA",
+        "value": "I'm a software developer interested in AI chatbots. I love technology and learning new things."
+      },
+      {
+        "key": "question_xR7qP",
+        "label": "What's your age?",
+        "type": "INPUT_NUMBER",
+        "value": 28
+      },
+      {
+        "key": "question_yT6sQ",
+        "label": "What's your favorite hobby?",
+        "type": "INPUT_TEXT",
+        "value": "Programming and reading tech blogs"
+      }
+    ]
+  }
+}

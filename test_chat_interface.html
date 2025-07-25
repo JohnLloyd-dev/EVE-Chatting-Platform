@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chat Test Interface</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+        background-color: #f5f5f5;
+      }
+      .chat-container {
+        background: white;
+        border-radius: 10px;
+        padding: 20px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      }
+      .messages {
+        height: 400px;
+        overflow-y: auto;
+        border: 1px solid #ddd;
+        padding: 15px;
+        margin-bottom: 20px;
+        background-color: #fafafa;
+      }
+      .message {
+        margin-bottom: 15px;
+        padding: 10px;
+        border-radius: 8px;
+      }
+      .user-message {
+        background-color: #007bff;
+        color: white;
+        margin-left: 50px;
+        text-align: right;
+      }
+      .ai-message {
+        background-color: #e9ecef;
+        color: #333;
+        margin-right: 50px;
+      }
+      .admin-message {
+        background-color: #28a745;
+        color: white;
+        margin-right: 50px;
+      }
+      .input-container {
+        display: flex;
+        gap: 10px;
+      }
+      #messageInput {
+        flex: 1;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        font-size: 16px;
+      }
+      #sendButton {
+        padding: 10px 20px;
+        background-color: #007bff;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 16px;
+      }
+      #sendButton:hover {
+        background-color: #0056b3;
+      }
+      #sendButton:disabled {
+        background-color: #6c757d;
+        cursor: not-allowed;
+      }
+      .user-info {
+        background-color: #e3f2fd;
+        padding: 10px;
+        border-radius: 5px;
+        margin-bottom: 20px;
+      }
+      .status {
+        padding: 5px 10px;
+        border-radius: 3px;
+        margin-bottom: 10px;
+        font-size: 14px;
+      }
+      .status.success {
+        background-color: #d4edda;
+        color: #155724;
+      }
+      .status.error {
+        background-color: #f8d7da;
+        color: #721c24;
+      }
+      .status.info {
+        background-color: #d1ecf1;
+        color: #0c5460;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="chat-container">
+      <h1>🤖 Chat Test Interface</h1>
+
+      <div class="user-info">
+        <strong>User ID:</strong>
+        <span id="userId">2de89288-7fc2-4d47-950b-f6a5ea07bb7f</span><br />
+        <strong>Session ID:</strong> <span id="sessionId">Loading...</span>
+      </div>
+
+      <div id="status" class="status info">Initializing chat session...</div>
+
+      <div id="messages" class="messages">
+        <div class="message ai-message">
+          <strong>AI:</strong> Welcome! I'm loading our conversation history...
+        </div>
+      </div>
+
+      <div class="input-container">
+        <input
+          type="text"
+          id="messageInput"
+          placeholder="Type your message here..."
+          disabled
+        />
+        <button id="sendButton" disabled>Send</button>
+      </div>
+    </div>
+
+    <script>
+      const API_BASE = "http://localhost:8000";
+      const USER_ID = "2de89288-7fc2-4d47-950b-f6a5ea07bb7f";
+      let SESSION_ID = null;
+
+      const messagesDiv = document.getElementById("messages");
+      const messageInput = document.getElementById("messageInput");
+      const sendButton = document.getElementById("sendButton");
+      const statusDiv = document.getElementById("status");
+
+      // Initialize chat
+      async function initializeChat() {
+        try {
+          const response = await fetch(`${API_BASE}/chat/session/${USER_ID}`);
+          const sessionData = await response.json();
+
+          SESSION_ID = sessionData.id;
+          document.getElementById("sessionId").textContent = SESSION_ID;
+
+          // Load existing messages
+          loadMessages(sessionData.messages);
+
+          // Enable input
+          messageInput.disabled = false;
+          sendButton.disabled = false;
+          messageInput.focus();
+
+          updateStatus("Ready to chat!", "success");
+        } catch (error) {
+          updateStatus("Failed to initialize chat: " + error.message, "error");
+        }
+      }
+
+      // Load messages into chat
+      function loadMessages(messages) {
+        messagesDiv.innerHTML = "";
+
+        messages.forEach((msg) => {
+          addMessageToChat(
+            msg.content,
+            msg.is_from_user,
+            msg.is_admin_intervention,
+            new Date(msg.created_at).toLocaleTimeString()
+          );
+        });
+
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+      }
+
+      // Add message to chat display
+      function addMessageToChat(
+        content,
+        isUser,
+        isAdmin = false,
+        timestamp = null
+      ) {
+        const messageDiv = document.createElement("div");
+        messageDiv.className = "message";
+
+        if (isUser) {
+          messageDiv.className += " user-message";
+          messageDiv.innerHTML = `<strong>You:</strong> ${content}`;
+        } else if (isAdmin) {
+          messageDiv.className += " admin-message";
+          messageDiv.innerHTML = `<strong>Admin:</strong> ${content}`;
+        } else {
+          messageDiv.className += " ai-message";
+          messageDiv.innerHTML = `<strong>AI:</strong> ${content}`;
+        }
+
+        if (timestamp) {
+          messageDiv.innerHTML += `<br><small>${timestamp}</small>`;
+        }
+
+        messagesDiv.appendChild(messageDiv);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+      }
+
+      // Send message
+      async function sendMessage() {
+        const message = messageInput.value.trim();
+        if (!message || !SESSION_ID) return;
+
+        // Add user message to chat immediately
+        addMessageToChat(message, true, false, new Date().toLocaleTimeString());
+        messageInput.value = "";
+
+        // Disable input while sending
+        messageInput.disabled = true;
+        sendButton.disabled = true;
+        updateStatus("Sending message...", "info");
+
+        try {
+          const response = await fetch(
+            `${API_BASE}/chat/message/${SESSION_ID}`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ message: message }),
+            }
+          );
+
+          const result = await response.json();
+
+          if (response.ok) {
+            updateStatus("Message sent! AI is thinking...", "info");
+
+            // Poll for AI response
+            pollForResponse(result.task_id);
+          } else {
+            updateStatus("Failed to send message: " + result.detail, "error");
+          }
+        } catch (error) {
+          updateStatus("Error sending message: " + error.message, "error");
+        } finally {
+          // Re-enable input
+          messageInput.disabled = false;
+          sendButton.disabled = false;
+          messageInput.focus();
+        }
+      }
+
+      // Poll for AI response
+      async function pollForResponse(taskId, attempts = 0) {
+        if (attempts > 10) {
+          updateStatus("AI response timeout", "error");
+          return;
+        }
+
+        try {
+          const response = await fetch(`${API_BASE}/chat/response/${taskId}`);
+          const result = await response.json();
+
+          if (result.status === "SUCCESS") {
+            // Refresh conversation to get AI response
+            refreshConversation();
+            updateStatus("Ready to chat!", "success");
+          } else if (result.status === "FAILURE") {
+            addMessageToChat(
+              "Sorry, I encountered an error. Please try again.",
+              false
+            );
+            updateStatus("AI response failed", "error");
+          } else {
+            // Still processing, try again
+            setTimeout(() => pollForResponse(taskId, attempts + 1), 2000);
+          }
+        } catch (error) {
+          updateStatus("Error checking AI response: " + error.message, "error");
+        }
+      }
+
+      // Refresh conversation
+      async function refreshConversation() {
+        try {
+          const response = await fetch(`${API_BASE}/chat/session/${USER_ID}`);
+          const sessionData = await response.json();
+          loadMessages(sessionData.messages);
+        } catch (error) {
+          console.error("Failed to refresh conversation:", error);
+        }
+      }
+
+      // Update status message
+      function updateStatus(message, type) {
+        statusDiv.textContent = message;
+        statusDiv.className = `status ${type}`;
+      }
+
+      // Event listeners
+      sendButton.addEventListener("click", sendMessage);
+      messageInput.addEventListener("keypress", (e) => {
+        if (e.key === "Enter") {
+          sendMessage();
+        }
+      });
+
+      // Initialize on page load
+      initializeChat();
+
+      // Auto-refresh conversation every 30 seconds
+      setInterval(refreshConversation, 30000);
+    </script>
+  </body>
+</html>
