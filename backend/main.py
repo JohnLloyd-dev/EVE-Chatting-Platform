@@ -165,6 +165,38 @@ async def find_user_by_tally_response(request_data: dict, db: Session = Depends(
         "email": user.email
     }
 
+# Get latest user session (fallback for when Tally doesn't support dynamic redirects)
+@app.get("/user/latest-session")
+async def get_latest_user_session(db: Session = Depends(get_db)):
+    """
+    Get the most recently created user session (for Tally forms without dynamic redirect support)
+    """
+    # Get the most recent user (created in last 5 minutes to avoid old sessions)
+    recent_time = datetime.now(timezone.utc) - timedelta(minutes=5)
+    
+    user = db.query(User).filter(
+        User.created_at >= recent_time,
+        User.is_blocked == False
+    ).order_by(User.created_at.desc()).first()
+    
+    if not user:
+        raise HTTPException(404, detail="No recent user sessions found. Please submit the form first.")
+    
+    # Get active session
+    session = db.query(ChatSession).filter(
+        ChatSession.user_id == user.id,
+        ChatSession.is_active == True
+    ).first()
+    
+    if not session:
+        raise HTTPException(404, detail="No active session found")
+    
+    return {
+        "user_id": str(user.id),
+        "session_id": str(session.id),
+        "email": user.email
+    }
+
 # Get user session
 @app.get("/chat/session/{user_id}", response_model=ChatSessionResponse)
 async def get_user_session(user_id: str, db: Session = Depends(get_db)):
