@@ -10,53 +10,36 @@ export default function StartChat() {
   useEffect(() => {
     const initializeChat = async () => {
       try {
-        // First, try to get URL parameters from Tally redirect
+        // Get URL parameters from Tally redirect
         const urlParams = new URLSearchParams(window.location.search);
         const responseId =
           urlParams.get("responseId") || urlParams.get("response_id");
         const respondentId =
           urlParams.get("respondentId") || urlParams.get("respondent_id");
 
-        // If we have parameters, use them
-        if (
-          responseId &&
-          responseId !== "{{response_id}}" &&
-          responseId !== "{{responseId}}"
-        ) {
-          const response = await fetch(
-            `${process.env.NEXT_PUBLIC_API_URL}/user/by-tally-response`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                response_id: responseId,
-                respondent_id: respondentId,
-              }),
-            }
-          );
-
-          if (response.ok) {
-            const userData = await response.json();
-            router.push(`/chat/${userData.user_id}`);
-            return;
-          }
+        if (!responseId && !respondentId) {
+          setError("No form response found. Please submit the form first.");
+          setLoading(false);
+          return;
         }
 
-        // Fallback: Get the most recent user session (for when Tally doesn't support dynamic redirects)
+        // Find user by Tally response ID
         const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/user/latest-session`,
+          `${process.env.NEXT_PUBLIC_API_URL}/user/by-tally-response`,
           {
-            method: "GET",
+            method: "POST",
             headers: {
               "Content-Type": "application/json",
             },
+            body: JSON.stringify({
+              response_id: responseId,
+              respondent_id: respondentId,
+            }),
           }
         );
 
         if (!response.ok) {
-          throw new Error("No recent chat sessions found");
+          throw new Error("Failed to find your chat session");
         }
 
         const userData = await response.json();
@@ -65,9 +48,7 @@ export default function StartChat() {
         router.push(`/chat/${userData.user_id}`);
       } catch (err) {
         console.error("Error initializing chat:", err);
-        setError(
-          "Failed to start your chat session. Please submit the form first and try again."
-        );
+        setError("Failed to start your chat session. Please try again.");
         setLoading(false);
       }
     };

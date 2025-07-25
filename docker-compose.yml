@@ -41,6 +41,8 @@ services:
       - DATABASE_URL=postgresql://postgres:postgres123@postgres:5432/chatting_platform
       - REDIS_URL=redis://redis:6379/0
       - AI_MODEL_URL=http://204.12.223.76:8000
+      - AI_MODEL_AUTH_USERNAME=adam
+      - AI_MODEL_AUTH_PASSWORD=eve2025
     depends_on:
       postgres:
         condition: service_healthy
@@ -58,7 +60,9 @@ services:
     environment:
       - DATABASE_URL=postgresql://postgres:postgres123@postgres:5432/chatting_platform
       - REDIS_URL=redis://redis:6379/0
-      - AI_MODEL_URL=http://204.12.223.76:8000
+      - AI_MODEL_URL=http://host.docker.internal:8000
+      - AI_MODEL_AUTH_USERNAME=adam
+      - AI_MODEL_AUTH_PASSWORD=eve2025
     depends_on:
       postgres:
         condition: service_healthy
@@ -67,6 +71,8 @@ services:
     volumes:
       - ./backend:/app
     command: celery -A celery_app worker --loglevel=info
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   # Next.js Frontend
   frontend:
