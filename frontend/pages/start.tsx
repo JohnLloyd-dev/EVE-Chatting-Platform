@@ -17,8 +17,25 @@ export default function StartChat() {
         const respondentId =
           urlParams.get("respondentId") || urlParams.get("respondent_id");
 
-        if (!responseId && !respondentId) {
-          setError("No form response found. Please submit the form first.");
+        // Debug: Log all URL parameters
+        console.log("All URL parameters:", Object.fromEntries(urlParams));
+        console.log("responseId:", responseId);
+        console.log("respondentId:", respondentId);
+
+        // Check if we have valid IDs (not placeholder text)
+        const hasValidResponseId =
+          responseId &&
+          !responseId.includes("@") &&
+          responseId !== "Respondent ID";
+        const hasValidRespondentId =
+          respondentId &&
+          !respondentId.includes("@") &&
+          respondentId !== "Respondent ID";
+
+        if (!hasValidResponseId && !hasValidRespondentId) {
+          setError(
+            "Invalid form response parameters. Please submit the form again with a valid redirect URL."
+          );
           setLoading(false);
           return;
         }
@@ -32,14 +49,19 @@ export default function StartChat() {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              response_id: responseId,
-              respondent_id: respondentId,
+              response_id: hasValidResponseId ? responseId : null,
+              respondent_id: hasValidRespondentId ? respondentId : null,
             }),
           }
         );
 
         if (!response.ok) {
-          throw new Error("Failed to find your chat session");
+          const errorData = await response
+            .json()
+            .catch(() => ({ detail: "Unknown error" }));
+          throw new Error(
+            errorData.detail || "Failed to find your chat session"
+          );
         }
 
         const userData = await response.json();
@@ -48,7 +70,11 @@ export default function StartChat() {
         router.push(`/chat/${userData.user_id}`);
       } catch (err) {
         console.error("Error initializing chat:", err);
-        setError("Failed to start your chat session. Please try again.");
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Failed to start your chat session. Please try again."
+        );
         setLoading(false);
       }
     };
