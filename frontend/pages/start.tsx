@@ -41,6 +41,7 @@ export default function StartChat() {
         }
 
         // Find user by Tally response ID
+        // Note: Sometimes Tally sends respondent_id as responseId parameter
         const response = await fetch(
           `${process.env.NEXT_PUBLIC_API_URL}/user/by-tally-response`,
           {
@@ -50,7 +51,11 @@ export default function StartChat() {
             },
             body: JSON.stringify({
               response_id: hasValidResponseId ? responseId : null,
-              respondent_id: hasValidRespondentId ? respondentId : null,
+              respondent_id: hasValidRespondentId
+                ? respondentId
+                : hasValidResponseId
+                ? responseId
+                : null,
             }),
           }
         );

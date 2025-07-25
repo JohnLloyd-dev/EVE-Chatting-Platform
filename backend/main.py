@@ -137,12 +137,19 @@ async def find_user_by_tally_response(request_data: dict, db: Session = Depends(
         raise HTTPException(400, detail="Either response_id or respondent_id is required")
     
     # Try to find user by response_id first, then by respondent_id
+    # Also try to find by respondent_id if response_id doesn't match (Tally sometimes mixes these up)
     user = None
     if response_id:
         user = db.query(User).filter(User.tally_response_id == response_id).first()
+        # If not found by response_id, try respondent_id (in case Tally sent respondent_id as response_id)
+        if not user:
+            user = db.query(User).filter(User.tally_respondent_id == response_id).first()
     
     if not user and respondent_id:
         user = db.query(User).filter(User.tally_respondent_id == respondent_id).first()
+        # If not found by respondent_id, try response_id (in case Tally sent response_id as respondent_id)
+        if not user:
+            user = db.query(User).filter(User.tally_response_id == respondent_id).first()
     
     if not user:
         raise HTTPException(404, detail="User not found. Please submit the form first.")
