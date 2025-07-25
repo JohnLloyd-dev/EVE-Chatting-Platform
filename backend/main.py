@@ -124,6 +124,47 @@ async def tally_webhook(webhook_data: dict, db: Session = Depends(get_db)):
         db.rollback()
         raise HTTPException(500, detail=f"Failed to process Tally webhook: {str(e)}")
 
+# Find user by Tally response
+@app.post("/user/by-tally-response")
+async def find_user_by_tally_response(request_data: dict, db: Session = Depends(get_db)):
+    """
+    Find user by Tally response ID for seamless redirect from form
+    """
+    response_id = request_data.get("response_id")
+    respondent_id = request_data.get("respondent_id")
+    
+    if not response_id and not respondent_id:
+        raise HTTPException(400, detail="Either response_id or respondent_id is required")
+    
+    # Try to find user by response_id first, then by respondent_id
+    user = None
+    if response_id:
+        user = db.query(User).filter(User.tally_response_id == response_id).first()
+    
+    if not user and respondent_id:
+        user = db.query(User).filter(User.tally_respondent_id == respondent_id).first()
+    
+    if not user:
+        raise HTTPException(404, detail="User not found. Please submit the form first.")
+    
+    if user.is_blocked:
+        raise HTTPException(403, detail="User is blocked")
+    
+    # Get active session
+    session = db.query(ChatSession).filter(
+        ChatSession.user_id == user.id,
+        ChatSession.is_active == True
+    ).first()
+    
+    if not session:
+        raise HTTPException(404, detail="No active session found")
+    
+    return {
+        "user_id": str(user.id),
+        "session_id": str(session.id),
+        "email": user.email
+    }
+
 # Get user session
 @app.get("/chat/session/{user_id}", response_model=ChatSessionResponse)
 async def get_user_session(user_id: str, db: Session = Depends(get_db)):
