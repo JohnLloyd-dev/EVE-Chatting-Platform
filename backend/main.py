@@ -25,7 +25,11 @@ app = FastAPI(title="Chatting Platform API", version="1.0.0")
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://frontend:3000"],  # Add your frontend URLs
+    allow_origins=[
+        "http://localhost:3000", 
+        "http://frontend:3000",
+        "http://204.12.223.76:3000"  # VPS public IP frontend
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
