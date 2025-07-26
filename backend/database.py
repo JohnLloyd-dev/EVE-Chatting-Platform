@@ -16,9 +16,11 @@ class User(Base):
     __tablename__ = "users"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tally_response_id = Column(String(255), unique=True, nullable=False)
-    tally_respondent_id = Column(String(255), nullable=False)
-    tally_form_id = Column(String(255), nullable=False)
+    tally_response_id = Column(String(255), unique=True, nullable=True)  # Made nullable for device-based users
+    tally_respondent_id = Column(String(255), nullable=True)  # Made nullable for device-based users
+    tally_form_id = Column(String(255), nullable=True)  # Made nullable for device-based users
+    device_id = Column(String(255), unique=True, nullable=True)  # For device-based identification
+    user_type = Column(String(50), default="tally")  # "tally" or "device"
     email = Column(String(255))
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     is_blocked = Column(Boolean, default=False)

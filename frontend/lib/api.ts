@@ -47,6 +47,14 @@ export const chatApi = {
     const response = await api.get(`/chat/response/${taskId}`);
     return response.data;
   },
+
+  createDeviceSession: async (deviceId: string, customPrompt: string) => {
+    const response = await api.post("/user/device-session", {
+      device_id: deviceId,
+      custom_prompt: customPrompt,
+    });
+    return response.data;
+  },
 };
 
 // Admin API

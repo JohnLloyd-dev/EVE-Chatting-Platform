@@ -172,6 +172,79 @@ async def find_user_by_tally_response(request_data: dict, db: Session = Depends(
         "email": user.email
     }
 
+# Device-based session creation for testing
+@app.post("/user/device-session")
+async def create_device_session(request_data: dict, db: Session = Depends(get_db)):
+    """
+    Create or get a device-based user session for testing purposes
+    """
+    device_id = request_data.get("device_id")
+    custom_prompt = request_data.get("custom_prompt")
+    
+    if not device_id:
+        raise HTTPException(400, detail="device_id is required")
+    
+    if not custom_prompt:
+        raise HTTPException(400, detail="custom_prompt is required")
+    
+    # Check if device-based user already exists
+    existing_user = db.query(User).filter(
+        User.device_id == device_id,
+        User.user_type == "device"
+    ).first()
+    
+    if existing_user:
+        # Check if user is blocked
+        if existing_user.is_blocked:
+            raise HTTPException(403, detail="User is blocked")
+        
+        # Deactivate old sessions
+        db.query(ChatSession).filter(
+            ChatSession.user_id == existing_user.id,
+            ChatSession.is_active == True
+        ).update({"is_active": False})
+        
+        # Create new session with custom prompt
+        chat_session = ChatSession(
+            user_id=existing_user.id,
+            scenario_prompt=custom_prompt
+        )
+        db.add(chat_session)
+        
+        # Update user's last active time
+        existing_user.last_active = datetime.now(timezone.utc)
+        
+        db.commit()
+        
+        return {
+            "user_id": str(existing_user.id),
+            "session_id": str(chat_session.id),
+            "message": "New session created for existing device user"
+        }
+    
+    # Create new device-based user
+    user = User(
+        device_id=device_id,
+        user_type="device"
+    )
+    db.add(user)
+    db.flush()  # Get user ID
+    
+    # Create chat session with custom prompt
+    chat_session = ChatSession(
+        user_id=user.id,
+        scenario_prompt=custom_prompt
+    )
+    db.add(chat_session)
+    
+    db.commit()
+    
+    return {
+        "user_id": str(user.id),
+        "session_id": str(chat_session.id),
+        "message": "Device user and session created successfully"
+    }
+
 # Get user session
 @app.get("/chat/session/{user_id}", response_model=ChatSessionResponse)
 async def get_user_session(user_id: str, db: Session = Depends(get_db)):

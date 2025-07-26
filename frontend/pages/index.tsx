@@ -66,13 +66,23 @@ export default function Home() {
           </div>
 
           <div className="mt-8 pt-6 border-t border-gray-700/50">
-            <div className="text-center animate-fade-in-delay-2">
-              <Link
-                href="/admin"
-                className="text-purple-400 hover:text-purple-300 text-sm transition-colors duration-200"
-              >
-                Admin Dashboard
-              </Link>
+            <div className="text-center space-y-2 animate-fade-in-delay-2">
+              <div>
+                <Link
+                  href="/admin"
+                  className="text-purple-400 hover:text-purple-300 text-sm transition-colors duration-200"
+                >
+                  Admin Dashboard
+                </Link>
+              </div>
+              <div>
+                <Link
+                  href="/test-generator"
+                  className="text-green-400 hover:text-green-300 text-sm transition-colors duration-200"
+                >
+                  Test Link Generator
+                </Link>
+              </div>
             </div>
           </div>
         </div>
