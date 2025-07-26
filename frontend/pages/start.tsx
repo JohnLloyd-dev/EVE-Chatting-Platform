@@ -93,15 +93,38 @@ export default function StartChat() {
         <Head>
           <title>Starting Your Chat Session...</title>
         </Head>
-        <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-white mx-auto mb-4"></div>
-            <h1 className="text-2xl font-bold text-white mb-2">
-              Starting Your Chat Session...
-            </h1>
-            <p className="text-gray-300">
-              Please wait while we prepare your personalized experience
-            </p>
+        <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-800 flex items-center justify-center animate-gradient-x">
+          <div className="text-center animate-fade-in">
+            <div className="relative mb-8">
+              {/* Outer spinning ring */}
+              <div className="animate-spin rounded-full h-20 w-20 border-4 border-purple-500/30 border-t-purple-500 mx-auto"></div>
+              {/* Inner pulsing dot */}
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-8 h-8 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full animate-pulse"></div>
+              </div>
+            </div>
+
+            <div className="space-y-4 animate-slide-up">
+              <h1 className="text-3xl font-bold text-white mb-2 animate-pulse">
+                Starting Your Chat Session...
+              </h1>
+              <p className="text-gray-300 text-lg">
+                Please wait while we prepare your personalized experience
+              </p>
+
+              {/* Progress dots */}
+              <div className="flex justify-center space-x-2 mt-6">
+                <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce"></div>
+                <div
+                  className="w-2 h-2 bg-purple-500 rounded-full animate-bounce"
+                  style={{ animationDelay: "0.1s" }}
+                ></div>
+                <div
+                  className="w-2 h-2 bg-purple-500 rounded-full animate-bounce"
+                  style={{ animationDelay: "0.2s" }}
+                ></div>
+              </div>
+            </div>
           </div>
         </div>
       </>
@@ -114,16 +137,18 @@ export default function StartChat() {
         <Head>
           <title>Chat Session Error</title>
         </Head>
-        <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center">
-          <div className="text-center max-w-md mx-auto p-6">
-            <div className="text-red-400 text-6xl mb-4">⚠️</div>
-            <h1 className="text-2xl font-bold text-white mb-4">
+        <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-800 flex items-center justify-center animate-gradient-x">
+          <div className="text-center max-w-md mx-auto p-8 bg-gray-800/80 backdrop-blur-sm rounded-xl shadow-2xl border border-gray-700/50 animate-fade-in">
+            <div className="text-red-400 text-6xl mb-6 animate-bounce">⚠️</div>
+            <h1 className="text-3xl font-bold text-white mb-4 animate-slide-up">
               Oops! Something went wrong
             </h1>
-            <p className="text-gray-300 mb-6">{error}</p>
+            <p className="text-gray-300 mb-8 text-lg animate-slide-up-delay">
+              {error}
+            </p>
             <button
               onClick={() => (window.location.href = "/")}
-              className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded transition duration-200"
+              className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 transform hover:scale-105 animate-slide-up-delay-2"
             >
               Go Back to Home
             </button>
