@@ -101,7 +101,12 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+        <div className="relative">
+          <div className="animate-spin rounded-full h-16 w-16 border-4 border-purple-500/30 border-t-purple-500"></div>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="w-6 h-6 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full animate-pulse"></div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -109,13 +114,13 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
   if (error) {
     return (
       <div className="text-center py-8">
-        <div className="text-red-600 mb-4">
+        <div className="text-red-400 mb-4 text-lg">
           {(error as any)?.response?.data?.detail ||
             "Failed to load chat session"}
         </div>
         <button
           onClick={() => window.location.reload()}
-          className="btn-primary"
+          className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 transform hover:scale-105"
         >
           Retry
         </button>
@@ -126,7 +131,7 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
   if (!session) {
     return (
       <div className="text-center py-8">
-        <div className="text-gray-600">No active chat session found</div>
+        <div className="text-gray-300">No active chat session found</div>
       </div>
     );
   }
@@ -136,7 +141,7 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {session.messages.length === 0 ? (
-          <div className="text-center text-gray-500 py-8">
+          <div className="text-center text-gray-300 py-8">
             Start the conversation by sending a message!
           </div>
         ) : (
@@ -159,7 +164,7 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
                 <div className="text-sm">{msg.content}</div>
                 <div
                   className={`text-xs mt-1 ${
-                    msg.is_from_user ? "text-primary-200" : "text-gray-500"
+                    msg.is_from_user ? "text-purple-200" : "text-gray-400"
                   }`}
                 >
                   {format(new Date(msg.created_at), "HH:mm")}
@@ -178,13 +183,13 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
               <div className="flex items-center space-x-2">
                 <div className="animate-pulse">AI is thinking...</div>
                 <div className="flex space-x-1">
-                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                  <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"></div>
                   <div
-                    className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                    className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"
                     style={{ animationDelay: "0.1s" }}
                   ></div>
                   <div
-                    className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                    className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"
                     style={{ animationDelay: "0.2s" }}
                   ></div>
                 </div>
@@ -197,14 +202,14 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
       </div>
 
       {/* Input */}
-      <div className="border-t border-gray-200 p-4">
+      <div className="border-t border-gray-700/50 p-4">
         <div className="flex space-x-2">
           <textarea
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyPress={handleKeyPress}
             placeholder="Type your message..."
-            className="flex-1 resize-none input-field"
+            className="flex-1 resize-none px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent text-white placeholder-gray-400 transition-all duration-200"
             rows={2}
             disabled={sendMessageMutation.isLoading || isProcessing}
           />
@@ -213,7 +218,7 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
             disabled={
               !message.trim() || sendMessageMutation.isLoading || isProcessing
             }
-            className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed px-6"
+            className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
           >
             Send
           </button>

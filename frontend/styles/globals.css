@@ -26,15 +26,15 @@
   }
 
   .chat-message-user {
-    @apply bg-primary-600 text-white ml-auto;
+    @apply bg-gradient-to-r from-purple-600 to-blue-600 text-white ml-auto;
   }
 
   .chat-message-ai {
-    @apply bg-gray-200 text-gray-800 mr-auto;
+    @apply bg-gray-700/80 text-gray-100 mr-auto border border-gray-600/50;
   }
 
   .chat-message-admin {
-    @apply bg-yellow-100 text-yellow-800 border border-yellow-300 mr-auto;
+    @apply bg-yellow-900/80 text-yellow-200 border border-yellow-600/50 mr-auto;
   }
 }
 

@@ -9,10 +9,14 @@ export default function ChatPage() {
 
   if (!userId || typeof userId !== "string") {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-gray-600 mb-4">Invalid user ID</div>
-          <Link href="/" className="btn-primary">
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-800 flex items-center justify-center animate-gradient-x">
+        <div className="text-center p-8 bg-gray-800/80 backdrop-blur-sm rounded-xl shadow-2xl border border-gray-700/50 animate-fade-in">
+          <div className="text-red-400 text-6xl mb-4">⚠️</div>
+          <div className="text-gray-300 mb-6 text-lg">Invalid user ID</div>
+          <Link
+            href="/"
+            className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 transform hover:scale-105"
+          >
             Go Home
           </Link>
         </div>
@@ -21,18 +25,19 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-800 animate-gradient-x">
       {/* Header */}
-      <div className="bg-white shadow-sm border-b border-gray-200">
+      <div className="bg-gray-800/80 backdrop-blur-sm shadow-2xl border-b border-gray-700/50">
         <div className="max-w-4xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-xl font-semibold text-gray-900">
-                Chat Session
-              </h1>
-              <p className="text-sm text-gray-600">User ID: {userId}</p>
+            <div className="animate-fade-in">
+              <h1 className="text-xl font-semibold text-white">Chat Session</h1>
+              <p className="text-sm text-gray-300">User ID: {userId}</p>
             </div>
-            <Link href="/" className="btn-secondary">
+            <Link
+              href="/"
+              className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-medium py-2 px-4 rounded-lg transition-all duration-300 transform hover:scale-105 animate-fade-in-delay"
+            >
               Exit Chat
             </Link>
           </div>
@@ -40,9 +45,9 @@ export default function ChatPage() {
       </div>
 
       {/* Chat Interface */}
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-4xl mx-auto animate-slide-up">
         <div
-          className="bg-white shadow-sm"
+          className="bg-gray-800/60 backdrop-blur-sm shadow-2xl border-x border-gray-700/50"
           style={{ height: "calc(100vh - 120px)" }}
         >
           <ChatInterface userId={userId} />
