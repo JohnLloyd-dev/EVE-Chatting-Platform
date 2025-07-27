@@ -34,6 +34,7 @@ export default function SystemPromptsPage() {
     head_prompt: "",
     rule_prompt: "",
   });
+  const [submitting, setSubmitting] = useState(false);
 
   // Sample Tally data for preview
   const sampleTallyPrompt =
@@ -56,19 +57,23 @@ export default function SystemPromptsPage() {
     fetchPrompts();
   }, []);
 
-  const handleCreate = async (e: React.FormEvent) => {
+  const handleCreatePrompt = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name.trim() || !formData.prompt_text.trim()) {
+    if (
+      !formData.name.trim() ||
+      !formData.head_prompt.trim() ||
+      !formData.rule_prompt.trim()
+    ) {
       toast.error("Please fill in all fields");
       return;
     }
 
-    setSubmitting(true);
     try {
+      setSubmitting(true);
       await adminApi.createSystemPrompt(formData);
-      toast.success("System prompt created successfully");
-      setFormData({ name: "", prompt_text: "" });
+      toast.success("System prompt created successfully!");
       setShowCreateForm(false);
+      setFormData({ name: "", head_prompt: "", rule_prompt: "" });
       fetchPrompts();
     } catch (error: any) {
       toast.error(
@@ -79,20 +84,26 @@ export default function SystemPromptsPage() {
     }
   };
 
-  const handleUpdate = async (e: React.FormEvent) => {
+  const handleEditPrompt = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingPrompt) return;
-    if (!formData.name.trim() || !formData.prompt_text.trim()) {
+
+    if (
+      !formData.name.trim() ||
+      !formData.head_prompt.trim() ||
+      !formData.rule_prompt.trim()
+    ) {
       toast.error("Please fill in all fields");
       return;
     }
 
-    setSubmitting(true);
     try {
+      setSubmitting(true);
       await adminApi.updateSystemPrompt(editingPrompt.id, formData);
-      toast.success("System prompt updated successfully");
+      toast.success("System prompt updated successfully!");
+      setShowEditForm(false);
       setEditingPrompt(null);
-      setFormData({ name: "", prompt_text: "" });
+      setFormData({ name: "", head_prompt: "", rule_prompt: "" });
       fetchPrompts();
     } catch (error: any) {
       toast.error(
@@ -103,10 +114,10 @@ export default function SystemPromptsPage() {
     }
   };
 
-  const handleSetActive = async (promptId: string) => {
+  const handleActivatePrompt = async (promptId: string) => {
     try {
       await adminApi.updateSystemPrompt(promptId, { is_active: true });
-      toast.success("System prompt activated");
+      toast.success("System prompt activated!");
       fetchPrompts();
     } catch (error: any) {
       toast.error(
@@ -115,12 +126,12 @@ export default function SystemPromptsPage() {
     }
   };
 
-  const handleDelete = async (promptId: string) => {
+  const handleDeletePrompt = async (promptId: string) => {
     if (!confirm("Are you sure you want to delete this system prompt?")) return;
 
     try {
       await adminApi.deleteSystemPrompt(promptId);
-      toast.success("System prompt deleted");
+      toast.success("System prompt deleted successfully!");
       fetchPrompts();
     } catch (error: any) {
       toast.error(
@@ -129,324 +140,492 @@ export default function SystemPromptsPage() {
     }
   };
 
-  const startEdit = (prompt: SystemPrompt) => {
+  const openEditForm = (prompt: SystemPrompt) => {
     setEditingPrompt(prompt);
     setFormData({
       name: prompt.name,
-      prompt_text: prompt.prompt_text,
+      head_prompt: prompt.head_prompt,
+      rule_prompt: prompt.rule_prompt,
     });
-    setShowCreateForm(false);
+    setShowEditForm(true);
   };
 
-  const cancelEdit = () => {
-    setEditingPrompt(null);
-    setFormData({ name: "", prompt_text: "" });
+  const openPreview = (prompt: SystemPrompt) => {
+    setEditingPrompt(prompt);
+    setShowPreview(true);
   };
 
-  if (loading) {
-    return (
-      <AdminLayout>
-        <div className="min-h-screen bg-gray-50">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            <div className="flex justify-center items-center h-64">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
-            </div>
-          </div>
-        </div>
-      </AdminLayout>
-    );
-  }
+  const generateCompletePrompt = (headPrompt: string, rulePrompt: string) => {
+    return `${headPrompt} ${sampleTallyPrompt} ${rulePrompt}`;
+  };
 
   const activePrompt = prompts.find((p) => p.is_active);
 
   return (
     <AdminLayout>
-      <div className="min-h-screen bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {/* Header */}
-          <div className="mb-8">
-            <div className="flex justify-between items-center">
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900">
-                  System Prompts
-                </h1>
-                <p className="mt-2 text-gray-600">
-                  Manage AI system prompts that guide conversation behavior
-                </p>
-              </div>
-              <button
-                onClick={() => {
-                  setShowCreateForm(true);
-                  setEditingPrompt(null);
-                  setFormData({ name: "", prompt_text: "" });
-                }}
-                className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-              >
-                <PlusIcon className="h-5 w-5 mr-2" />
-                Create New Prompt
-              </button>
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">System Prompts</h1>
+            <p className="text-gray-600 mt-1">
+              Manage system prompts that combine with user Tally data
+            </p>
+          </div>
+          <button
+            onClick={() => setShowCreateForm(true)}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md flex items-center gap-2 transition-colors"
+          >
+            <PlusIcon className="w-5 h-5" />
+            Create System Prompt
+          </button>
+        </div>
+
+        {/* Active Prompt Status */}
+        {activePrompt && (
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+            <div className="flex items-center gap-2">
+              <CheckCircleIcon className="w-5 h-5 text-green-600" />
+              <span className="font-medium text-green-800">
+                Currently Active: {activePrompt.name}
+              </span>
             </div>
           </div>
+        )}
 
-          {/* Active Prompt Status */}
-          {activePrompt && (
-            <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4">
-              <div className="flex items-center">
-                <CheckCircleIcon className="h-5 w-5 text-green-400 mr-2" />
-                <div>
-                  <h3 className="text-sm font-medium text-green-800">
-                    Currently Active: {activePrompt.name}
-                  </h3>
-                  <p className="text-sm text-green-700 mt-1">
-                    This prompt is being used for all new conversations
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {!activePrompt && prompts.length > 0 && (
-            <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-              <div className="flex items-center">
-                <ExclamationTriangleIcon className="h-5 w-5 text-yellow-400 mr-2" />
-                <div>
-                  <h3 className="text-sm font-medium text-yellow-800">
-                    No Active System Prompt
-                  </h3>
-                  <p className="text-sm text-yellow-700 mt-1">
-                    Please activate a system prompt to ensure consistent AI
-                    behavior
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Create/Edit Form */}
-          {(showCreateForm || editingPrompt) && (
-            <div className="mb-8 bg-white shadow rounded-lg">
-              <div className="px-6 py-4 border-b border-gray-200">
-                <h2 className="text-lg font-medium text-gray-900">
-                  {editingPrompt
-                    ? "Edit System Prompt"
-                    : "Create New System Prompt"}
-                </h2>
-              </div>
-              <form
-                onSubmit={editingPrompt ? handleUpdate : handleCreate}
-                className="p-6"
+        {/* System Prompts List */}
+        {loading ? (
+          <div className="flex justify-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+          </div>
+        ) : (
+          <div className="grid gap-6">
+            {prompts.map((prompt) => (
+              <div
+                key={prompt.id}
+                className={`bg-white rounded-lg shadow-sm border-2 p-6 ${
+                  prompt.is_active ? "border-green-500" : "border-gray-200"
+                }`}
               >
-                <div className="space-y-6">
-                  <div>
-                    <label
-                      htmlFor="name"
-                      className="block text-sm font-medium text-gray-700"
-                    >
-                      Prompt Name
-                    </label>
-                    <div className="mt-1">
-                      <input
-                        type="text"
-                        id="name"
-                        value={formData.name}
-                        onChange={(e) =>
-                          setFormData({ ...formData, name: e.target.value })
-                        }
-                        className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                        placeholder="e.g., Sexual Fantasy Assistant v2"
-                        required
-                      />
-                    </div>
-                    <p className="mt-2 text-sm text-gray-500">
-                      Give your system prompt a descriptive name
-                    </p>
-                  </div>
-
-                  <div>
-                    <label
-                      htmlFor="prompt_text"
-                      className="block text-sm font-medium text-gray-700"
-                    >
-                      System Prompt Instructions
-                    </label>
-                    <div className="mt-1">
-                      <textarea
-                        id="prompt_text"
-                        rows={10}
-                        value={formData.prompt_text}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            prompt_text: e.target.value,
-                          })
-                        }
-                        className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                        placeholder="You are a sexual fantasy assistant. Always speak in the first person and stay in character..."
-                        required
-                      />
-                    </div>
-                    <p className="mt-2 text-sm text-gray-500">
-                      These instructions will be combined with each user's
-                      personalized scenario
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-6 flex justify-end space-x-3">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowCreateForm(false);
-                      cancelEdit();
-                    }}
-                    className="bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={submitting}
-                    className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
-                  >
-                    {submitting ? (
-                      <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                        {editingPrompt ? "Updating..." : "Creating..."}
-                      </>
-                    ) : editingPrompt ? (
-                      "Update Prompt"
-                    ) : (
-                      "Create Prompt"
+                <div className="flex justify-between items-start mb-4">
+                  <div className="flex items-center gap-3">
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      {prompt.name}
+                    </h3>
+                    {prompt.is_active && (
+                      <span className="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
+                        Active
+                      </span>
                     )}
-                  </button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => openPreview(prompt)}
+                      className="p-2 text-gray-400 hover:text-blue-600 transition-colors"
+                      title="Preview Complete Prompt"
+                    >
+                      <EyeIcon className="w-5 h-5" />
+                    </button>
+                    <button
+                      onClick={() => openEditForm(prompt)}
+                      className="p-2 text-gray-400 hover:text-blue-600 transition-colors"
+                      title="Edit"
+                    >
+                      <PencilIcon className="w-5 h-5" />
+                    </button>
+                    {!prompt.is_active && (
+                      <button
+                        onClick={() => handleActivatePrompt(prompt.id)}
+                        className="p-2 text-gray-400 hover:text-green-600 transition-colors"
+                        title="Activate"
+                      >
+                        <CheckCircleIcon className="w-5 h-5" />
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleDeletePrompt(prompt.id)}
+                      className="p-2 text-gray-400 hover:text-red-600 transition-colors"
+                      title="Delete"
+                    >
+                      <TrashIcon className="w-5 h-5" />
+                    </button>
+                  </div>
                 </div>
-              </form>
-            </div>
-          )}
 
-          {/* Prompts Grid */}
-          <div className="space-y-6">
-            {prompts.length === 0 ? (
-              <div className="text-center py-12">
-                <DocumentTextIcon className="mx-auto h-12 w-12 text-gray-400" />
-                <h3 className="mt-2 text-sm font-medium text-gray-900">
-                  No system prompts
-                </h3>
-                <p className="mt-1 text-sm text-gray-500">
-                  Get started by creating your first system prompt.
-                </p>
-                <div className="mt-6">
-                  <button
-                    onClick={() => {
-                      setShowCreateForm(true);
-                      setEditingPrompt(null);
-                      setFormData({ name: "", prompt_text: "" });
-                    }}
-                    className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700"
-                  >
-                    <PlusIcon className="h-5 w-5 mr-2" />
-                    Create System Prompt
-                  </button>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <h4 className="font-medium text-gray-700 mb-2">
+                      Head Prompt
+                    </h4>
+                    <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded border">
+                      {prompt.head_prompt}
+                    </p>
+                  </div>
+                  <div>
+                    <h4 className="font-medium text-gray-700 mb-2">
+                      Rule Prompt
+                    </h4>
+                    <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded border">
+                      {prompt.rule_prompt}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4 mt-4 text-sm text-gray-500">
+                  <div className="flex items-center gap-1">
+                    <ClockIcon className="w-4 h-4" />
+                    {new Date(prompt.created_at).toLocaleDateString()}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <UserIcon className="w-4 h-4" />
+                    Created by admin
+                  </div>
                 </div>
               </div>
-            ) : (
-              <div className="grid gap-6 lg:grid-cols-1">
-                {prompts.map((prompt) => (
-                  <div
-                    key={prompt.id}
-                    className={`bg-white overflow-hidden shadow rounded-lg border-2 ${
-                      prompt.is_active
-                        ? "border-green-500 ring-2 ring-green-200"
-                        : "border-gray-200"
-                    }`}
-                  >
-                    <div className="px-6 py-4 border-b border-gray-200">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-3">
-                          <div
-                            className={`flex-shrink-0 w-3 h-3 rounded-full ${
-                              prompt.is_active ? "bg-green-500" : "bg-gray-300"
-                            }`}
-                          ></div>
-                          <div>
-                            <h3 className="text-lg font-medium text-gray-900 flex items-center space-x-2">
-                              <span>{prompt.name}</span>
-                              {prompt.is_active && (
-                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                  <CheckCircleIcon className="w-3 h-3 mr-1" />
-                                  Active
-                                </span>
-                              )}
-                            </h3>
-                            <div className="flex items-center space-x-4 text-sm text-gray-500 mt-1">
-                              <div className="flex items-center">
-                                <ClockIcon className="w-4 h-4 mr-1" />
-                                Created{" "}
-                                {new Date(
-                                  prompt.created_at
-                                ).toLocaleDateString()}
-                              </div>
-                              {prompt.updated_at !== prompt.created_at && (
-                                <div className="flex items-center">
-                                  <PencilIcon className="w-4 h-4 mr-1" />
-                                  Updated{" "}
-                                  {new Date(
-                                    prompt.updated_at
-                                  ).toLocaleDateString()}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          {!prompt.is_active && (
-                            <button
-                              onClick={() => handleSetActive(prompt.id)}
-                              className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-                            >
-                              <CheckCircleIcon className="w-4 h-4 mr-1" />
-                              Activate
-                            </button>
-                          )}
-                          <button
-                            onClick={() => startEdit(prompt)}
-                            className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                          >
-                            <PencilIcon className="w-4 h-4 mr-1" />
-                            Edit
-                          </button>
-                          {!prompt.is_active && (
-                            <button
-                              onClick={() => handleDelete(prompt.id)}
-                              className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-                            >
-                              <TrashIcon className="w-4 h-4 mr-1" />
-                              Delete
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="px-6 py-4">
-                      <div className="bg-gray-50 rounded-lg p-4">
-                        <h4 className="text-sm font-medium text-gray-900 mb-2">
-                          System Instructions:
-                        </h4>
-                        <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
-                          {prompt.prompt_text}
-                        </p>
-                      </div>
-                      <div className="mt-4 text-xs text-gray-500">
-                        <span className="font-medium">Character count:</span>{" "}
-                        {prompt.prompt_text.length}
-                      </div>
-                    </div>
-                  </div>
-                ))}
+            ))}
+
+            {prompts.length === 0 && (
+              <div className="text-center py-12">
+                <DocumentTextIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">
+                  No system prompts yet
+                </h3>
+                <p className="text-gray-600 mb-4">
+                  Create your first system prompt to get started.
+                </p>
+                <button
+                  onClick={() => setShowCreateForm(true)}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md transition-colors"
+                >
+                  Create System Prompt
+                </button>
               </div>
             )}
           </div>
-        </div>
+        )}
+
+        {/* Create Form Modal */}
+        {showCreateForm && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="p-6">
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-xl font-semibold">
+                    Create System Prompt
+                  </h2>
+                  <button
+                    onClick={() => setShowCreateForm(false)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <XMarkIcon className="w-6 h-6" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleCreatePrompt} className="space-y-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Name
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.name}
+                      onChange={(e) =>
+                        setFormData({ ...formData, name: e.target.value })
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Head Prompt (System Instructions)
+                    </label>
+                    <textarea
+                      value={formData.head_prompt}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          head_prompt: e.target.value,
+                        })
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 h-24"
+                      placeholder="e.g., You are a sexual fantasy assistant..."
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Rule Prompt (Behavioral Rules)
+                    </label>
+                    <textarea
+                      value={formData.rule_prompt}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          rule_prompt: e.target.value,
+                        })
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 h-32"
+                      placeholder="e.g., Always speak in first person, be explicit, keep answers short..."
+                      required
+                    />
+                  </div>
+
+                  {/* Preview Section */}
+                  {formData.head_prompt && formData.rule_prompt && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Preview: Complete Prompt (Head + Tally + Rule)
+                      </label>
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <p className="text-sm text-gray-700">
+                          <span className="font-medium text-blue-800">
+                            Head:
+                          </span>{" "}
+                          {formData.head_prompt}
+                          <br />
+                          <br />
+                          <span className="font-medium text-orange-800">
+                            Tally (Sample):
+                          </span>{" "}
+                          {sampleTallyPrompt}
+                          <br />
+                          <br />
+                          <span className="font-medium text-green-800">
+                            Rule:
+                          </span>{" "}
+                          {formData.rule_prompt}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex justify-end gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowCreateForm(false)}
+                      className="bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={submitting}
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                      {submitting && (
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      )}
+                      {submitting ? "Creating..." : "Create System Prompt"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Edit Form Modal */}
+        {showEditForm && editingPrompt && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="p-6">
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-xl font-semibold">Edit System Prompt</h2>
+                  <button
+                    onClick={() => setShowEditForm(false)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <XMarkIcon className="w-6 h-6" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleEditPrompt} className="space-y-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Name
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.name}
+                      onChange={(e) =>
+                        setFormData({ ...formData, name: e.target.value })
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Head Prompt (System Instructions)
+                    </label>
+                    <textarea
+                      value={formData.head_prompt}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          head_prompt: e.target.value,
+                        })
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 h-24"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Rule Prompt (Behavioral Rules)
+                    </label>
+                    <textarea
+                      value={formData.rule_prompt}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          rule_prompt: e.target.value,
+                        })
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 h-32"
+                      required
+                    />
+                  </div>
+
+                  {/* Preview Section */}
+                  {formData.head_prompt && formData.rule_prompt && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Preview: Complete Prompt (Head + Tally + Rule)
+                      </label>
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <p className="text-sm text-gray-700">
+                          <span className="font-medium text-blue-800">
+                            Head:
+                          </span>{" "}
+                          {formData.head_prompt}
+                          <br />
+                          <br />
+                          <span className="font-medium text-orange-800">
+                            Tally (Sample):
+                          </span>{" "}
+                          {sampleTallyPrompt}
+                          <br />
+                          <br />
+                          <span className="font-medium text-green-800">
+                            Rule:
+                          </span>{" "}
+                          {formData.rule_prompt}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex justify-end gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowEditForm(false)}
+                      className="bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={submitting}
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                      {submitting && (
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      )}
+                      {submitting ? "Updating..." : "Update System Prompt"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Preview Modal */}
+        {showPreview && editingPrompt && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="p-6">
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-xl font-semibold">
+                    Complete Prompt Preview
+                  </h2>
+                  <button
+                    onClick={() => setShowPreview(false)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <XMarkIcon className="w-6 h-6" />
+                  </button>
+                </div>
+
+                <div className="space-y-6">
+                  <div>
+                    <h3 className="font-medium text-gray-900 mb-3">
+                      How "{editingPrompt.name}" combines with Tally data:
+                    </h3>
+
+                    <div className="space-y-4">
+                      <div className="bg-blue-50 border-l-4 border-blue-400 p-4">
+                        <h4 className="font-medium text-blue-800 mb-2">
+                          1. Head Prompt
+                        </h4>
+                        <p className="text-sm text-gray-700">
+                          {editingPrompt.head_prompt}
+                        </p>
+                      </div>
+
+                      <div className="bg-orange-50 border-l-4 border-orange-400 p-4">
+                        <h4 className="font-medium text-orange-800 mb-2">
+                          2. Tally Prompt (User's Scenario)
+                        </h4>
+                        <p className="text-sm text-gray-700">
+                          {sampleTallyPrompt}
+                        </p>
+                      </div>
+
+                      <div className="bg-green-50 border-l-4 border-green-400 p-4">
+                        <h4 className="font-medium text-green-800 mb-2">
+                          3. Rule Prompt
+                        </h4>
+                        <p className="text-sm text-gray-700">
+                          {editingPrompt.rule_prompt}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h4 className="font-medium text-gray-900 mb-3">
+                      Complete Combined Prompt:
+                    </h4>
+                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                      <p className="text-sm text-gray-700 whitespace-pre-wrap">
+                        {generateCompletePrompt(
+                          editingPrompt.head_prompt,
+                          editingPrompt.rule_prompt
+                        )}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end">
+                    <button
+                      onClick={() => setShowPreview(false)}
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md transition-colors"
+                    >
+                      Close Preview
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </AdminLayout>
   );
