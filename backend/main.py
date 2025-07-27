@@ -88,7 +88,7 @@ async def tally_webhook(webhook_data: dict, db: Session = Depends(get_db)):
         db.flush()  # Get user ID
         
         # Generate scenario from Tally data
-        scenario = generate_story_from_json(form_data)
+        scenario = generate_story_from_json(webhook_data)
         full_scenario = (
             "You are sexual fantasy Assistant. " + scenario + 
             " Rules: 1) Always speak in the first person and always stay in character. "

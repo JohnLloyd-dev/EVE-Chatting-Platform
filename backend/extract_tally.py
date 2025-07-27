@@ -115,12 +115,17 @@ def generate_story_from_json(form_data):
     if not form_data:
         return "Welcome! I'm here to help you with any questions or conversations you'd like to have."
     
-    # Handle Tally webhook format
+    # Handle Tally webhook format (full webhook with 'data' key)
     if isinstance(form_data, dict) and 'data' in form_data:
         # Extract the actual form data from Tally webhook structure
         tally_data = form_data.get('data', {})
         
         generator = FantasyStoryGenerator(tally_data)
+        return generator.create_story()
+    
+    # Handle direct form data (just the 'data' section with 'fields')
+    elif isinstance(form_data, dict) and 'fields' in form_data:
+        generator = FantasyStoryGenerator(form_data)
         return generator.create_story()
     
     else:
