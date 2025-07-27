@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException, Depends, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import String
 from datetime import datetime, timezone, timedelta
 from typing import List
 import uuid
@@ -597,11 +598,14 @@ async def get_users(
     
     # Apply filters
     if search:
-        query = query.filter(
-            (User.id.ilike(f"%{search}%")) |
-            (User.email.ilike(f"%{search}%")) |
-            (User.tally_response_id.ilike(f"%{search}%"))
-        )
+        search_filter = (User.id.cast(String).ilike(f"%{search}%"))
+        if search:  # Add email search if email is not null
+            search_filter = search_filter | (User.email.ilike(f"%{search}%"))
+        if search:  # Add tally_response_id search if not null
+            search_filter = search_filter | (User.tally_response_id.ilike(f"%{search}%"))
+        if search:  # Add device_id search if not null
+            search_filter = search_filter | (User.device_id.ilike(f"%{search}%"))
+        query = query.filter(search_filter)
     
     if user_type:
         query = query.filter(User.user_type == user_type)
@@ -680,7 +684,7 @@ async def get_user_details(
     tally_submission = None
     if user.tally_response_id:
         tally_submission = db.query(TallySubmission).filter(
-            TallySubmission.response_id == user.tally_response_id
+            TallySubmission.user_id == user_id
         ).first()
     
     return {
@@ -716,10 +720,10 @@ async def get_user_details(
             for message in messages
         ],
         "tally_submission": {
-            "form_id": tally_submission.form_id,
-            "response_id": tally_submission.response_id,
-            "respondent_id": tally_submission.respondent_id,
-            "submitted_at": tally_submission.submitted_at,
+            "form_id": user.tally_form_id,
+            "response_id": user.tally_response_id,
+            "respondent_id": user.tally_respondent_id,
+            "submitted_at": tally_submission.created_at,
             "form_data": tally_submission.form_data
         } if tally_submission else None
     }
@@ -778,10 +782,9 @@ async def delete_user(
     db.query(ChatSession).filter(ChatSession.user_id == user_id).delete()
     
     # Delete Tally submission if exists
-    if user.tally_response_id:
-        db.query(TallySubmission).filter(
-            TallySubmission.response_id == user.tally_response_id
-        ).delete()
+    db.query(TallySubmission).filter(
+        TallySubmission.user_id == user_id
+    ).delete()
     
     # Delete user
     db.delete(user)
