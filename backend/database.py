@@ -98,6 +98,20 @@ class TallySubmission(Base):
     # Relationships
     user = relationship("User", back_populates="tally_submissions")
 
+class SystemPrompt(Base):
+    __tablename__ = "system_prompts"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(255), nullable=False, unique=True)
+    prompt_text = Column(Text, nullable=False)
+    is_active = Column(Boolean, default=False)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("admin_users.id"), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    
+    # Relationships
+    admin = relationship("AdminUser")
+
 def generate_user_code(db: SessionLocal) -> str:
     """
     Generate a simple, memorable user code like EVE001, EVE002, etc.

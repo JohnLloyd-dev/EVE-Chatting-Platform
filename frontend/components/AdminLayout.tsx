@@ -79,6 +79,16 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 >
                   Users
                 </Link>
+                <Link
+                  href="/admin/system-prompts"
+                  className={`px-3 py-2 rounded-md text-sm font-medium ${
+                    router.pathname === "/admin/system-prompts"
+                      ? "bg-primary-100 text-primary-700"
+                      : "text-gray-600 hover:text-gray-900"
+                  }`}
+                >
+                  System Prompts
+                </Link>
               </nav>
             </div>
 

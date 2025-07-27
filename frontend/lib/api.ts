@@ -4,6 +4,7 @@ import {
   ConversationSummary,
   DashboardStats,
   MessageHistory,
+  SystemPrompt,
 } from "../types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -137,6 +138,35 @@ export const adminApi = {
 
   deleteUser: async (userId: string) => {
     const response = await api.delete(`/admin/users/${userId}`);
+    return response.data;
+  },
+
+  // System Prompt Management
+  getSystemPrompts: async () => {
+    const response = await api.get("/admin/system-prompts");
+    return response.data;
+  },
+
+  createSystemPrompt: async (data: { name: string; prompt_text: string }) => {
+    const response = await api.post("/admin/system-prompts", data);
+    return response.data;
+  },
+
+  updateSystemPrompt: async (
+    promptId: string,
+    data: { name?: string; prompt_text?: string; is_active?: boolean }
+  ) => {
+    const response = await api.put(`/admin/system-prompts/${promptId}`, data);
+    return response.data;
+  },
+
+  deleteSystemPrompt: async (promptId: string) => {
+    const response = await api.delete(`/admin/system-prompts/${promptId}`);
+    return response.data;
+  },
+
+  getActiveSystemPrompt: async () => {
+    const response = await api.get("/admin/system-prompts/active");
     return response.data;
   },
 };

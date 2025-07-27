@@ -101,3 +101,13 @@ export interface UserDetails {
     generated_prompt?: string;
   };
 }
+
+export interface SystemPrompt {
+  id: string;
+  name: string;
+  prompt_text: string;
+  is_active: boolean;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}

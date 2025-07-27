@@ -91,3 +91,25 @@ class MessageHistory(BaseModel):
     messages: List[ChatMessageResponse]
     session_info: ChatSessionResponse
     user_info: UserResponse
+
+# System Prompt schemas
+class SystemPromptCreate(BaseModel):
+    name: str
+    prompt_text: str
+
+class SystemPromptUpdate(BaseModel):
+    name: Optional[str] = None
+    prompt_text: Optional[str] = None
+    is_active: Optional[bool] = None
+
+class SystemPromptResponse(BaseModel):
+    id: str
+    name: str
+    prompt_text: str
+    is_active: bool
+    created_by: str
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True

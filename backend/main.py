@@ -9,12 +9,12 @@ import uuid
 import json
 
 # Local imports
-from database import get_db, User, ChatSession, Message, TallySubmission, AdminUser, generate_user_code
+from database import get_db, User, ChatSession, Message, TallySubmission, AdminUser, SystemPrompt, generate_user_code
 from schemas import (
     TallyWebhookData, ChatMessageRequest, ChatMessageResponse, 
     ChatSessionResponse, UserResponse, AdminLoginRequest, AdminLoginResponse,
     ConversationSummary, AdminInterventionRequest, UserBlockRequest,
-    DashboardStats, MessageHistory
+    DashboardStats, MessageHistory, SystemPromptCreate, SystemPromptUpdate, SystemPromptResponse
 )
 from auth import authenticate_admin, create_access_token, get_current_admin, create_admin_session
 from extract_tally import generate_story_from_json
@@ -22,6 +22,18 @@ from celery_app import process_ai_response
 from config import settings
 
 app = FastAPI(title="Chatting Platform API", version="1.0.0")
+
+def get_active_system_prompt_text(db: Session) -> str:
+    """Get the active system prompt text, or return default if none"""
+    active_prompt = db.query(SystemPrompt).filter(SystemPrompt.is_active == True).first()
+    if active_prompt:
+        return active_prompt.prompt_text
+    
+    # Default system prompt if none is set
+    return ("You are a sexual fantasy assistant. Always speak in the first person and stay in character. "
+            "Indulge sexual fantasies in detail by dominating. Be sexually explicit with your replies. "
+            "Never reveal that you are an AI. Keep your answers to two sentences or less. "
+            "Do not provide scene descriptions outside of dialogue. Stay in the present tense.")
 
 # CORS middleware
 app.add_middleware(
@@ -89,16 +101,10 @@ async def tally_webhook(webhook_data: dict, db: Session = Depends(get_db)):
         
         # Generate scenario from Tally data
         scenario = generate_story_from_json(webhook_data)
-        full_scenario = (
-            "You are sexual fantasy Assistant. " + scenario + 
-            " Rules: 1) Always speak in the first person and always stay in character. "
-            "2) Indulge my sexual fantasies in detail by dominating me. "
-            "3) Be sexually explicit with your replies "
-            "4) Never reveal that you are an AI "
-            "5) Keep your answers to two sentences or less "
-            "6) Do not provide scene descriptions outside of dialogue "
-            "7) Stay in the present tense"
-        )
+        
+        # Get active system prompt and combine with user scenario
+        system_prompt = get_active_system_prompt_text(db)
+        full_scenario = system_prompt + " " + scenario
         
         # Create chat session
         chat_session = ChatSession(
@@ -209,10 +215,12 @@ async def create_device_session(request_data: dict, db: Session = Depends(get_db
             ChatSession.is_active == True
         ).update({"is_active": False})
         
-        # Create new session with custom prompt
+        # Create new session with custom prompt combined with system prompt
+        system_prompt = get_active_system_prompt_text(db)
+        full_prompt = system_prompt + " " + custom_prompt
         chat_session = ChatSession(
             user_id=existing_user.id,
-            scenario_prompt=custom_prompt
+            scenario_prompt=full_prompt
         )
         db.add(chat_session)
         
@@ -237,10 +245,12 @@ async def create_device_session(request_data: dict, db: Session = Depends(get_db
     db.add(user)
     db.flush()  # Get user ID
     
-    # Create chat session with custom prompt
+    # Create chat session with custom prompt combined with system prompt
+    system_prompt = get_active_system_prompt_text(db)
+    full_prompt = system_prompt + " " + custom_prompt
     chat_session = ChatSession(
         user_id=user.id,
-        scenario_prompt=custom_prompt
+        scenario_prompt=full_prompt
     )
     db.add(chat_session)
     
@@ -809,6 +819,109 @@ async def delete_user(
     db.commit()
     
     return {"message": "User deleted successfully", "user_id": user_id}
+
+# System Prompt Management Endpoints
+@app.get("/admin/system-prompts", response_model=List[SystemPromptResponse])
+async def get_system_prompts(
+    current_admin: AdminUser = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    """Get all system prompts"""
+    prompts = db.query(SystemPrompt).order_by(SystemPrompt.created_at.desc()).all()
+    return prompts
+
+@app.post("/admin/system-prompts", response_model=SystemPromptResponse)
+async def create_system_prompt(
+    prompt_data: SystemPromptCreate,
+    current_admin: AdminUser = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    """Create a new system prompt"""
+    # Check if name already exists
+    existing = db.query(SystemPrompt).filter(SystemPrompt.name == prompt_data.name).first()
+    if existing:
+        raise HTTPException(400, detail="System prompt with this name already exists")
+    
+    # Create new system prompt
+    system_prompt = SystemPrompt(
+        name=prompt_data.name,
+        prompt_text=prompt_data.prompt_text,
+        created_by=current_admin.id
+    )
+    db.add(system_prompt)
+    db.commit()
+    db.refresh(system_prompt)
+    
+    return system_prompt
+
+@app.put("/admin/system-prompts/{prompt_id}", response_model=SystemPromptResponse)
+async def update_system_prompt(
+    prompt_id: str,
+    prompt_data: SystemPromptUpdate,
+    current_admin: AdminUser = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    """Update a system prompt"""
+    system_prompt = db.query(SystemPrompt).filter(SystemPrompt.id == prompt_id).first()
+    if not system_prompt:
+        raise HTTPException(404, detail="System prompt not found")
+    
+    # Update fields
+    if prompt_data.name is not None:
+        # Check if new name conflicts with existing
+        existing = db.query(SystemPrompt).filter(
+            SystemPrompt.name == prompt_data.name,
+            SystemPrompt.id != prompt_id
+        ).first()
+        if existing:
+            raise HTTPException(400, detail="System prompt with this name already exists")
+        system_prompt.name = prompt_data.name
+    
+    if prompt_data.prompt_text is not None:
+        system_prompt.prompt_text = prompt_data.prompt_text
+    
+    if prompt_data.is_active is not None:
+        # If setting this prompt as active, deactivate all others
+        if prompt_data.is_active:
+            db.query(SystemPrompt).update({"is_active": False})
+        system_prompt.is_active = prompt_data.is_active
+    
+    system_prompt.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(system_prompt)
+    
+    return system_prompt
+
+@app.delete("/admin/system-prompts/{prompt_id}")
+async def delete_system_prompt(
+    prompt_id: str,
+    current_admin: AdminUser = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    """Delete a system prompt"""
+    system_prompt = db.query(SystemPrompt).filter(SystemPrompt.id == prompt_id).first()
+    if not system_prompt:
+        raise HTTPException(404, detail="System prompt not found")
+    
+    if system_prompt.is_active:
+        raise HTTPException(400, detail="Cannot delete active system prompt")
+    
+    db.delete(system_prompt)
+    db.commit()
+    
+    return {"message": "System prompt deleted successfully"}
+
+@app.get("/admin/system-prompts/active", response_model=SystemPromptResponse)
+async def get_active_system_prompt(
+    current_admin: AdminUser = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    """Get the currently active system prompt"""
+    active_prompt = db.query(SystemPrompt).filter(SystemPrompt.is_active == True).first()
+    if not active_prompt:
+        raise HTTPException(404, detail="No active system prompt found")
+    
+    return active_prompt
 
 if __name__ == "__main__":
     import uvicorn
