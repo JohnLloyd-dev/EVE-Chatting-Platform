@@ -2,11 +2,53 @@ import { useQuery } from "react-query";
 import { adminApi } from "../lib/api";
 import { UserDetails } from "../types";
 import { format } from "date-fns";
+import { useState } from "react";
 
 interface UserDetailsModalProps {
   userId: string;
   onClose: () => void;
 }
+
+interface TallyFormDataSectionProps {
+  formData: any;
+}
+
+const TallyFormDataSection: React.FC<TallyFormDataSectionProps> = ({
+  formData,
+}) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  return (
+    <div>
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="flex items-center justify-between w-full text-left font-medium text-gray-700 hover:text-gray-900 transition-colors"
+      >
+        <span>Raw Form Data:</span>
+        <svg
+          className={`w-4 h-4 transition-transform ${
+            isExpanded ? "rotate-180" : ""
+          }`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M19 9l-7 7-7-7"
+          />
+        </svg>
+      </button>
+      {isExpanded && (
+        <pre className="mt-2 text-xs bg-white p-3 rounded border overflow-x-auto max-h-64 overflow-y-auto">
+          {JSON.stringify(formData, null, 2)}
+        </pre>
+      )}
+    </div>
+  );
+};
 
 export default function UserDetailsModal({
   userId,
@@ -190,15 +232,22 @@ export default function UserDetailsModal({
                       )}
                     </span>
                   </div>
-                  {tally_submission.form_data && (
+                  {tally_submission.generated_prompt && (
                     <div>
                       <span className="font-medium text-gray-700">
-                        Form Data:
+                        Generated Prompt:
                       </span>
-                      <pre className="mt-2 text-xs bg-white p-2 rounded border overflow-x-auto">
-                        {JSON.stringify(tally_submission.form_data, null, 2)}
-                      </pre>
+                      <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+                        <p className="text-sm text-gray-800 leading-relaxed">
+                          {tally_submission.generated_prompt}
+                        </p>
+                      </div>
                     </div>
+                  )}
+                  {tally_submission.form_data && (
+                    <TallyFormDataSection
+                      formData={tally_submission.form_data}
+                    />
                   )}
                 </div>
               </div>

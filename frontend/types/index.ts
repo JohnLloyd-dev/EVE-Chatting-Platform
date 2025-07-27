@@ -98,5 +98,6 @@ export interface UserDetails {
     respondent_id: string;
     submitted_at: string;
     form_data: any;
+    generated_prompt?: string;
   };
 }

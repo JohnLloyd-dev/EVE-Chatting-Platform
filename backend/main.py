@@ -741,7 +741,8 @@ async def get_user_details(
             "response_id": user.tally_response_id,
             "respondent_id": user.tally_respondent_id,
             "submitted_at": tally_submission.created_at,
-            "form_data": tally_submission.form_data
+            "form_data": tally_submission.form_data,
+            "generated_prompt": generate_story_from_json(tally_submission.form_data) if tally_submission.form_data else None
         } if tally_submission else None
     }
 
