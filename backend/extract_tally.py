@@ -1,6 +1,106 @@
 """
 Extract and process Tally form data to generate story scenarios
 """
+import json
+import random
+
+class FantasyStoryGenerator:
+    def __init__(self, json_data):
+        self.data = json_data
+        self.story_elements = {
+            "my_gender": self.get_answer('question_zMKJN1'),
+            "partner_gender": self.get_answer('question_59dv4M'),
+            "partner_age": self.get_answer('question_d0YjNz'),
+            "partner_ethnicity": self.get_answer('question_YGZYRq'),
+            "alone_status": self.get_answer('question_DpVDKb'),
+            "location": self.get_answer('question_KxMXVD'),
+            "control_dynamic": self.get_answer('question_LKd8PJ'),
+            "primary_action": self.get_answer('question_poLgDP'),
+            "secondary_action": self.get_answer('question_14rj9b'),
+            "experience_with": self.get_answer('question_lOVNqo'),
+            "anything_else": self.get_text_answer('question_Dp0VKl')
+        }
+        self.names = {
+            "Man": ["Alex", "Marcus", "Daniel", "Jake", "Ryan"],
+            "Woman": ["L", "Sophia", "Mia", "Emma", "Olivia"],
+            "Police": ["Riley", "Jordan", "Casey", "Morgan", "Taylor"]
+        }
+        
+    def get_answer(self, field_key):
+        """Extract answer text for a given field key"""
+        for field in self.data['fields']:
+            if field['key'] == field_key and field.get('value'):
+                option_map = {opt['id']: opt['text'] for opt in field['options']}
+                return [option_map[id] for id in field['value']][0]
+        return None
+        
+    def get_text_answer(self, field_key):
+        """Extract text answer for textarea fields"""
+        for field in self.data['fields']:
+            if field['key'] == field_key and field.get('value'):
+                return field['value']
+        return None
+        
+    def generate_name(self, gender, role=None):
+        """Generate a random name based on gender and potential role"""
+        pool = self.names.get(gender, []) + self.names.get("Police", [])
+        return random.choice(pool)
+        
+    def create_story(self):
+        """Generate a custom story based on form selections"""
+        # Determine roles and names
+        my_role = "man" if self.story_elements["my_gender"] == "Man" else "woman"
+        partner_role = "policeman" if self.story_elements["partner_gender"] == "Man" else "policewoman"
+        partner_name = self.generate_name(self.story_elements["partner_gender"], "Police")
+        
+        # Map locations to descriptive phrases
+        location_map = {
+            "In a public place": "a public park",
+            "In nature": "a secluded forest",
+            "At home": "my home",
+            "In a dungeon": "a secret dungeon"
+        }
+        location = location_map.get(self.story_elements["location"], "an unknown location")
+        
+        # Build story components
+        story = f"Your name is {partner_name}. "
+        story += f"You are a {self.story_elements['partner_age']} year old {self.story_elements['partner_ethnicity'].lower()} {partner_role}. "
+        story += f"I am a {my_role} who you just met in {location}. "
+        
+        # Power dynamic description
+        if "control of me" in self.story_elements["control_dynamic"]:
+            story += "When we meet, you immediately take control. "
+        elif "control of you" in self.story_elements["control_dynamic"]:
+            story += "When we meet, I take control of you. "
+        else:
+            story += "When we meet, we connect as equals. "
+        
+        # Action sequences
+        actions = []
+        if self.story_elements["primary_action"]:
+            actions.append(self.story_elements["primary_action"].lower())
+        if self.story_elements["secondary_action"]:
+            actions.append(self.story_elements["secondary_action"].lower())
+        
+        # Add any additional actions from the example
+        actions.extend(["tie me up", "force me to have sex with you", "gag me", 
+                       "blindfold me", "don't let me go when I ask you to", 
+                       "go down on me", "tease me"])
+        
+        # Build action sequence
+        for i, action in enumerate(actions):
+            if i == 0:
+                story += f"You {action} "
+            elif i == len(actions) - 1:
+                story += f"and {action}. "
+            else:
+                story += f", {action} "
+        
+        # Add custom elements if provided
+        if self.story_elements["anything_else"]:
+            story += f"\n\nAdditionally, {self.story_elements['anything_else']}"
+            
+        return story
 
 def generate_story_from_json(form_data):
     """
@@ -19,78 +119,10 @@ def generate_story_from_json(form_data):
     if isinstance(form_data, dict) and 'data' in form_data:
         # Extract the actual form data from Tally webhook structure
         tally_data = form_data.get('data', {})
-        fields = tally_data.get('fields', [])
         
-        # Parse Tally form fields
-        parsed_answers = {}
-        for field in fields:
-            if field.get('value') and field.get('label'):
-                label = field['label'].strip()
-                value = field['value']
-                
-                # Handle multiple choice answers
-                if isinstance(value, list) and len(value) > 0:
-                    # Find the selected option text
-                    selected_option_id = value[0]
-                    options = field.get('options', [])
-                    for option in options:
-                        if option.get('id') == selected_option_id:
-                            parsed_answers[label] = option.get('text', '')
-                            break
-                else:
-                    parsed_answers[label] = str(value)
-        
-        # Generate scenario based on parsed answers
-        scenario_parts = []
-        
-        # Look for gender/character information
-        for label, answer in parsed_answers.items():
-            if 'fantasy' in label.lower() and ('man' in label.lower() or 'woman' in label.lower()):
-                scenario_parts.append(f"In this fantasy scenario, you are a {answer.lower()}.")
-            elif 'gender' in label.lower() and 'other person' in label.lower():
-                scenario_parts.append(f"The other person in this scenario is a {answer.lower()}.")
-            elif 'old' in label.lower() and 'they' in label.lower():
-                scenario_parts.append(f"They are approximately {answer} years old.")
-            elif 'ethnicity' in label.lower():
-                scenario_parts.append(f"Their ethnicity is {answer}.")
-        
-        # Create the final scenario
-        if scenario_parts:
-            scenario = " ".join(scenario_parts) + " Let's explore this fantasy scenario together. What would you like to happen next?"
-        else:
-            # Fallback for forms we don't recognize
-            scenario = f"Based on your form responses, I'm ready to engage in a personalized conversation with you. What would you like to discuss?"
+        generator = FantasyStoryGenerator(tally_data)
+        return generator.create_story()
     
     else:
-        # Handle simple key-value form data
-        scenario_parts = []
-        
-        if isinstance(form_data, dict):
-            # Look for name fields
-            name = form_data.get('name') or form_data.get('Name') or form_data.get('full_name')
-            if name:
-                scenario_parts.append(f"Hello {name}!")
-            
-            # Look for age or demographic info
-            age = form_data.get('age') or form_data.get('Age')
-            if age:
-                scenario_parts.append(f"I understand you're {age} years old.")
-            
-            # Look for interests or topics
-            interests = form_data.get('interests') or form_data.get('topics') or form_data.get('preferences')
-            if interests:
-                scenario_parts.append(f"I see you're interested in {interests}.")
-            
-            # Look for specific questions or concerns
-            question = form_data.get('question') or form_data.get('concern') or form_data.get('topic')
-            if question:
-                scenario_parts.append(f"You mentioned: {question}")
-        
-        # If we have specific information, create a personalized scenario
-        if scenario_parts:
-            scenario = " ".join(scenario_parts) + " How can I help you today?"
-        else:
-            # Default scenario if no specific data is available
-            scenario = "Welcome! I'm here to help you with any questions or conversations you'd like to have. What would you like to talk about?"
-    
-    return scenario
+        # Handle simple key-value form data or fallback
+        return "Welcome! I'm here to help you with any questions or conversations you'd like to have. What would you like to talk about?"
