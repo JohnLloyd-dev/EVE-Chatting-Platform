@@ -135,15 +135,20 @@ export default function AdminDashboard() {
               </div>
             </a>
 
-            <div className="block p-4 border border-gray-200 rounded-lg bg-gray-50">
+            <a
+              href="/admin/users"
+              className="block p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+            >
               <div className="flex items-center">
-                <div className="text-2xl mr-3">📈</div>
+                <div className="text-2xl mr-3">👥</div>
                 <div>
-                  <h4 className="font-medium text-gray-900">Analytics</h4>
-                  <p className="text-sm text-gray-600">Coming soon...</p>
+                  <h4 className="font-medium text-gray-900">User Management</h4>
+                  <p className="text-sm text-gray-600">
+                    View, block, and manage users
+                  </p>
                 </div>
               </div>
-            </div>
+            </a>
           </div>
         </div>
 

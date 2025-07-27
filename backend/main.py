@@ -579,6 +579,216 @@ async def get_dashboard_stats(
         new_users_today=new_users_today
     )
 
+# User Management Endpoints
+@app.get("/admin/users")
+async def get_users(
+    skip: int = 0,
+    limit: int = 50,
+    search: str = None,
+    user_type: str = None,
+    is_blocked: bool = None,
+    db: Session = Depends(get_db),
+    current_admin: AdminUser = Depends(get_current_admin)
+):
+    """
+    Get paginated list of users with filtering options
+    """
+    query = db.query(User)
+    
+    # Apply filters
+    if search:
+        query = query.filter(
+            (User.id.ilike(f"%{search}%")) |
+            (User.email.ilike(f"%{search}%")) |
+            (User.tally_response_id.ilike(f"%{search}%"))
+        )
+    
+    if user_type:
+        query = query.filter(User.user_type == user_type)
+    
+    if is_blocked is not None:
+        query = query.filter(User.is_blocked == is_blocked)
+    
+    # Get total count
+    total = query.count()
+    
+    # Apply pagination
+    users = query.order_by(User.created_at.desc()).offset(skip).limit(limit).all()
+    
+    # Get additional stats for each user
+    user_data = []
+    for user in users:
+        # Get session count
+        session_count = db.query(ChatSession).filter(ChatSession.user_id == user.id).count()
+        
+        # Get message count
+        message_count = db.query(Message).join(ChatSession).filter(
+            ChatSession.user_id == user.id
+        ).count()
+        
+        # Get last session
+        last_session = db.query(ChatSession).filter(
+            ChatSession.user_id == user.id
+        ).order_by(ChatSession.updated_at.desc()).first()
+        
+        user_data.append({
+            "id": user.id,
+            "email": user.email,
+            "tally_response_id": user.tally_response_id,
+            "tally_respondent_id": user.tally_respondent_id,
+            "device_id": user.device_id,
+            "user_type": user.user_type,
+            "is_blocked": user.is_blocked,
+            "created_at": user.created_at,
+            "last_active": user.last_active,
+            "session_count": session_count,
+            "message_count": message_count,
+            "last_session_at": last_session.updated_at if last_session else None
+        })
+    
+    return {
+        "users": user_data,
+        "total": total,
+        "skip": skip,
+        "limit": limit
+    }
+
+@app.get("/admin/users/{user_id}")
+async def get_user_details(
+    user_id: str,
+    db: Session = Depends(get_db),
+    current_admin: AdminUser = Depends(get_current_admin)
+):
+    """
+    Get detailed information about a specific user
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Get user's sessions
+    sessions = db.query(ChatSession).filter(
+        ChatSession.user_id == user_id
+    ).order_by(ChatSession.created_at.desc()).all()
+    
+    # Get user's messages
+    messages = db.query(Message).join(ChatSession).filter(
+        ChatSession.user_id == user_id
+    ).order_by(Message.created_at.desc()).limit(50).all()
+    
+    # Get Tally submission if exists
+    tally_submission = None
+    if user.tally_response_id:
+        tally_submission = db.query(TallySubmission).filter(
+            TallySubmission.response_id == user.tally_response_id
+        ).first()
+    
+    return {
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "tally_response_id": user.tally_response_id,
+            "tally_respondent_id": user.tally_respondent_id,
+            "device_id": user.device_id,
+            "user_type": user.user_type,
+            "is_blocked": user.is_blocked,
+            "created_at": user.created_at,
+            "last_active": user.last_active
+        },
+        "sessions": [
+            {
+                "id": session.id,
+                "created_at": session.created_at,
+                "updated_at": session.updated_at,
+                "is_active": session.is_active,
+                "message_count": db.query(Message).filter(Message.session_id == session.id).count()
+            }
+            for session in sessions
+        ],
+        "recent_messages": [
+            {
+                "id": message.id,
+                "content": message.content,
+                "is_from_user": message.is_from_user,
+                "created_at": message.created_at,
+                "session_id": message.session_id
+            }
+            for message in messages
+        ],
+        "tally_submission": {
+            "form_id": tally_submission.form_id,
+            "response_id": tally_submission.response_id,
+            "respondent_id": tally_submission.respondent_id,
+            "submitted_at": tally_submission.submitted_at,
+            "form_data": tally_submission.form_data
+        } if tally_submission else None
+    }
+
+@app.put("/admin/users/{user_id}/block")
+async def toggle_user_block(
+    user_id: str,
+    block_data: dict,
+    db: Session = Depends(get_db),
+    current_admin: AdminUser = Depends(get_current_admin)
+):
+    """
+    Block or unblock a user
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    is_blocked = block_data.get("is_blocked", True)
+    user.is_blocked = is_blocked
+    
+    # If blocking, deactivate all active sessions
+    if is_blocked:
+        db.query(ChatSession).filter(
+            ChatSession.user_id == user_id,
+            ChatSession.is_active == True
+        ).update({"is_active": False})
+    
+    db.commit()
+    
+    return {
+        "message": f"User {'blocked' if is_blocked else 'unblocked'} successfully",
+        "user_id": user_id,
+        "is_blocked": is_blocked
+    }
+
+@app.delete("/admin/users/{user_id}")
+async def delete_user(
+    user_id: str,
+    db: Session = Depends(get_db),
+    current_admin: AdminUser = Depends(get_current_admin)
+):
+    """
+    Delete a user and all associated data
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Delete user's messages
+    sessions = db.query(ChatSession).filter(ChatSession.user_id == user_id).all()
+    for session in sessions:
+        db.query(Message).filter(Message.session_id == session.id).delete()
+    
+    # Delete user's sessions
+    db.query(ChatSession).filter(ChatSession.user_id == user_id).delete()
+    
+    # Delete Tally submission if exists
+    if user.tally_response_id:
+        db.query(TallySubmission).filter(
+            TallySubmission.response_id == user.tally_response_id
+        ).delete()
+    
+    # Delete user
+    db.delete(user)
+    db.commit()
+    
+    return {"message": "User deleted successfully", "user_id": user_id}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

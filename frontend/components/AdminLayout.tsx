@@ -69,6 +69,16 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 >
                   Conversations
                 </Link>
+                <Link
+                  href="/admin/users"
+                  className={`px-3 py-2 rounded-md text-sm font-medium ${
+                    router.pathname === "/admin/users"
+                      ? "bg-primary-100 text-primary-700"
+                      : "text-gray-600 hover:text-gray-900"
+                  }`}
+                >
+                  Users
+                </Link>
               </nav>
             </div>
 

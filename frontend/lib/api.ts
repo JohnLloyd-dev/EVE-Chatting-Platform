@@ -101,6 +101,44 @@ export const adminApi = {
     const response = await api.get("/admin/stats");
     return response.data;
   },
+
+  // User Management
+  getUsers: async (
+    params: {
+      skip?: number;
+      limit?: number;
+      search?: string;
+      user_type?: string;
+      is_blocked?: boolean;
+    } = {}
+  ) => {
+    const queryParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        queryParams.append(key, value.toString());
+      }
+    });
+
+    const response = await api.get(`/admin/users?${queryParams.toString()}`);
+    return response.data;
+  },
+
+  getUserDetails: async (userId: string) => {
+    const response = await api.get(`/admin/users/${userId}`);
+    return response.data;
+  },
+
+  toggleUserBlock: async (userId: string, isBlocked: boolean) => {
+    const response = await api.put(`/admin/users/${userId}/block`, {
+      is_blocked: isBlocked,
+    });
+    return response.data;
+  },
+
+  deleteUser: async (userId: string) => {
+    const response = await api.delete(`/admin/users/${userId}`);
+    return response.data;
+  },
 };
 
 export default api;
