@@ -9,7 +9,7 @@ import uuid
 import json
 
 # Local imports
-from database import get_db, User, ChatSession, Message, TallySubmission, AdminUser
+from database import get_db, User, ChatSession, Message, TallySubmission, AdminUser, generate_user_code
 from schemas import (
     TallyWebhookData, ChatMessageRequest, ChatMessageResponse, 
     ChatSessionResponse, UserResponse, AdminLoginRequest, AdminLoginResponse,
@@ -76,7 +76,9 @@ async def tally_webhook(webhook_data: dict, db: Session = Depends(get_db)):
                 break
         
         # Create new user
+        user_code = generate_user_code(db)
         user = User(
+            user_code=user_code,
             tally_response_id=response_id,
             tally_respondent_id=respondent_id,
             tally_form_id=form_id,
@@ -224,7 +226,9 @@ async def create_device_session(request_data: dict, db: Session = Depends(get_db
         }
     
     # Create new device-based user
+    user_code = generate_user_code(db)
     user = User(
+        user_code=user_code,
         device_id=device_id,
         user_type="device"
     )
@@ -599,6 +603,8 @@ async def get_users(
     # Apply filters
     if search:
         search_filter = (User.id.cast(String).ilike(f"%{search}%"))
+        if search:  # Add user_code search
+            search_filter = search_filter | (User.user_code.ilike(f"%{search}%"))
         if search:  # Add email search if email is not null
             search_filter = search_filter | (User.email.ilike(f"%{search}%"))
         if search:  # Add tally_response_id search if not null
@@ -637,6 +643,7 @@ async def get_users(
         
         user_data.append({
             "id": user.id,
+            "user_code": user.user_code,
             "email": user.email,
             "tally_response_id": user.tally_response_id,
             "tally_respondent_id": user.tally_respondent_id,
@@ -690,6 +697,7 @@ async def get_user_details(
     return {
         "user": {
             "id": user.id,
+            "user_code": user.user_code,
             "email": user.email,
             "tally_response_id": user.tally_response_id,
             "tally_respondent_id": user.tally_respondent_id,

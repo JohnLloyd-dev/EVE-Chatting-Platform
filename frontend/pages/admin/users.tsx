@@ -140,7 +140,7 @@ export default function AdminUsers() {
                   setSearchTerm(e.target.value);
                   setCurrentPage(1);
                 }}
-                placeholder="Search by ID, email, or response ID..."
+                placeholder="Search by user code (EVE001), email, or ID..."
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -228,7 +228,10 @@ export default function AdminUsers() {
                   <tr key={user.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div>
-                        <div className="text-sm font-medium text-gray-900">
+                        <div className="text-lg font-bold text-blue-600">
+                          {user.user_code}
+                        </div>
+                        <div className="text-xs text-gray-400 font-mono">
                           {user.id}
                         </div>
                         {user.email && (

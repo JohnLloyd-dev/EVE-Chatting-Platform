@@ -1,5 +1,6 @@
 export interface User {
   id: string;
+  user_code: string;
   tally_response_id?: string;
   tally_respondent_id?: string;
   device_id?: string;

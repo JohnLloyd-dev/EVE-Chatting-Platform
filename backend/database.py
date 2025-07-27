@@ -16,6 +16,7 @@ class User(Base):
     __tablename__ = "users"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_code = Column(String(20), unique=True, nullable=False)  # Simple memorable ID like EVE001, EVE002
     tally_response_id = Column(String(255), unique=True, nullable=True)  # Made nullable for device-based users
     tally_respondent_id = Column(String(255), nullable=True)  # Made nullable for device-based users
     tally_form_id = Column(String(255), nullable=True)  # Made nullable for device-based users
@@ -96,6 +97,28 @@ class TallySubmission(Base):
     
     # Relationships
     user = relationship("User", back_populates="tally_submissions")
+
+def generate_user_code(db: SessionLocal) -> str:
+    """
+    Generate a simple, memorable user code like EVE001, EVE002, etc.
+    """
+    # Get the highest existing user code number
+    latest_user = db.query(User).filter(
+        User.user_code.like('EVE%')
+    ).order_by(User.user_code.desc()).first()
+    
+    if latest_user and latest_user.user_code:
+        try:
+            # Extract number from code like EVE001 -> 1
+            current_num = int(latest_user.user_code[3:])
+            next_num = current_num + 1
+        except (ValueError, IndexError):
+            next_num = 1
+    else:
+        next_num = 1
+    
+    # Format as EVE001, EVE002, etc.
+    return f"EVE{next_num:03d}"
 
 # Dependency to get database session
 def get_db():

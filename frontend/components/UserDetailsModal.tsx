@@ -76,8 +76,18 @@ export default function UserDetailsModal({
               </h4>
               <div className="space-y-2">
                 <div>
-                  <span className="font-medium text-gray-700">ID:</span>
-                  <span className="ml-2 text-gray-900">{user.id}</span>
+                  <span className="font-medium text-gray-700">User Code:</span>
+                  <span className="ml-2 text-xl font-bold text-blue-600">
+                    {user.user_code}
+                  </span>
+                </div>
+                <div>
+                  <span className="font-medium text-gray-700">
+                    Internal ID:
+                  </span>
+                  <span className="ml-2 text-gray-900 font-mono text-sm">
+                    {user.id}
+                  </span>
                 </div>
                 {user.email && (
                   <div>
