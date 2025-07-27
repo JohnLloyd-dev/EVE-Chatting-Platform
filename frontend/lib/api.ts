@@ -147,14 +147,23 @@ export const adminApi = {
     return response.data;
   },
 
-  createSystemPrompt: async (data: { name: string; prompt_text: string }) => {
+  createSystemPrompt: async (data: {
+    name: string;
+    head_prompt: string;
+    rule_prompt: string;
+  }) => {
     const response = await api.post("/admin/system-prompts", data);
     return response.data;
   },
 
   updateSystemPrompt: async (
     promptId: string,
-    data: { name?: string; prompt_text?: string; is_active?: boolean }
+    data: {
+      name?: string;
+      head_prompt?: string;
+      rule_prompt?: string;
+      is_active?: boolean;
+    }
   ) => {
     const response = await api.put(`/admin/system-prompts/${promptId}`, data);
     return response.data;

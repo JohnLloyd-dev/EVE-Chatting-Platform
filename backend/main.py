@@ -23,17 +23,59 @@ from config import settings
 
 app = FastAPI(title="Chatting Platform API", version="1.0.0")
 
-def get_active_system_prompt_text(db: Session) -> str:
-    """Get the active system prompt text, or return default if none"""
-    active_prompt = db.query(SystemPrompt).filter(SystemPrompt.is_active == True).first()
-    if active_prompt:
-        return active_prompt.prompt_text
+def get_complete_system_prompt(db: Session, user_id: str = None, tally_prompt: str = "") -> str:
+    """
+    Build complete system prompt: Head + Tally + Rule
+    Future: user_id can be used for per-user system prompts
+    """
+    # Get active system prompt (global or user-specific in future)
+    if user_id:
+        # Future: Check for user-specific prompt first
+        user_prompt = db.query(SystemPrompt).filter(
+            SystemPrompt.user_id == user_id,
+            SystemPrompt.is_active == True
+        ).first()
+        if user_prompt:
+            head_prompt = user_prompt.head_prompt
+            rule_prompt = user_prompt.rule_prompt
+        else:
+            # Fall back to global prompt
+            global_prompt = db.query(SystemPrompt).filter(
+                SystemPrompt.user_id.is_(None),
+                SystemPrompt.is_active == True
+            ).first()
+            if global_prompt:
+                head_prompt = global_prompt.head_prompt
+                rule_prompt = global_prompt.rule_prompt
+            else:
+                head_prompt = "You are a sexual fantasy assistant."
+                rule_prompt = "Always speak in the first person and stay in character. Indulge sexual fantasies in detail by dominating. Be sexually explicit with your replies. Never reveal that you are an AI. Keep your answers to two sentences or less. Do not provide scene descriptions outside of dialogue. Stay in the present tense."
+    else:
+        # Get global active prompt
+        active_prompt = db.query(SystemPrompt).filter(
+            SystemPrompt.user_id.is_(None),
+            SystemPrompt.is_active == True
+        ).first()
+        if active_prompt:
+            head_prompt = active_prompt.head_prompt
+            rule_prompt = active_prompt.rule_prompt
+        else:
+            # Default prompts
+            head_prompt = "You are a sexual fantasy assistant."
+            rule_prompt = "Always speak in the first person and stay in character. Indulge sexual fantasies in detail by dominating. Be sexually explicit with your replies. Never reveal that you are an AI. Keep your answers to two sentences or less. Do not provide scene descriptions outside of dialogue. Stay in the present tense."
     
-    # Default system prompt if none is set
-    return ("You are a sexual fantasy assistant. Always speak in the first person and stay in character. "
-            "Indulge sexual fantasies in detail by dominating. Be sexually explicit with your replies. "
-            "Never reveal that you are an AI. Keep your answers to two sentences or less. "
-            "Do not provide scene descriptions outside of dialogue. Stay in the present tense.")
+    # Combine: Head + Tally + Rule
+    complete_prompt = head_prompt
+    if tally_prompt.strip():
+        complete_prompt += " " + tally_prompt
+    complete_prompt += " " + rule_prompt
+    
+    return complete_prompt
+
+# Legacy function for backward compatibility
+def get_active_system_prompt_text(db: Session) -> str:
+    """Legacy function - use get_complete_system_prompt instead"""
+    return get_complete_system_prompt(db)
 
 # CORS middleware
 app.add_middleware(
@@ -828,7 +870,20 @@ async def get_system_prompts(
 ):
     """Get all system prompts"""
     prompts = db.query(SystemPrompt).order_by(SystemPrompt.created_at.desc()).all()
-    return prompts
+    return [
+        SystemPromptResponse(
+            id=str(prompt.id),
+            name=prompt.name,
+            head_prompt=prompt.head_prompt,
+            rule_prompt=prompt.rule_prompt,
+            is_active=prompt.is_active,
+            created_by=str(prompt.created_by),
+            created_at=prompt.created_at,
+            updated_at=prompt.updated_at,
+            user_id=str(prompt.user_id) if prompt.user_id else None
+        )
+        for prompt in prompts
+    ]
 
 @app.post("/admin/system-prompts", response_model=SystemPromptResponse)
 async def create_system_prompt(
@@ -845,14 +900,25 @@ async def create_system_prompt(
     # Create new system prompt
     system_prompt = SystemPrompt(
         name=prompt_data.name,
-        prompt_text=prompt_data.prompt_text,
+        head_prompt=prompt_data.head_prompt,
+        rule_prompt=prompt_data.rule_prompt,
         created_by=current_admin.id
     )
     db.add(system_prompt)
     db.commit()
     db.refresh(system_prompt)
     
-    return system_prompt
+    return SystemPromptResponse(
+        id=str(system_prompt.id),
+        name=system_prompt.name,
+        head_prompt=system_prompt.head_prompt,
+        rule_prompt=system_prompt.rule_prompt,
+        is_active=system_prompt.is_active,
+        created_by=str(system_prompt.created_by),
+        created_at=system_prompt.created_at,
+        updated_at=system_prompt.updated_at,
+        user_id=str(system_prompt.user_id) if system_prompt.user_id else None
+    )
 
 @app.put("/admin/system-prompts/{prompt_id}", response_model=SystemPromptResponse)
 async def update_system_prompt(
@@ -877,8 +943,11 @@ async def update_system_prompt(
             raise HTTPException(400, detail="System prompt with this name already exists")
         system_prompt.name = prompt_data.name
     
-    if prompt_data.prompt_text is not None:
-        system_prompt.prompt_text = prompt_data.prompt_text
+    if prompt_data.head_prompt is not None:
+        system_prompt.head_prompt = prompt_data.head_prompt
+    
+    if prompt_data.rule_prompt is not None:
+        system_prompt.rule_prompt = prompt_data.rule_prompt
     
     if prompt_data.is_active is not None:
         # If setting this prompt as active, deactivate all others
@@ -890,7 +959,17 @@ async def update_system_prompt(
     db.commit()
     db.refresh(system_prompt)
     
-    return system_prompt
+    return SystemPromptResponse(
+        id=str(system_prompt.id),
+        name=system_prompt.name,
+        head_prompt=system_prompt.head_prompt,
+        rule_prompt=system_prompt.rule_prompt,
+        is_active=system_prompt.is_active,
+        created_by=str(system_prompt.created_by),
+        created_at=system_prompt.created_at,
+        updated_at=system_prompt.updated_at,
+        user_id=str(system_prompt.user_id) if system_prompt.user_id else None
+    )
 
 @app.delete("/admin/system-prompts/{prompt_id}")
 async def delete_system_prompt(
@@ -921,7 +1000,17 @@ async def get_active_system_prompt(
     if not active_prompt:
         raise HTTPException(404, detail="No active system prompt found")
     
-    return active_prompt
+    return SystemPromptResponse(
+        id=str(active_prompt.id),
+        name=active_prompt.name,
+        head_prompt=active_prompt.head_prompt,
+        rule_prompt=active_prompt.rule_prompt,
+        is_active=active_prompt.is_active,
+        created_by=str(active_prompt.created_by),
+        created_at=active_prompt.created_at,
+        updated_at=active_prompt.updated_at,
+        user_id=str(active_prompt.user_id) if active_prompt.user_id else None
+    )
 
 if __name__ == "__main__":
     import uvicorn

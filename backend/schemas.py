@@ -95,21 +95,28 @@ class MessageHistory(BaseModel):
 # System Prompt schemas
 class SystemPromptCreate(BaseModel):
     name: str
-    prompt_text: str
+    head_prompt: str
+    rule_prompt: str
 
 class SystemPromptUpdate(BaseModel):
     name: Optional[str] = None
-    prompt_text: Optional[str] = None
+    head_prompt: Optional[str] = None
+    rule_prompt: Optional[str] = None
     is_active: Optional[bool] = None
 
 class SystemPromptResponse(BaseModel):
     id: str
     name: str
-    prompt_text: str
+    head_prompt: str
+    rule_prompt: str
     is_active: bool
     created_by: str
     created_at: datetime
     updated_at: datetime
+    user_id: Optional[str] = None  # For future per-user prompts
 
     class Config:
         from_attributes = True
+        json_encoders = {
+            uuid.UUID: str
+        }

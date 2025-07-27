@@ -12,33 +12,49 @@ import {
   DocumentTextIcon,
   ClockIcon,
   UserIcon,
+  EyeIcon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
+
+interface SystemPromptFormData {
+  name: string;
+  head_prompt: string;
+  rule_prompt: string;
+}
 
 export default function SystemPromptsPage() {
   const [prompts, setPrompts] = useState<SystemPrompt[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
   const [editingPrompt, setEditingPrompt] = useState<SystemPrompt | null>(null);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<SystemPromptFormData>({
     name: "",
-    prompt_text: "",
+    head_prompt: "",
+    rule_prompt: "",
   });
-  const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    fetchPrompts();
-  }, []);
+  // Sample Tally data for preview
+  const sampleTallyPrompt =
+    "Your name is L. You are a 30 year old asian policewoman. I am a man who you just met in a forest. When we meet you tie me up and force me to have sex with you. You gag me and blindfold me and don't let me go when I ask you to.";
 
   const fetchPrompts = async () => {
     try {
+      setLoading(true);
       const data = await adminApi.getSystemPrompts();
       setPrompts(data);
     } catch (error) {
-      toast.error("Failed to fetch system prompts");
+      console.error("Error fetching system prompts:", error);
+      toast.error("Failed to load system prompts");
     } finally {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchPrompts();
+  }, []);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();

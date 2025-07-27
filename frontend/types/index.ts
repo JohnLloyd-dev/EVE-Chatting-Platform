@@ -105,9 +105,11 @@ export interface UserDetails {
 export interface SystemPrompt {
   id: string;
   name: string;
-  prompt_text: string;
+  head_prompt: string;
+  rule_prompt: string;
   is_active: boolean;
   created_by: string;
   created_at: string;
   updated_at: string;
+  user_id?: string; // For future per-user prompts
 }
