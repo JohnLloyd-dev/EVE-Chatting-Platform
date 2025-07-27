@@ -61,11 +61,18 @@ def migrate_user_codes():
                     ALTER COLUMN user_code SET NOT NULL;
                 """))
                 
-                # Add unique constraint
-                connection.execute(text("""
-                    ALTER TABLE users 
-                    ADD CONSTRAINT IF NOT EXISTS users_user_code_unique UNIQUE (user_code);
-                """))
+                # Add unique constraint (check if it exists first)
+                try:
+                    connection.execute(text("""
+                        ALTER TABLE users 
+                        ADD CONSTRAINT users_user_code_unique UNIQUE (user_code);
+                    """))
+                    print("Unique constraint added successfully!")
+                except Exception as e:
+                    if "already exists" in str(e).lower():
+                        print("Unique constraint already exists, skipping...")
+                    else:
+                        raise
         
         print("Migration completed successfully!")
         
