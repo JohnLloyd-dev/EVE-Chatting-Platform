@@ -1,24 +1,56 @@
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { userSession } from "../lib/userSession";
 
 export default function Home() {
   const router = useRouter();
   const [userId, setUserId] = useState<string>("");
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
   useEffect(() => {
+    // Check if user already has a valid session
+    const existingSession = userSession.get();
+    if (existingSession) {
+      // User already logged in, redirect to chat
+      router.push(`/chat/${existingSession.userId}`);
+      return;
+    }
+
     // Check if user ID is in URL params (from Tally redirect)
     const { user_id } = router.query;
     if (user_id && typeof user_id === "string") {
-      setUserId(user_id);
+      // Save user session and redirect to chat immediately
+      userSession.save(user_id, "tally");
+      router.push(`/chat/${user_id}`);
+      return;
     }
-  }, [router.query]);
+
+    // No session and no URL params, show login form
+    setIsLoading(false);
+  }, [router.query, router]);
 
   const handleStartChat = () => {
     if (userId.trim()) {
+      // Save session for manual login and redirect
+      userSession.save(userId.trim(), "tally");
       router.push(`/chat/${userId.trim()}`);
     }
   };
+
+  // Show loading spinner while checking session
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-800 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 mx-auto bg-gradient-to-r from-purple-500 to-blue-500 rounded-full flex items-center justify-center animate-spin">
+            <span className="text-2xl">💬</span>
+          </div>
+          <p className="text-white mt-4">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-800 animate-gradient-x">

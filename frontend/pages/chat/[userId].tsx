@@ -1,11 +1,28 @@
 import { useRouter } from "next/router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import ChatInterface from "../../components/ChatInterface";
 import Link from "next/link";
+import { userSession } from "../../lib/userSession";
 
 export default function ChatPage() {
   const router = useRouter();
   const { userId } = router.query;
+
+  useEffect(() => {
+    // Validate session when page loads
+    if (userId && typeof userId === "string") {
+      const session = userSession.get();
+      if (!session || session.userId !== userId) {
+        // Session doesn't match, save current user
+        userSession.save(userId, "tally");
+      }
+    }
+  }, [userId]);
+
+  const handleLogout = () => {
+    userSession.clear();
+    router.push("/");
+  };
 
   if (!userId || typeof userId !== "string") {
     return (
@@ -34,12 +51,12 @@ export default function ChatPage() {
               <h1 className="text-xl font-semibold text-white">Chat Session</h1>
               <p className="text-sm text-gray-300">User ID: {userId}</p>
             </div>
-            <Link
-              href="/"
+            <button
+              onClick={handleLogout}
               className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-medium py-2 px-4 rounded-lg transition-all duration-300 transform hover:scale-105 animate-fade-in-delay"
             >
-              Exit Chat
-            </Link>
+              Logout
+            </button>
           </div>
         </div>
       </div>
