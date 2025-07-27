@@ -172,13 +172,15 @@ export default function SystemPromptsPage() {
               Manage system prompts that combine with user Tally data
             </p>
           </div>
-          <button
-            onClick={() => setShowCreateForm(true)}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md flex items-center gap-2 transition-colors"
-          >
-            <PlusIcon className="w-5 h-5" />
-            Create System Prompt
-          </button>
+          {prompts.length > 0 && (
+            <button
+              onClick={() => setShowCreateForm(true)}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md flex items-center gap-2 transition-colors"
+            >
+              <PlusIcon className="w-5 h-5" />
+              Create System Prompt
+            </button>
+          )}
         </div>
 
         {/* Active Prompt Status */}

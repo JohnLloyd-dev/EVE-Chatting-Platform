@@ -869,21 +869,26 @@ async def get_system_prompts(
     db: Session = Depends(get_db)
 ):
     """Get all system prompts"""
-    prompts = db.query(SystemPrompt).order_by(SystemPrompt.created_at.desc()).all()
-    return [
-        SystemPromptResponse(
-            id=str(prompt.id),
-            name=prompt.name,
-            head_prompt=prompt.head_prompt,
-            rule_prompt=prompt.rule_prompt,
-            is_active=prompt.is_active,
-            created_by=str(prompt.created_by),
-            created_at=prompt.created_at,
-            updated_at=prompt.updated_at,
-            user_id=str(prompt.user_id) if prompt.user_id else None
-        )
-        for prompt in prompts
-    ]
+    try:
+        prompts = db.query(SystemPrompt).order_by(SystemPrompt.created_at.desc()).all()
+        return [
+            SystemPromptResponse(
+                id=str(prompt.id),
+                name=prompt.name,
+                head_prompt=getattr(prompt, 'head_prompt', 'You are a sexual fantasy assistant.'),
+                rule_prompt=getattr(prompt, 'rule_prompt', getattr(prompt, 'prompt_text', 'Always speak in first person.')),
+                is_active=prompt.is_active,
+                created_by=str(prompt.created_by),
+                created_at=prompt.created_at,
+                updated_at=prompt.updated_at,
+                user_id=str(prompt.user_id) if hasattr(prompt, 'user_id') and prompt.user_id else None
+            )
+            for prompt in prompts
+        ]
+    except Exception as e:
+        print(f"Error fetching system prompts: {e}")
+        # Return empty list if there's a database schema issue
+        return []
 
 @app.post("/admin/system-prompts", response_model=SystemPromptResponse)
 async def create_system_prompt(
