@@ -1,40 +1,46 @@
 #!/usr/bin/env python3
 """
-Fix user codes migration - handle the current state
+Migration script to add user_code column and populate it
 """
+
+import sys
+import os
+sys.path.append('/app')
 
 from sqlalchemy import create_engine, text
 from database import SessionLocal, User
 from config import settings
 
-def fix_user_codes():
-    """Fix user codes for the current database state"""
+def migrate_user_codes():
+    """Add user_code column and populate it for existing users"""
     
     # Create engine and session
     engine = create_engine(settings.database_url)
     db = SessionLocal()
     
     try:
-        print("Checking current database state...")
+        print("Starting user codes migration...")
         
-        # Check if user_code column exists and has data
+        # Check if user_code column exists
         with engine.connect() as connection:
             result = connection.execute(text("""
-                SELECT column_name, is_nullable, column_default
+                SELECT column_name 
                 FROM information_schema.columns 
                 WHERE table_name = 'users' AND column_name = 'user_code';
             """))
-            column_info = result.fetchone()
-            
-            if not column_info:
-                print("user_code column doesn't exist, creating it...")
-                connection.execute(text("""
-                    ALTER TABLE users 
-                    ADD COLUMN user_code VARCHAR(20);
-                """))
-                print("Column created!")
-            else:
-                print(f"user_code column exists: nullable={column_info[1]}")
+            column_exists = result.fetchone() is not None
+        
+        if not column_exists:
+            print("Adding user_code column...")
+            with engine.connect() as connection:
+                with connection.begin():
+                    connection.execute(text("""
+                        ALTER TABLE users 
+                        ADD COLUMN user_code VARCHAR(20);
+                    """))
+            print("Column added successfully!")
+        else:
+            print("user_code column already exists")
         
         # Get all users without user_code
         users_without_code = db.query(User).filter(
@@ -42,7 +48,6 @@ def fix_user_codes():
         ).all()
         print(f"Found {len(users_without_code)} users without user codes")
         
-        # Generate user codes for users that need them
         if users_without_code:
             # Find the highest existing user code number
             existing_codes = db.query(User.user_code).filter(
@@ -74,50 +79,48 @@ def fix_user_codes():
             db.commit()
             print("User codes assigned successfully!")
         
-        # Try to add constraints if they don't exist
-        print("Adding constraints...")
+        # Make the column NOT NULL
+        print("Making user_code column NOT NULL...")
         with engine.connect() as connection:
             with connection.begin():
-                # Try to make NOT NULL
-                try:
-                    connection.execute(text("""
-                        ALTER TABLE users 
-                        ALTER COLUMN user_code SET NOT NULL;
-                    """))
-                    print("Column set to NOT NULL")
-                except Exception as e:
-                    print(f"NOT NULL constraint: {e}")
+                connection.execute(text("""
+                    ALTER TABLE users 
+                    ALTER COLUMN user_code SET NOT NULL;
+                """))
                 
-                # Try to add unique constraint
+                # Add unique constraint (check if it exists first)
                 try:
                     connection.execute(text("""
                         ALTER TABLE users 
                         ADD CONSTRAINT users_user_code_unique UNIQUE (user_code);
                     """))
-                    print("Unique constraint added")
+                    print("Unique constraint added successfully!")
                 except Exception as e:
                     if "already exists" in str(e).lower():
-                        print("Unique constraint already exists")
+                        print("Unique constraint already exists, skipping...")
                     else:
-                        print(f"Unique constraint error: {e}")
+                        raise
                 
-                # Try to add index
+                # Add index for better performance
                 try:
                     connection.execute(text("""
-                        CREATE INDEX IF NOT EXISTS idx_users_user_code ON users(user_code);
+                        CREATE INDEX idx_users_user_code ON users(user_code);
                     """))
-                    print("Index created")
+                    print("Index created successfully!")
                 except Exception as e:
-                    print(f"Index error: {e}")
+                    if "already exists" in str(e).lower():
+                        print("Index already exists, skipping...")
+                    else:
+                        print(f"Index creation warning: {e}")
         
-        print("Migration completed successfully!")
+        print("✅ Migration completed successfully!")
         
     except Exception as e:
-        print(f"Migration failed: {e}")
+        print(f"❌ Migration failed: {e}")
         db.rollback()
         raise
     finally:
         db.close()
 
 if __name__ == "__main__":
-    fix_user_codes()
+    migrate_user_codes()

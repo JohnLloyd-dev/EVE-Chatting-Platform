@@ -119,7 +119,8 @@ async def tally_webhook(webhook_data: dict, db: Session = Depends(get_db)):
         
         return {
             "message": "User created and chat session initialized",
-            "user_id": str(user.id),
+            "user_id": user.user_code,  # Return user_code instead of UUID
+            "user_code": user.user_code,  # Also include explicit user_code field
             "session_id": str(chat_session.id)
         }
         
@@ -170,7 +171,8 @@ async def find_user_by_tally_response(request_data: dict, db: Session = Depends(
         raise HTTPException(404, detail="No active session found")
     
     return {
-        "user_id": str(user.id),
+        "user_id": user.user_code,  # Return user_code instead of UUID
+        "user_code": user.user_code,  # Also include explicit user_code field
         "session_id": str(session.id),
         "email": user.email
     }
@@ -245,7 +247,8 @@ async def create_device_session(request_data: dict, db: Session = Depends(get_db
     db.commit()
     
     return {
-        "user_id": str(user.id),
+        "user_id": user.user_code,  # Return user_code instead of UUID
+        "user_code": user.user_code,  # Also include explicit user_code field
         "session_id": str(chat_session.id),
         "message": "Device user and session created successfully"
     }
@@ -256,12 +259,17 @@ async def get_user_session(user_id: str, db: Session = Depends(get_db)):
     """
     Get user's active chat session
     """
-    try:
-        user_uuid = uuid.UUID(user_id)
-    except ValueError:
-        raise HTTPException(400, detail="Invalid user ID format")
+    # Try to find user by user_code first, then by UUID for backward compatibility
+    user = db.query(User).filter(User.user_code == user_id).first()
     
-    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        # Try UUID format for backward compatibility
+        try:
+            user_uuid = uuid.UUID(user_id)
+            user = db.query(User).filter(User.id == user_uuid).first()
+        except ValueError:
+            pass
+    
     if not user:
         raise HTTPException(404, detail="User not found")
     
@@ -270,7 +278,7 @@ async def get_user_session(user_id: str, db: Session = Depends(get_db)):
     
     # Get active session
     session = db.query(ChatSession).filter(
-        ChatSession.user_id == user_uuid,
+        ChatSession.user_id == user.id,
         ChatSession.is_active == True
     ).first()
     
@@ -294,6 +302,7 @@ async def get_user_session(user_id: str, db: Session = Depends(get_db)):
     
     return ChatSessionResponse(
         id=str(session.id),
+        user_code=user.user_code,  # Include user_code in response
         created_at=session.created_at,
         updated_at=session.updated_at,
         is_active=session.is_active,

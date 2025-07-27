@@ -14,8 +14,8 @@ def test_user_chat():
     print("🧪 Testing User Chat Functionality")
     print("=" * 50)
     
-    # Use existing user ID (you can change this)
-    user_id = "2de89288-7fc2-4d47-950b-f6a5ea07bb7f"
+    # Use existing user code (you can change this)
+    user_id = "EVE001"  # Using simple user code instead of UUID
     
     print(f"👤 Testing with User ID: {user_id}")
     

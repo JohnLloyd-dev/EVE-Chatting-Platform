@@ -24,6 +24,7 @@ class ChatMessageResponse(BaseModel):
 
 class ChatSessionResponse(BaseModel):
     id: str
+    user_code: str  # Add user_code to response
     created_at: datetime
     updated_at: datetime
     is_active: bool

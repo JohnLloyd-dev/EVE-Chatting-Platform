@@ -4,6 +4,9 @@ Simple user codes migration
 """
 
 import sys
+import os
+sys.path.append('/app')
+
 from database import SessionLocal, User
 
 def main():

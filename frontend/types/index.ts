@@ -21,6 +21,7 @@ export interface ChatMessage {
 
 export interface ChatSession {
   id: string;
+  user_code: string; // Add user_code to ChatSession
   created_at: string;
   updated_at: string;
   is_active: boolean;

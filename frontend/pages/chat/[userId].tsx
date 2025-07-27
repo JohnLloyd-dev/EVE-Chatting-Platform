@@ -1,18 +1,30 @@
 import { useRouter } from "next/router";
 import { useState, useEffect } from "react";
+import { useQuery } from "react-query";
 import ChatInterface from "../../components/ChatInterface";
 import Link from "next/link";
 import { userSession } from "../../lib/userSession";
+import { chatApi } from "../../lib/api";
+import { ChatSession } from "../../types";
 
 export default function ChatPage() {
   const router = useRouter();
   const { userId } = router.query;
 
+  // Get chat session to display user_code
+  const { data: session } = useQuery<ChatSession>(
+    ["chatSession", userId],
+    () => chatApi.getSession(userId as string),
+    {
+      enabled: !!userId && typeof userId === "string",
+    }
+  );
+
   useEffect(() => {
     // Validate session when page loads
     if (userId && typeof userId === "string") {
-      const session = userSession.get();
-      if (!session || session.userId !== userId) {
+      const userSessionData = userSession.get();
+      if (!userSessionData || userSessionData.userId !== userId) {
         // Session doesn't match, save current user
         userSession.save(userId, "tally");
       }
@@ -49,7 +61,9 @@ export default function ChatPage() {
           <div className="flex items-center justify-between">
             <div className="animate-fade-in">
               <h1 className="text-xl font-semibold text-white">Chat Session</h1>
-              <p className="text-sm text-gray-300">User ID: {userId}</p>
+              <p className="text-sm text-gray-300">
+                User ID: {session?.user_code || userId}
+              </p>
             </div>
             <button
               onClick={handleLogout}
