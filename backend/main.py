@@ -7,6 +7,7 @@ from datetime import datetime, timezone, timedelta
 from typing import List
 import uuid
 import json
+import logging
 
 # Local imports
 from database import get_db, User, ChatSession, Message, TallySubmission, AdminUser, SystemPrompt, generate_user_code
@@ -20,6 +21,10 @@ from auth import authenticate_admin, create_access_token, get_current_admin, cre
 from extract_tally import generate_story_from_json
 from celery_app import process_ai_response
 from config import settings
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Chatting Platform API", version="1.0.0")
 
