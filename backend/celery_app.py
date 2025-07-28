@@ -2,9 +2,14 @@ from celery import Celery
 import httpx
 import asyncio
 from config import settings
-from database import SessionLocal, Message, ChatSession, User
+from database import SessionLocal, Message, ChatSession, User, SystemPrompt
 from datetime import datetime, timezone
 import uuid
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Initialize Celery
 celery_app = Celery(
@@ -56,8 +61,18 @@ def process_ai_response(self, session_id: str, user_message: str, max_tokens: in
         # Add current user message
         history.append(f"User: {user_message}")
         
+        # Get active system prompt
+        active_prompt = db.query(SystemPrompt).filter(SystemPrompt.is_active == True).first()
+        if active_prompt:
+            logger.info(f"Using active system prompt in celery worker: {active_prompt.name}")
+            combined_prompt = f"{active_prompt.head_prompt}\n\n{active_prompt.rule_prompt}"
+            logger.info(f"Final combined prompt: {combined_prompt[:200]}...")
+        else:
+            logger.warning("No active system prompt found, using session scenario prompt")
+            combined_prompt = chat_session.scenario_prompt
+        
         # Call AI model API
-        ai_response = call_ai_model(chat_session.scenario_prompt, history, max_tokens)
+        ai_response = call_ai_model(combined_prompt, history, max_tokens)
         
         # Save AI response to database
         ai_message = Message(
