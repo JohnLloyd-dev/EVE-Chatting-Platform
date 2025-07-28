@@ -88,7 +88,8 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000", 
         "http://frontend:3000",
-        "http://204.12.223.76:3000"  # VPS public IP frontend
+        "http://204.12.223.76:3000",  # VPS public IP frontend
+        "http://204.12.223.76:8001"   # Allow backend port access for debugging
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -588,6 +589,7 @@ async def get_conversation_details(
         messages=message_responses,
         session_info=ChatSessionResponse(
             id=str(session.id),
+            user_code=session.user.user_code,  # Add required user_code field
             created_at=session.created_at,
             updated_at=session.updated_at,
             is_active=session.is_active
