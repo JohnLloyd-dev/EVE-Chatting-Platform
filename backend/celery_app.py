@@ -179,10 +179,66 @@ def call_ai_model(system_prompt: str, history: list, max_tokens: int = 150) -> s
                 raise Exception(f"AI model request failed: {chat_response.text}")
             
             response_data = chat_response.json()
-            return response_data.get("response", "I'm sorry, I couldn't generate a response.")
+            raw_response = response_data.get("response", "I'm sorry, I couldn't generate a response.")
+            
+            # Clean the response to extract only the AI's response
+            cleaned_response = clean_ai_response(raw_response)
+            logger.info(f"Raw AI response: {raw_response[:200]}...")
+            logger.info(f"Cleaned AI response: {cleaned_response[:200]}...")
+            
+            return cleaned_response
             
     except Exception as e:
         raise Exception(f"AI model call failed: {str(e)}")
+
+def clean_ai_response(raw_response: str) -> str:
+    """
+    Clean the AI response to extract only the AI's actual response,
+    removing any conversation formatting or echoed user messages.
+    """
+    try:
+        # Split by common conversation markers
+        lines = raw_response.split('\n')
+        ai_response_lines = []
+        
+        for line in lines:
+            line = line.strip()
+            
+            # Skip empty lines
+            if not line:
+                continue
+                
+            # Stop if we encounter user message markers
+            if any(marker in line.lower() for marker in ['< |user|', '<|user|', 'user:', '<!assistant!>', '<|assistant|>']):
+                break
+                
+            # Skip lines that look like conversation formatting
+            if line.startswith(('User:', 'AI:', 'Assistant:', 'Human:')):
+                continue
+                
+            ai_response_lines.append(line)
+        
+        # Join the cleaned lines
+        cleaned_response = '\n'.join(ai_response_lines).strip()
+        
+        # If we got nothing, return the original (fallback)
+        if not cleaned_response:
+            # Try to extract everything before the first user marker
+            user_markers = ['< |user|', '<|user|', '<!assistant!>', '<|assistant|>']
+            for marker in user_markers:
+                if marker in raw_response:
+                    cleaned_response = raw_response.split(marker)[0].strip()
+                    break
+            
+            # If still nothing, return original
+            if not cleaned_response:
+                cleaned_response = raw_response
+        
+        return cleaned_response
+        
+    except Exception as e:
+        logger.warning(f"Error cleaning AI response: {e}, returning original")
+        return raw_response
 
 @celery_app.task
 def cleanup_expired_sessions():
