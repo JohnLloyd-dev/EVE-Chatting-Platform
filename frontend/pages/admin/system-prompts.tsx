@@ -198,8 +198,6 @@ export default function SystemPromptsPage() {
     return `${headPrompt} ${sampleTallyPrompt} ${rulePrompt}`;
   };
 
-  const activePrompt = prompts.find((p) => p.is_active);
-
   return (
     <AdminLayout>
       <div className="space-y-6">
