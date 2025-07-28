@@ -102,9 +102,12 @@ async def tally_webhook(webhook_data: dict, db: Session = Depends(get_db)):
     Receive Tally form submissions and create user sessions
     """
     try:
+        logger.info(f"Received Tally webhook: {webhook_data}")
+        
         # Extract form data
         form_data = webhook_data.get("data")
         if not form_data or "fields" not in form_data:
+            logger.error(f"Invalid Tally webhook data: {webhook_data}")
             raise HTTPException(400, detail="Invalid Tally webhook data")
         
         response_id = form_data.get("responseId")
@@ -142,11 +145,22 @@ async def tally_webhook(webhook_data: dict, db: Session = Depends(get_db)):
         db.flush()  # Get user ID
         
         # Generate scenario from Tally data
-        scenario = generate_story_from_json(webhook_data)
+        try:
+            scenario = generate_story_from_json(webhook_data)
+            logger.info(f"Generated scenario for user {user.user_code}")
+        except Exception as e:
+            logger.error(f"Failed to generate scenario: {str(e)}")
+            scenario = "Default scenario: You are in a conversation."
         
         # Get active system prompt and combine with user scenario
-        system_prompt = get_active_system_prompt_text(db)
-        full_scenario = system_prompt + " " + scenario
+        try:
+            system_prompt = get_complete_system_prompt(db, tally_prompt=scenario)
+            logger.info(f"Retrieved complete system prompt: {len(system_prompt)} characters")
+        except Exception as e:
+            logger.error(f"Failed to get system prompt: {str(e)}")
+            system_prompt = "You are a helpful AI assistant. " + scenario
+        
+        full_scenario = system_prompt
         
         # Create chat session
         chat_session = ChatSession(
@@ -172,8 +186,12 @@ async def tally_webhook(webhook_data: dict, db: Session = Depends(get_db)):
             "session_id": str(chat_session.id)
         }
         
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
         db.rollback()
+        logger.error(f"Unexpected error in Tally webhook: {str(e)}", exc_info=True)
         raise HTTPException(500, detail=f"Failed to process Tally webhook: {str(e)}")
 
 # Find user by Tally response

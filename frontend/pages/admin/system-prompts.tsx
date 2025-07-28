@@ -24,6 +24,7 @@ interface SystemPromptFormData {
 
 export default function SystemPromptsPage() {
   const [prompts, setPrompts] = useState<SystemPrompt[]>([]);
+  const [activePrompt, setActivePrompt] = useState<SystemPrompt | null>(null);
   const [loading, setLoading] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
