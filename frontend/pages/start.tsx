@@ -64,9 +64,21 @@ export default function StartChat() {
           const errorData = await response
             .json()
             .catch(() => ({ detail: "Unknown error" }));
-          throw new Error(
-            errorData.detail || "Failed to find your chat session"
-          );
+
+          // Handle specific error cases
+          if (response.status === 404) {
+            throw new Error(
+              "We couldn't find your chat session. Please make sure you submitted the form first and try clicking the link from your email again."
+            );
+          } else if (response.status === 403) {
+            throw new Error(
+              "Your account has been blocked. Please contact support if you believe this is an error."
+            );
+          } else {
+            throw new Error(
+              errorData.detail || "Failed to find your chat session"
+            );
+          }
         }
 
         const userData = await response.json();
@@ -146,12 +158,30 @@ export default function StartChat() {
             <p className="text-gray-300 mb-8 text-lg animate-slide-up-delay">
               {error}
             </p>
-            <button
-              onClick={() => (window.location.href = "/")}
-              className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 transform hover:scale-105 animate-slide-up-delay-2"
-            >
-              Go Back to Home
-            </button>
+            <div className="space-y-4">
+              {error.includes("submitted the form first") && (
+                <a
+                  href="https://tally.so/r/mYPJPz"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 transform hover:scale-105 animate-slide-up-delay-2"
+                >
+                  Submit the Form First
+                </a>
+              )}
+              <button
+                onClick={() => window.location.reload()}
+                className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 transform hover:scale-105 animate-slide-up-delay-2 mr-4"
+              >
+                Try Again
+              </button>
+              <button
+                onClick={() => (window.location.href = "/")}
+                className="bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 transform hover:scale-105 animate-slide-up-delay-2"
+              >
+                Go Back to Home
+              </button>
+            </div>
           </div>
         </div>
       </>

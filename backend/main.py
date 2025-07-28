@@ -185,7 +185,10 @@ async def find_user_by_tally_response(request_data: dict, db: Session = Depends(
     response_id = request_data.get("response_id")
     respondent_id = request_data.get("respondent_id")
     
+    logger.info(f"Looking for user with response_id: {response_id}, respondent_id: {respondent_id}")
+    
     if not response_id and not respondent_id:
+        logger.warning("No response_id or respondent_id provided")
         raise HTTPException(400, detail="Either response_id or respondent_id is required")
     
     # Try to find user by response_id first, then by respondent_id
@@ -193,20 +196,26 @@ async def find_user_by_tally_response(request_data: dict, db: Session = Depends(
     user = None
     if response_id:
         user = db.query(User).filter(User.tally_response_id == response_id).first()
+        logger.info(f"Search by response_id {response_id}: {'Found' if user else 'Not found'}")
         # If not found by response_id, try respondent_id (in case Tally sent respondent_id as response_id)
         if not user:
             user = db.query(User).filter(User.tally_respondent_id == response_id).first()
+            logger.info(f"Search by respondent_id {response_id}: {'Found' if user else 'Not found'}")
     
     if not user and respondent_id:
         user = db.query(User).filter(User.tally_respondent_id == respondent_id).first()
+        logger.info(f"Search by respondent_id {respondent_id}: {'Found' if user else 'Not found'}")
         # If not found by respondent_id, try response_id (in case Tally sent response_id as respondent_id)
         if not user:
             user = db.query(User).filter(User.tally_response_id == respondent_id).first()
+            logger.info(f"Search by response_id {respondent_id}: {'Found' if user else 'Not found'}")
     
     if not user:
+        logger.warning(f"User not found for response_id: {response_id}, respondent_id: {respondent_id}")
         raise HTTPException(404, detail="User not found. Please submit the form first.")
     
     if user.is_blocked:
+        logger.warning(f"Blocked user {user.user_code} attempted to access chat")
         raise HTTPException(403, detail="User is blocked")
     
     # Get active session
@@ -216,14 +225,33 @@ async def find_user_by_tally_response(request_data: dict, db: Session = Depends(
     ).first()
     
     if not session:
+        logger.warning(f"No active session found for user {user.user_code}")
         raise HTTPException(404, detail="No active session found")
     
+    logger.info(f"Successfully found user {user.user_code} with session {session.id}")
     return {
         "user_id": user.user_code,  # Return user_code instead of UUID
         "user_code": user.user_code,  # Also include explicit user_code field
         "session_id": str(session.id),
         "email": user.email
     }
+
+# Debug endpoint to check recent users (remove in production)
+@app.get("/debug/recent-users")
+async def get_recent_users(db: Session = Depends(get_db)):
+    """Debug endpoint to see recent users"""
+    users = db.query(User).order_by(User.created_at.desc()).limit(10).all()
+    return [
+        {
+            "user_code": user.user_code,
+            "email": user.email,
+            "tally_response_id": user.tally_response_id,
+            "tally_respondent_id": user.tally_respondent_id,
+            "created_at": user.created_at,
+            "is_blocked": user.is_blocked
+        }
+        for user in users
+    ]
 
 # Device-based session creation for testing
 @app.post("/user/device-session")
