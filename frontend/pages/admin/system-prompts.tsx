@@ -99,6 +99,7 @@ export default function SystemPromptsPage() {
 
     try {
       setSubmitting(true);
+      console.log("Updating prompt:", editingPrompt.id, formData);
       await adminApi.updateSystemPrompt(editingPrompt.id, formData);
       toast.success("System prompt updated successfully!");
       setShowEditForm(false);
@@ -106,9 +107,16 @@ export default function SystemPromptsPage() {
       setFormData({ name: "", head_prompt: "", rule_prompt: "" });
       fetchPrompts();
     } catch (error: any) {
-      toast.error(
-        error.response?.data?.detail || "Failed to update system prompt"
-      );
+      console.error("Edit error:", error);
+      if (error.response?.status === 401) {
+        toast.error("Session expired. Please login again.");
+      } else if (error.response?.status === 400) {
+        toast.error(error.response?.data?.detail || "Invalid data provided");
+      } else {
+        toast.error(
+          error.response?.data?.detail || "Failed to update system prompt"
+        );
+      }
     } finally {
       setSubmitting(false);
     }
@@ -116,27 +124,50 @@ export default function SystemPromptsPage() {
 
   const handleActivatePrompt = async (promptId: string) => {
     try {
+      setSubmitting(true);
       await adminApi.updateSystemPrompt(promptId, { is_active: true });
-      toast.success("System prompt activated!");
+      toast.success(
+        "System prompt activated! This is now the active prompt for all users."
+      );
       fetchPrompts();
     } catch (error: any) {
-      toast.error(
-        error.response?.data?.detail || "Failed to activate system prompt"
-      );
+      console.error("Activate error:", error);
+      if (error.response?.status === 401) {
+        toast.error("Session expired. Please login again.");
+      } else {
+        toast.error(
+          error.response?.data?.detail || "Failed to activate system prompt"
+        );
+      }
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleDeletePrompt = async (promptId: string) => {
-    if (!confirm("Are you sure you want to delete this system prompt?")) return;
+    if (
+      !confirm(
+        "Are you sure you want to delete this system prompt? This action cannot be undone."
+      )
+    )
+      return;
 
     try {
+      setSubmitting(true);
       await adminApi.deleteSystemPrompt(promptId);
       toast.success("System prompt deleted successfully!");
       fetchPrompts();
     } catch (error: any) {
-      toast.error(
-        error.response?.data?.detail || "Failed to delete system prompt"
-      );
+      console.error("Delete error:", error);
+      if (error.response?.status === 401) {
+        toast.error("Session expired. Please login again.");
+      } else {
+        toast.error(
+          error.response?.data?.detail || "Failed to delete system prompt"
+        );
+      }
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -230,7 +261,12 @@ export default function SystemPromptsPage() {
                     </button>
                     <button
                       onClick={() => openEditForm(prompt)}
-                      className="p-2 text-gray-400 hover:text-blue-600 transition-colors"
+                      disabled={submitting}
+                      className={`p-2 transition-colors ${
+                        submitting
+                          ? "text-gray-300 cursor-not-allowed"
+                          : "text-gray-400 hover:text-blue-600"
+                      }`}
                       title="Edit"
                     >
                       <PencilIcon className="w-5 h-5" />
@@ -238,7 +274,12 @@ export default function SystemPromptsPage() {
                     {!prompt.is_active && (
                       <button
                         onClick={() => handleActivatePrompt(prompt.id)}
-                        className="p-2 text-gray-400 hover:text-green-600 transition-colors"
+                        disabled={submitting}
+                        className={`p-2 transition-colors ${
+                          submitting
+                            ? "text-gray-300 cursor-not-allowed"
+                            : "text-gray-400 hover:text-green-600"
+                        }`}
                         title="Activate"
                       >
                         <CheckCircleIcon className="w-5 h-5" />
@@ -246,7 +287,12 @@ export default function SystemPromptsPage() {
                     )}
                     <button
                       onClick={() => handleDeletePrompt(prompt.id)}
-                      className="p-2 text-gray-400 hover:text-red-600 transition-colors"
+                      disabled={submitting}
+                      className={`p-2 transition-colors ${
+                        submitting
+                          ? "text-gray-300 cursor-not-allowed"
+                          : "text-gray-400 hover:text-red-600"
+                      }`}
                       title="Delete"
                     >
                       <TrashIcon className="w-5 h-5" />

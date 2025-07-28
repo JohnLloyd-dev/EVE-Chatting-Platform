@@ -25,6 +25,26 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Handle auth errors and auto-logout
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Session expired or invalid token
+      localStorage.removeItem("admin_token");
+
+      // Only redirect if we're in the browser and on an admin page
+      if (
+        typeof window !== "undefined" &&
+        window.location.pathname.startsWith("/admin")
+      ) {
+        window.location.href = "/admin/login";
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 // Chat API
 export const chatApi = {
   getSession: async (userId: string): Promise<ChatSession> => {
