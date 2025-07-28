@@ -158,7 +158,7 @@ export default function AdminConversations() {
                     <div className="flex items-center space-x-2">
                       <span className="text-sm font-medium text-gray-900">
                         {conversation.user_email ||
-                          `User ${conversation.user_id.slice(0, 8)}`}
+                          `User #${conversation.user_id}`}
                       </span>
                       {conversation.user_blocked && (
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
@@ -235,7 +235,7 @@ export default function AdminConversations() {
                       <div>
                         User:{" "}
                         {conversationDetails.user_info.email ||
-                          conversationDetails.user_info.id}
+                          `User #${conversationDetails.user_info.id}`}
                       </div>
                       <div>Session: {conversationDetails.session_info.id}</div>
                     </div>

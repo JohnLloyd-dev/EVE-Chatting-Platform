@@ -538,7 +538,7 @@ async def get_all_conversations(
         
         conversations.append(ConversationSummary(
             session_id=str(session.id),
-            user_id=str(session.user.id),
+            user_id=session.user.user_code,  # Use user_code instead of UUID
             user_email=session.user.email,
             created_at=session.created_at,
             updated_at=session.updated_at,
@@ -593,7 +593,7 @@ async def get_conversation_details(
             is_active=session.is_active
         ),
         user_info=UserResponse(
-            id=str(session.user.id),
+            id=session.user.user_code,  # Use user_code instead of UUID
             tally_response_id=session.user.tally_response_id,
             created_at=session.user.created_at,
             is_blocked=session.user.is_blocked,
@@ -648,12 +648,16 @@ async def block_user(
     """
     Block or unblock a user
     """
-    try:
-        user_uuid = uuid.UUID(block_request.user_id)
-    except ValueError:
-        raise HTTPException(400, detail="Invalid user ID format")
+    # Try to find user by user_code first, then by UUID for backward compatibility
+    user = db.query(User).filter(User.user_code == block_request.user_id).first()
     
-    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        # Try UUID format for backward compatibility
+        try:
+            user_uuid = uuid.UUID(block_request.user_id)
+            user = db.query(User).filter(User.id == user_uuid).first()
+        except ValueError:
+            pass
     if not user:
         raise HTTPException(404, detail="User not found")
     
