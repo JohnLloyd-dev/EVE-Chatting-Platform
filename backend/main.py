@@ -871,22 +871,36 @@ async def get_system_prompts(
     """Get all system prompts"""
     try:
         prompts = db.query(SystemPrompt).order_by(SystemPrompt.created_at.desc()).all()
-        return [
-            SystemPromptResponse(
-                id=str(prompt.id),
-                name=prompt.name,
-                head_prompt=getattr(prompt, 'head_prompt', 'You are a sexual fantasy assistant.'),
-                rule_prompt=getattr(prompt, 'rule_prompt', getattr(prompt, 'prompt_text', 'Always speak in first person.')),
-                is_active=prompt.is_active,
-                created_by=str(prompt.created_by),
-                created_at=prompt.created_at,
-                updated_at=prompt.updated_at,
-                user_id=str(prompt.user_id) if hasattr(prompt, 'user_id') and prompt.user_id else None
-            )
-            for prompt in prompts
-        ]
+        print(f"Found {len(prompts)} system prompts in database")
+        
+        result = []
+        for prompt in prompts:
+            print(f"Processing prompt: {prompt.id}, name: {prompt.name}")
+            try:
+                prompt_response = SystemPromptResponse(
+                    id=str(prompt.id),
+                    name=prompt.name,
+                    head_prompt=getattr(prompt, 'head_prompt', 'You are a sexual fantasy assistant.'),
+                    rule_prompt=getattr(prompt, 'rule_prompt', getattr(prompt, 'prompt_text', 'Always speak in first person.')),
+                    is_active=prompt.is_active,
+                    created_by=str(prompt.created_by),
+                    created_at=prompt.created_at,
+                    updated_at=prompt.updated_at,
+                    user_id=str(prompt.user_id) if hasattr(prompt, 'user_id') and prompt.user_id else None
+                )
+                result.append(prompt_response)
+                print(f"Successfully processed prompt: {prompt.id}")
+            except Exception as prompt_error:
+                print(f"Error processing individual prompt {prompt.id}: {prompt_error}")
+                continue
+        
+        print(f"Returning {len(result)} processed prompts")
+        return result
+        
     except Exception as e:
         print(f"Error fetching system prompts: {e}")
+        import traceback
+        traceback.print_exc()
         # Return empty list if there's a database schema issue
         return []
 
