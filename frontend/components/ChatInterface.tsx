@@ -181,7 +181,6 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
           <div className="flex justify-start">
             <div className="chat-message chat-message-ai">
               <div className="flex items-center space-x-2">
-                <div className="animate-pulse">AI is thinking...</div>
                 <div className="flex space-x-1">
                   <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"></div>
                   <div
