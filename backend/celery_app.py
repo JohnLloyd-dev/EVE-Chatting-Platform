@@ -119,6 +119,9 @@ def call_ai_model(system_prompt: str, history: list, max_tokens: int = 150) -> s
     Call the AI model API (your VPS deployment)
     """
     try:
+        # Log the system prompt being sent for debugging
+        logger.info(f"Sending system prompt to AI model: {system_prompt[:200]}...")
+        
         # Prepare the request similar to your main.py structure
         with httpx.Client(timeout=30.0) as client:
             # First set the scenario

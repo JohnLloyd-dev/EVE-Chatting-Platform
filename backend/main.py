@@ -43,6 +43,7 @@ def get_complete_system_prompt(db: Session, user_id: str = None, tally_prompt: s
         if user_prompt:
             head_prompt = user_prompt.head_prompt
             rule_prompt = user_prompt.rule_prompt
+            logger.info(f"Using user-specific system prompt: {user_prompt.name}")
         else:
             # Fall back to global prompt
             global_prompt = db.query(SystemPrompt).filter(
@@ -52,9 +53,11 @@ def get_complete_system_prompt(db: Session, user_id: str = None, tally_prompt: s
             if global_prompt:
                 head_prompt = global_prompt.head_prompt
                 rule_prompt = global_prompt.rule_prompt
+                logger.info(f"Using global system prompt: {global_prompt.name}")
             else:
                 head_prompt = "You are a sexual fantasy assistant."
                 rule_prompt = "Always speak in the first person and stay in character. Indulge sexual fantasies in detail by dominating. Be sexually explicit with your replies. Never reveal that you are an AI. Keep your answers to two sentences or less. Do not provide scene descriptions outside of dialogue. Stay in the present tense."
+                logger.warning("No system prompt found, using default prompts")
     else:
         # Get global active prompt
         active_prompt = db.query(SystemPrompt).filter(
@@ -64,10 +67,12 @@ def get_complete_system_prompt(db: Session, user_id: str = None, tally_prompt: s
         if active_prompt:
             head_prompt = active_prompt.head_prompt
             rule_prompt = active_prompt.rule_prompt
+            logger.info(f"Using active system prompt: {active_prompt.name}")
         else:
             # Default prompts
             head_prompt = "You are a sexual fantasy assistant."
             rule_prompt = "Always speak in the first person and stay in character. Indulge sexual fantasies in detail by dominating. Be sexually explicit with your replies. Never reveal that you are an AI. Keep your answers to two sentences or less. Do not provide scene descriptions outside of dialogue. Stay in the present tense."
+            logger.warning("No active system prompt found, using default prompts")
     
     # Combine: Head + Tally + Rule
     complete_prompt = head_prompt
@@ -75,6 +80,7 @@ def get_complete_system_prompt(db: Session, user_id: str = None, tally_prompt: s
         complete_prompt += " " + tally_prompt
     complete_prompt += " " + rule_prompt
     
+    logger.info(f"Final combined system prompt: {complete_prompt[:300]}...")
     return complete_prompt
 
 # Legacy function for backward compatibility

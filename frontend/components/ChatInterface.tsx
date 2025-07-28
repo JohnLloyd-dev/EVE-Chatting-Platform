@@ -154,11 +154,7 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
             >
               <div
                 className={`chat-message ${
-                  msg.is_from_user
-                    ? "chat-message-user"
-                    : msg.is_admin_intervention
-                    ? "chat-message-admin"
-                    : "chat-message-ai"
+                  msg.is_from_user ? "chat-message-user" : "chat-message-ai"
                 }`}
               >
                 <div className="text-sm">{msg.content}</div>
@@ -168,9 +164,6 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
                   }`}
                 >
                   {format(new Date(msg.created_at), "HH:mm")}
-                  {msg.is_admin_intervention && (
-                    <span className="ml-2 font-medium">(Admin)</span>
-                  )}
                 </div>
               </div>
             </div>
