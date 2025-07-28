@@ -43,8 +43,15 @@ export default function SystemPromptsPage() {
   const fetchPrompts = async () => {
     try {
       setLoading(true);
+      console.log("Fetching system prompts...");
       const data = await adminApi.getSystemPrompts();
+      console.log("Fetched prompts:", data);
       setPrompts(data);
+
+      // Find active prompt
+      const active = data.find((p: SystemPrompt) => p.is_active);
+      setActivePrompt(active || null);
+      console.log("Active prompt:", active);
     } catch (error) {
       console.error("Error fetching system prompts:", error);
       toast.error("Failed to load system prompts");
@@ -231,8 +238,31 @@ export default function SystemPromptsPage() {
           <div className="flex justify-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
           </div>
+        ) : prompts.length === 0 ? (
+          <div className="text-center py-12">
+            <DocumentTextIcon className="mx-auto h-12 w-12 text-gray-400" />
+            <h3 className="mt-2 text-sm font-medium text-gray-900">
+              No system prompts
+            </h3>
+            <p className="mt-1 text-sm text-gray-500">
+              Get started by creating a new system prompt.
+            </p>
+            <div className="mt-6">
+              <button
+                onClick={() => setShowCreateForm(true)}
+                className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              >
+                <PlusIcon className="w-5 h-5 mr-2" />
+                Create System Prompt
+              </button>
+            </div>
+          </div>
         ) : (
           <div className="grid gap-6">
+            <div className="text-sm text-gray-500 mb-4">
+              Found {prompts.length} system prompt
+              {prompts.length !== 1 ? "s" : ""}
+            </div>
             {prompts.map((prompt) => (
               <div
                 key={prompt.id}
@@ -252,50 +282,49 @@ export default function SystemPromptsPage() {
                     )}
                   </div>
                   <div className="flex items-center gap-2">
+                    {/* Preview Button */}
                     <button
                       onClick={() => openPreview(prompt)}
-                      className="p-2 text-gray-400 hover:text-blue-600 transition-colors"
+                      className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
                       title="Preview Complete Prompt"
                     >
-                      <EyeIcon className="w-5 h-5" />
+                      <EyeIcon className="w-4 h-4 mr-1" />
+                      Preview
                     </button>
+
+                    {/* Edit Button */}
                     <button
                       onClick={() => openEditForm(prompt)}
                       disabled={submitting}
-                      className={`p-2 transition-colors ${
-                        submitting
-                          ? "text-gray-300 cursor-not-allowed"
-                          : "text-gray-400 hover:text-blue-600"
-                      }`}
-                      title="Edit"
+                      className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Edit System Prompt"
                     >
-                      <PencilIcon className="w-5 h-5" />
+                      <PencilIcon className="w-4 h-4 mr-1" />
+                      Edit
                     </button>
+
+                    {/* Activate Button - only show if not active */}
                     {!prompt.is_active && (
                       <button
                         onClick={() => handleActivatePrompt(prompt.id)}
                         disabled={submitting}
-                        className={`p-2 transition-colors ${
-                          submitting
-                            ? "text-gray-300 cursor-not-allowed"
-                            : "text-gray-400 hover:text-green-600"
-                        }`}
-                        title="Activate"
+                        className="inline-flex items-center px-3 py-2 border border-green-300 shadow-sm text-sm leading-4 font-medium rounded-md text-green-700 bg-green-50 hover:bg-green-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Set as Active System Prompt"
                       >
-                        <CheckCircleIcon className="w-5 h-5" />
+                        <CheckCircleIcon className="w-4 h-4 mr-1" />
+                        Activate
                       </button>
                     )}
+
+                    {/* Delete Button */}
                     <button
                       onClick={() => handleDeletePrompt(prompt.id)}
                       disabled={submitting}
-                      className={`p-2 transition-colors ${
-                        submitting
-                          ? "text-gray-300 cursor-not-allowed"
-                          : "text-gray-400 hover:text-red-600"
-                      }`}
-                      title="Delete"
+                      className="inline-flex items-center px-3 py-2 border border-red-300 shadow-sm text-sm leading-4 font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Delete System Prompt"
                     >
-                      <TrashIcon className="w-5 h-5" />
+                      <TrashIcon className="w-4 h-4 mr-1" />
+                      Delete
                     </button>
                   </div>
                 </div>
