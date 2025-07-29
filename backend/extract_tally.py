@@ -388,7 +388,7 @@ class FantasyStoryGenerator:
 
 def generate_story_from_json(form_data):
     """
-    Generate a story scenario from Tally form data
+    Generate a story scenario from Tally form data using flexible extraction
     
     Args:
         form_data: Dictionary containing form submission data
@@ -397,39 +397,21 @@ def generate_story_from_json(form_data):
         str: Generated story scenario with complete field data
     """
     if not form_data:
-        return ""  # Return empty string instead of default message
+        return ""
+    
+    # Import the flexible extractor
+    from flexible_tally_extractor import generate_flexible_scenario
     
     # Handle Tally webhook format (full webhook with 'data' key)
     if isinstance(form_data, dict) and 'data' in form_data:
         # Extract the actual form data from Tally webhook structure
         tally_data = form_data.get('data', {})
-        
-        generator = FantasyStoryGenerator(tally_data)
-        
-        # Debug logging disabled for production
-        # Uncomment the lines below for debugging:
-        # try:
-        #     generator.debug_form_data()
-        # except Exception as e:
-        #     print(f"Debug logging failed: {e}")
-        
-        # Return clean scenario for AI model (comprehensive data stored separately)
-        return generator.create_clean_scenario()
+        return generate_flexible_scenario(tally_data)
     
     # Handle direct form data (just the 'data' section with 'fields')
     elif isinstance(form_data, dict) and 'fields' in form_data:
-        generator = FantasyStoryGenerator(form_data)
-        
-        # Debug logging disabled for production
-        # Uncomment the lines below for debugging:
-        # try:
-        #     generator.debug_form_data()
-        # except Exception as e:
-        #     print(f"Debug logging failed: {e}")
-            
-        # Return clean scenario for AI model (comprehensive data stored separately)
-        return generator.create_clean_scenario()
+        return generate_flexible_scenario(form_data)
     
     else:
-        # Handle simple key-value form data or fallback
-        return ""  # Return empty string instead of default message
+        # Try to extract from any other format
+        return generate_flexible_scenario(form_data)
