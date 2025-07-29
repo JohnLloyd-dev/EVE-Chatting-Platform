@@ -7,24 +7,113 @@ import random
 class FantasyStoryGenerator:
     def __init__(self, json_data):
         self.data = json_data
-        self.story_elements = {
-            "my_gender": self.get_answer('question_zMKJN1'),
-            "partner_gender": self.get_answer('question_59dv4M'),
-            "partner_age": self.get_answer('question_d0YjNz'),
-            "partner_ethnicity": self.get_answer('question_YGZYRq'),
-            "alone_status": self.get_answer('question_DpVDKb'),
-            "location": self.get_answer('question_KxMXVD'),
-            "control_dynamic": self.get_answer('question_LKd8PJ'),
-            "primary_action": self.get_answer('question_poLgDP'),
-            "secondary_action": self.get_answer('question_14rj9b'),
-            "experience_with": self.get_answer('question_lOVNqo'),
-            "anything_else": self.get_text_answer('question_Dp0VKl')
-        }
+        # Extract ALL fields dynamically instead of hardcoding specific ones
+        self.all_fields = self.extract_all_fields()
+        
+        # Keep the original story elements for backward compatibility
+        # but now they're populated from the dynamic extraction
+        self.story_elements = self.map_story_elements()
         self.names = {
             "Man": ["Alex", "Marcus", "Daniel", "Jake", "Ryan"],
             "Woman": ["L", "Sophia", "Mia", "Emma", "Olivia"],
             "Police": ["Riley", "Jordan", "Casey", "Morgan", "Taylor"]
         }
+    
+    def extract_all_fields(self):
+        """
+        Extract ALL fields from the Tally form dynamically
+        Returns a dictionary with field_key -> {label, type, value, options}
+        """
+        extracted_fields = {}
+        
+        for field in self.data.get('fields', []):
+            field_key = field.get('key')
+            if not field_key:
+                continue
+                
+            field_info = {
+                'label': field.get('label', '').strip(),
+                'type': field.get('type'),
+                'raw_value': field.get('value'),
+                'options': field.get('options', []),
+                'processed_value': None
+            }
+            
+            # Process the value based on field type
+            if field.get('value'):
+                if field.get('type') == 'MULTIPLE_CHOICE' and isinstance(field.get('value'), list):
+                    # Map option IDs to their text values
+                    option_map = {opt['id']: opt['text'] for opt in field.get('options', [])}
+                    selected_options = [option_map.get(val_id, val_id) for val_id in field['value']]
+                    field_info['processed_value'] = selected_options[0] if len(selected_options) == 1 else selected_options
+                    
+                elif field.get('type') in ['TEXTAREA', 'INPUT_PHONE_NUMBER', 'EMAIL']:
+                    # Text-based fields
+                    field_info['processed_value'] = field['value']
+                    
+                elif field.get('type') == 'PAYMENT':
+                    # Payment fields
+                    field_info['processed_value'] = field['value']
+                    
+                else:
+                    # Default: use raw value
+                    field_info['processed_value'] = field['value']
+            
+            extracted_fields[field_key] = field_info
+            
+        return extracted_fields
+    
+    def map_story_elements(self):
+        """
+        Map the dynamically extracted fields to story elements
+        This maintains backward compatibility while using the new extraction
+        """
+        story_elements = {}
+        
+        # Find fields by their labels (more reliable than hardcoded keys)
+        for field_key, field_info in self.all_fields.items():
+            label = field_info['label'].lower()
+            value = field_info['processed_value']
+            
+            # Map based on question content
+            if 'fantasy are you a man or a woman' in label:
+                story_elements['my_gender'] = value
+            elif 'gender of the other person' in label:
+                story_elements['partner_gender'] = value
+            elif 'how old are they' in label and value:  # Only take first age question with value
+                if 'partner_age' not in story_elements:
+                    story_elements['partner_age'] = value
+            elif 'ethnicity' in label and value:  # Only take first ethnicity question with value
+                if 'partner_ethnicity' not in story_elements:
+                    story_elements['partner_ethnicity'] = value
+            elif 'am i alone' in label:
+                story_elements['companion_status'] = value
+            elif 'where does this take place' in label and value:
+                if 'location' not in story_elements:
+                    story_elements['location'] = value
+            elif 'who is in control' in label and value:
+                if 'dominance' not in story_elements:
+                    story_elements['dominance'] = value
+            elif 'what would you like to do with me' in label:
+                story_elements['primary_action'] = value
+            elif 'what else' in label and value:
+                if 'secondary_action' not in story_elements:
+                    story_elements['secondary_action'] = value
+            elif 'anything else' in label:
+                story_elements['anything_else'] = value
+            elif 'how would you like to experience' in label:
+                story_elements['experience_type'] = value
+            elif 'phone number' in label:
+                story_elements['phone_number'] = value
+                
+        # Also capture clothing from "Pick One" fields (need to identify which one)
+        # Look for the first "Pick One" field that has a value
+        for field_key, field_info in self.all_fields.items():
+            if field_info['label'] == 'Pick One ' and field_info['processed_value']:
+                if 'clothing' not in story_elements:
+                    story_elements['clothing'] = field_info['processed_value']
+                    
+        return story_elements
         
     def get_answer(self, field_key):
         """Extract answer text for a given field key"""
@@ -40,6 +129,33 @@ class FantasyStoryGenerator:
             if field['key'] == field_key and field.get('value'):
                 return field['value']
         return None
+    
+    def debug_form_data(self):
+        """Debug function to show all available form fields"""
+        print("=== TALLY FORM DEBUG ===")
+        print(f"Total fields: {len(self.data.get('fields', []))}")
+        
+        print("\n=== ALL EXTRACTED FIELDS ===")
+        for field_key, field_info in self.all_fields.items():
+            print(f"Key: {field_key}")
+            print(f"   Label: '{field_info['label']}'")
+            print(f"   Type: {field_info['type']}")
+            print(f"   Raw Value: {field_info['raw_value']}")
+            print(f"   Processed Value: {field_info['processed_value']}")
+            if field_info['options']:
+                print(f"   Options: {[opt.get('text') for opt in field_info['options']]}")
+            print()
+        
+        print("=== MAPPED STORY ELEMENTS ===")
+        for key, value in self.story_elements.items():
+            print(f"{key}: {value}")
+        
+        print("\n=== FIELDS WITH VALUES ===")
+        fields_with_values = {k: v for k, v in self.all_fields.items() if v['processed_value'] is not None}
+        print(f"Total fields with values: {len(fields_with_values)}")
+        for field_key, field_info in fields_with_values.items():
+            print(f"{field_key}: '{field_info['label']}' = {field_info['processed_value']}")
+        print("========================")
         
     def generate_name(self, gender, role=None):
         """Generate a random name based on gender and potential role"""
@@ -47,60 +163,104 @@ class FantasyStoryGenerator:
         return random.choice(pool)
         
     def create_story(self):
-        """Generate a custom story based on form selections"""
-        # Determine roles and names
-        my_role = "man" if self.story_elements["my_gender"] == "Man" else "woman"
-        partner_role = "policeman" if self.story_elements["partner_gender"] == "Man" else "policewoman"
-        partner_name = self.generate_name(self.story_elements["partner_gender"], "Police")
+        """Generate a custom story based on ALL extracted form fields"""
         
-        # Map locations to descriptive phrases
-        location_map = {
-            "In a public place": "a public park",
-            "In nature": "a secluded forest",
-            "At home": "my home",
-            "In a dungeon": "a secret dungeon"
-        }
-        location = location_map.get(self.story_elements["location"], "an unknown location")
+        # Build story from all available data
+        story_parts = []
         
-        # Build story components
-        story = f"Your name is {partner_name}. "
-        story += f"You are a {self.story_elements['partner_age']} year old {self.story_elements['partner_ethnicity'].lower()} {partner_role}. "
-        story += f"I am a {my_role} who you just met in {location}. "
-        
-        # Power dynamic description
-        if "control of me" in self.story_elements["control_dynamic"]:
-            story += "When we meet, you immediately take control. "
-        elif "control of you" in self.story_elements["control_dynamic"]:
-            story += "When we meet, I take control of you. "
-        else:
-            story += "When we meet, we connect as equals. "
-        
-        # Action sequences
-        actions = []
-        if self.story_elements["primary_action"]:
-            actions.append(self.story_elements["primary_action"].lower())
-        if self.story_elements["secondary_action"]:
-            actions.append(self.story_elements["secondary_action"].lower())
-        
-        # Add any additional actions from the example
-        actions.extend(["tie me up", "force me to have sex with you", "gag me", 
-                       "blindfold me", "don't let me go when I ask you to", 
-                       "go down on me", "tease me"])
-        
-        # Build action sequence
-        for i, action in enumerate(actions):
-            if i == 0:
-                story += f"You {action} "
-            elif i == len(actions) - 1:
-                story += f"and {action}. "
-            else:
-                story += f", {action} "
-        
-        # Add custom elements if provided
-        if self.story_elements["anything_else"]:
-            story += f"\n\nAdditionally, {self.story_elements['anything_else']}"
+        # Basic character setup
+        if self.story_elements.get("my_gender") and self.story_elements.get("partner_gender"):
+            my_role = "man" if self.story_elements["my_gender"] == "Man" else "woman"
+            partner_role = "man" if self.story_elements["partner_gender"] == "Man" else "woman"
+            partner_name = self.generate_name(self.story_elements["partner_gender"])
             
-        return story
+            story_parts.append(f"Your name is {partner_name}.")
+            
+            # Age and ethnicity
+            age = self.story_elements.get("partner_age", "25")
+            ethnicity = self.story_elements.get("partner_ethnicity", "attractive")
+            story_parts.append(f"You are a {age} year old {ethnicity.lower()} {partner_role}.")
+            
+            # Clothing (if specified)
+            if self.story_elements.get("clothing"):
+                clothing_map = {
+                    "A": "a uniform",
+                    "B": "bondage gear", 
+                    "C": "your best clothes",
+                    "D": "just underwear"
+                }
+                clothing = clothing_map.get(self.story_elements["clothing"], self.story_elements["clothing"])
+                story_parts.append(f"You are wearing {clothing}.")
+            
+            # Location and companion status
+            location_info = []
+            if self.story_elements.get("companion_status"):
+                companion_map = {
+                    "Yes": "alone",
+                    "No": "with someone"
+                }
+                companion = companion_map.get(self.story_elements["companion_status"], self.story_elements["companion_status"])
+                location_info.append(f"you are {companion}")
+            
+            if self.story_elements.get("location"):
+                location_map = {
+                    "A": "in a public place",
+                    "B": "in nature",
+                    "C": "at home", 
+                    "D": "in a dungeon"
+                }
+                location = location_map.get(self.story_elements["location"], self.story_elements["location"])
+                location_info.append(location)
+            
+            if location_info:
+                story_parts.append(f"I am a {my_role} and we are {' '.join(location_info)}.")
+            
+            # Dominance dynamic
+            if self.story_elements.get("dominance"):
+                dominance_map = {
+                    "A": "I am sexually dominant and you must do everything I say",
+                    "B": "You are sexually dominant and I must do everything you tell me to do",
+                    "C": "We are equals in this encounter"
+                }
+                dominance = dominance_map.get(self.story_elements["dominance"], self.story_elements["dominance"])
+                story_parts.append(dominance + ".")
+        
+        # Actions and activities
+        actions = []
+        if self.story_elements.get("primary_action"):
+            actions.append(f"Primary activity: {self.story_elements['primary_action']}")
+            
+        if self.story_elements.get("secondary_action"):
+            actions.append(f"Additional activity: {self.story_elements['secondary_action']}")
+        
+        if actions:
+            story_parts.append("Our encounter involves: " + ", ".join(actions) + ".")
+        
+        # Experience type
+        if self.story_elements.get("experience_type"):
+            story_parts.append(f"Experience preference: {self.story_elements['experience_type']}.")
+        
+        # Custom elements
+        if self.story_elements.get("anything_else"):
+            story_parts.append(f"\nAdditionally: {self.story_elements['anything_else']}")
+        
+        # Include any other fields with values that weren't mapped
+        other_fields = []
+        for field_key, field_info in self.all_fields.items():
+            if (field_info['processed_value'] is not None and 
+                field_info['label'] not in ['', 'Pick One', 'Pick One '] and
+                not any(mapped_field in field_info['label'].lower() for mapped_field in [
+                    'fantasy are you', 'gender of the other', 'how old', 'ethnicity', 
+                    'am i alone', 'where does this take place', 'who is in control',
+                    'what would you like to do', 'what else', 'anything else',
+                    'how would you like to experience', 'phone number'
+                ])):
+                other_fields.append(f"{field_info['label']}: {field_info['processed_value']}")
+        
+        if other_fields:
+            story_parts.append(f"\nAdditional details: {'; '.join(other_fields)}")
+            
+        return " ".join(story_parts) if story_parts else "Welcome! I'm here to help you with any questions or conversations you'd like to have."
 
 def generate_story_from_json(form_data):
     """
@@ -121,11 +281,25 @@ def generate_story_from_json(form_data):
         tally_data = form_data.get('data', {})
         
         generator = FantasyStoryGenerator(tally_data)
+        
+        # Enable debug logging to verify all 10 questions are captured
+        try:
+            generator.debug_form_data()
+        except Exception as e:
+            print(f"Debug logging failed: {e}")
+        
         return generator.create_story()
     
     # Handle direct form data (just the 'data' section with 'fields')
     elif isinstance(form_data, dict) and 'fields' in form_data:
         generator = FantasyStoryGenerator(form_data)
+        
+        # Enable debug logging
+        try:
+            generator.debug_form_data()
+        except Exception as e:
+            print(f"Debug logging failed: {e}")
+            
         return generator.create_story()
     
     else:
