@@ -208,8 +208,8 @@ def clean_ai_response(raw_response: str) -> str:
             if not line:
                 continue
                 
-            # Stop if we encounter user message markers
-            if any(marker in line.lower() for marker in ['< |user|', '<|user|', 'user:', '<!assistant!>', '<|assistant|>']):
+            # Stop if we encounter user message markers or AI processing notes
+            if any(marker in line.lower() for marker in ['< |user|', '<|user|', 'user:', '<!assistant!>', '<|assistant|>', '<!---', '-|assistent|>', '<!--', '-->']):
                 break
                 
             # Skip lines that look like conversation formatting
@@ -223,8 +223,8 @@ def clean_ai_response(raw_response: str) -> str:
         
         # If we got nothing, return the original (fallback)
         if not cleaned_response:
-            # Try to extract everything before the first user marker
-            user_markers = ['< |user|', '<|user|', '<!assistant!>', '<|assistant|>']
+            # Try to extract everything before the first user marker or processing note
+            user_markers = ['< |user|', '<|user|', '<!assistant!>', '<|assistant|>', '<!---', '-|assistent|>', '<!--', '-->']
             for marker in user_markers:
                 if marker in raw_response:
                     cleaned_response = raw_response.split(marker)[0].strip()
