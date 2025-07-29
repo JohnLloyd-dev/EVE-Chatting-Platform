@@ -236,29 +236,8 @@ class FantasyStoryGenerator:
         if actions:
             story_parts.append("Our encounter involves: " + ", ".join(actions) + ".")
         
-        # Experience type
-        if self.story_elements.get("experience_type"):
-            story_parts.append(f"Experience preference: {self.story_elements['experience_type']}.")
-        
-        # Custom elements
-        if self.story_elements.get("anything_else"):
-            story_parts.append(f"\nAdditionally: {self.story_elements['anything_else']}")
-        
-        # Include any other fields with values that weren't mapped
-        other_fields = []
-        for field_key, field_info in self.all_fields.items():
-            if (field_info['processed_value'] is not None and 
-                field_info['label'] not in ['', 'Pick One', 'Pick One '] and
-                not any(mapped_field in field_info['label'].lower() for mapped_field in [
-                    'fantasy are you', 'gender of the other', 'how old', 'ethnicity', 
-                    'am i alone', 'where does this take place', 'who is in control',
-                    'what would you like to do', 'what else', 'anything else',
-                    'how would you like to experience', 'phone number'
-                ])):
-                other_fields.append(f"{field_info['label']}: {field_info['processed_value']}")
-        
-        if other_fields:
-            story_parts.append(f"\nAdditional details: {'; '.join(other_fields)}")
+        # Skip experience_type and anything_else as they're not needed for the clean scenario
+        # Skip other unmapped fields to keep the scenario clean and focused
             
         return " ".join(story_parts) if story_parts else "Welcome! I'm here to help you with any questions or conversations you'd like to have."
     
