@@ -326,6 +326,13 @@ class FantasyStoryGenerator:
             prompt_parts.append(f"Active field keys: {', '.join(field_keys[:10])}{'...' if len(field_keys) > 10 else ''}")
         
         return "\n".join(prompt_parts)
+    
+    def create_clean_scenario(self):
+        """
+        Create a clean scenario narrative for the AI model
+        Returns only the essential story without debug info or metadata
+        """
+        return self.create_story()
 
 def generate_story_from_json(form_data):
     """
@@ -354,8 +361,8 @@ def generate_story_from_json(form_data):
         # except Exception as e:
         #     print(f"Debug logging failed: {e}")
         
-        # Return comprehensive prompt with all field data
-        return generator.create_comprehensive_prompt()
+        # Return clean scenario for AI model (comprehensive data stored separately)
+        return generator.create_clean_scenario()
     
     # Handle direct form data (just the 'data' section with 'fields')
     elif isinstance(form_data, dict) and 'fields' in form_data:
@@ -368,8 +375,8 @@ def generate_story_from_json(form_data):
         # except Exception as e:
         #     print(f"Debug logging failed: {e}")
             
-        # Return comprehensive prompt with all field data
-        return generator.create_comprehensive_prompt()
+        # Return clean scenario for AI model (comprehensive data stored separately)
+        return generator.create_clean_scenario()
     
     else:
         # Handle simple key-value form data or fallback
