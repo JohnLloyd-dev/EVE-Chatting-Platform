@@ -261,6 +261,71 @@ class FantasyStoryGenerator:
             story_parts.append(f"\nAdditional details: {'; '.join(other_fields)}")
             
         return " ".join(story_parts) if story_parts else "Welcome! I'm here to help you with any questions or conversations you'd like to have."
+    
+    def create_comprehensive_prompt(self):
+        """
+        Create a comprehensive prompt that includes ALL extracted field data
+        This ensures no Tally form data is lost in the final prompt
+        """
+        prompt_parts = []
+        
+        # Start with the processed story
+        story = self.create_story()
+        if story and story != "Welcome! I'm here to help you with any questions or conversations you'd like to have.":
+            prompt_parts.append(f"SCENARIO: {story}")
+        
+        # Add ALL fields with values in a structured format
+        fields_with_values = {k: v for k, v in self.all_fields.items() if v['processed_value'] is not None}
+        
+        if fields_with_values:
+            prompt_parts.append("\nCOMPLETE TALLY FORM DATA:")
+            
+            # Group fields by type for better organization
+            multiple_choice_fields = []
+            text_fields = []
+            payment_fields = []
+            other_fields = []
+            
+            for field_key, field_info in fields_with_values.items():
+                field_entry = f"- {field_info['label']}: {field_info['processed_value']}"
+                
+                if field_info['type'] == 'MULTIPLE_CHOICE':
+                    multiple_choice_fields.append(field_entry)
+                elif field_info['type'] in ['TEXTAREA', 'INPUT_PHONE_NUMBER', 'EMAIL']:
+                    text_fields.append(field_entry)
+                elif field_info['type'] == 'PAYMENT':
+                    payment_fields.append(field_entry)
+                else:
+                    other_fields.append(field_entry)
+            
+            # Add organized sections
+            if multiple_choice_fields:
+                prompt_parts.append("\nUser Selections:")
+                prompt_parts.extend(multiple_choice_fields)
+            
+            if text_fields:
+                prompt_parts.append("\nUser Text Input:")
+                prompt_parts.extend(text_fields)
+            
+            if payment_fields:
+                prompt_parts.append("\nPayment Information:")
+                prompt_parts.extend(payment_fields)
+            
+            if other_fields:
+                prompt_parts.append("\nOther Data:")
+                prompt_parts.extend(other_fields)
+        
+        # Add field summary
+        total_fields = len(self.all_fields)
+        fields_with_data = len(fields_with_values)
+        prompt_parts.append(f"\nFORM SUMMARY: {fields_with_data}/{total_fields} fields completed")
+        
+        # Add raw field keys for reference (useful for debugging)
+        if fields_with_values:
+            field_keys = list(fields_with_values.keys())
+            prompt_parts.append(f"Active field keys: {', '.join(field_keys[:10])}{'...' if len(field_keys) > 10 else ''}")
+        
+        return "\n".join(prompt_parts)
 
 def generate_story_from_json(form_data):
     """
@@ -270,7 +335,7 @@ def generate_story_from_json(form_data):
         form_data: Dictionary containing form submission data
         
     Returns:
-        str: Generated story scenario
+        str: Generated story scenario with complete field data
     """
     if not form_data:
         return "Welcome! I'm here to help you with any questions or conversations you'd like to have."
@@ -282,13 +347,14 @@ def generate_story_from_json(form_data):
         
         generator = FantasyStoryGenerator(tally_data)
         
-        # Enable debug logging to verify all 10 questions are captured
+        # Enable debug logging to verify all fields are captured
         try:
             generator.debug_form_data()
         except Exception as e:
             print(f"Debug logging failed: {e}")
         
-        return generator.create_story()
+        # Return comprehensive prompt with all field data
+        return generator.create_comprehensive_prompt()
     
     # Handle direct form data (just the 'data' section with 'fields')
     elif isinstance(form_data, dict) and 'fields' in form_data:
@@ -300,7 +366,8 @@ def generate_story_from_json(form_data):
         except Exception as e:
             print(f"Debug logging failed: {e}")
             
-        return generator.create_story()
+        # Return comprehensive prompt with all field data
+        return generator.create_comprehensive_prompt()
     
     else:
         # Handle simple key-value form data or fallback
