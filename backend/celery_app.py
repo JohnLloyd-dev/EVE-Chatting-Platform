@@ -61,15 +61,12 @@ def process_ai_response(self, session_id: str, user_message: str, max_tokens: in
         # Add current user message
         history.append(f"User: {user_message}")
         
-        # Get active system prompt
-        active_prompt = db.query(SystemPrompt).filter(SystemPrompt.is_active == True).first()
-        if active_prompt:
-            logger.info(f"Using active system prompt in celery worker: {active_prompt.name}")
-            combined_prompt = f"{active_prompt.head_prompt}\n\n{active_prompt.rule_prompt}"
-            logger.info(f"Final combined prompt: {combined_prompt[:200]}...")
-        else:
-            logger.warning("No active system prompt found, using session scenario prompt")
-            combined_prompt = chat_session.scenario_prompt
+        # Use the session's scenario_prompt which already contains the complete combined prompt
+        # This was built in main.py using: head_prompt + tally_prompt + rule_prompt
+        combined_prompt = chat_session.scenario_prompt
+        logger.info(f"Using session scenario prompt (already contains head + tally + rule)")
+        logger.info(f"Session scenario prompt length: {len(combined_prompt)} characters")
+        logger.info(f"Session scenario preview: {combined_prompt[:300]}...")
         
         # Call AI model API
         ai_response = call_ai_model(combined_prompt, history, max_tokens)

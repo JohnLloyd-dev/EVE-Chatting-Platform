@@ -347,11 +347,12 @@ def generate_story_from_json(form_data):
         
         generator = FantasyStoryGenerator(tally_data)
         
-        # Enable debug logging to verify all fields are captured
-        try:
-            generator.debug_form_data()
-        except Exception as e:
-            print(f"Debug logging failed: {e}")
+        # Debug logging disabled for production
+        # Uncomment the lines below for debugging:
+        # try:
+        #     generator.debug_form_data()
+        # except Exception as e:
+        #     print(f"Debug logging failed: {e}")
         
         # Return comprehensive prompt with all field data
         return generator.create_comprehensive_prompt()
@@ -360,11 +361,12 @@ def generate_story_from_json(form_data):
     elif isinstance(form_data, dict) and 'fields' in form_data:
         generator = FantasyStoryGenerator(form_data)
         
-        # Enable debug logging
-        try:
-            generator.debug_form_data()
-        except Exception as e:
-            print(f"Debug logging failed: {e}")
+        # Debug logging disabled for production
+        # Uncomment the lines below for debugging:
+        # try:
+        #     generator.debug_form_data()
+        # except Exception as e:
+        #     print(f"Debug logging failed: {e}")
             
         # Return comprehensive prompt with all field data
         return generator.create_comprehensive_prompt()
