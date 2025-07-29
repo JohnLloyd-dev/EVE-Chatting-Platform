@@ -163,83 +163,127 @@ class FantasyStoryGenerator:
         return random.choice(pool)
         
     def create_story(self):
-        """Generate a custom story based on ALL extracted form fields"""
+        """Generate a narrative story that flows naturally like the example provided"""
         
-        # Build story from all available data
-        story_parts = []
+        # Check if we have the basic required elements
+        if not (self.story_elements.get("my_gender") and self.story_elements.get("partner_gender")):
+            return "Welcome! I'm here to help you with any questions or conversations you'd like to have."
         
-        # Basic character setup
-        if self.story_elements.get("my_gender") and self.story_elements.get("partner_gender"):
-            my_role = "man" if self.story_elements["my_gender"] == "Man" else "woman"
-            partner_role = "man" if self.story_elements["partner_gender"] == "Man" else "woman"
-            partner_name = self.generate_name(self.story_elements["partner_gender"])
-            
-            story_parts.append(f"Your name is {partner_name}.")
-            
-            # Age and ethnicity
-            age = self.story_elements.get("partner_age", "25")
-            ethnicity = self.story_elements.get("partner_ethnicity", "attractive")
-            story_parts.append(f"You are a {age} year old {ethnicity.lower()} {partner_role}.")
-            
-            # Clothing (if specified)
-            if self.story_elements.get("clothing"):
-                clothing_map = {
-                    "A": "a uniform",
-                    "B": "bondage gear", 
-                    "C": "your best clothes",
-                    "D": "just underwear"
-                }
-                clothing = clothing_map.get(self.story_elements["clothing"], self.story_elements["clothing"])
-                story_parts.append(f"You are wearing {clothing}.")
-            
-            # Location and companion status
-            location_info = []
-            if self.story_elements.get("companion_status"):
-                companion_map = {
-                    "Yes": "alone",
-                    "No": "with someone"
-                }
-                companion = companion_map.get(self.story_elements["companion_status"], self.story_elements["companion_status"])
-                location_info.append(f"you are {companion}")
-            
-            if self.story_elements.get("location"):
-                location_map = {
-                    "A": "in a public place",
-                    "B": "in nature",
-                    "C": "at home", 
-                    "D": "in a dungeon"
-                }
-                location = location_map.get(self.story_elements["location"], self.story_elements["location"])
-                location_info.append(location)
-            
-            if location_info:
-                story_parts.append(f"I am a {my_role} and we are {' '.join(location_info)}.")
-            
-            # Dominance dynamic
-            if self.story_elements.get("dominance"):
-                dominance_map = {
-                    "A": "I am sexually dominant and you must do everything I say",
-                    "B": "You are sexually dominant and I must do everything you tell me to do",
-                    "C": "We are equals in this encounter"
-                }
-                dominance = dominance_map.get(self.story_elements["dominance"], self.story_elements["dominance"])
-                story_parts.append(dominance + ".")
+        # Character setup
+        my_role = "man" if self.story_elements["my_gender"] == "Man" else "woman"
+        partner_role = "man" if self.story_elements["partner_gender"] == "Man" else "woman"
+        partner_name = self.generate_name(self.story_elements["partner_gender"])
         
-        # Actions and activities
-        actions = []
-        if self.story_elements.get("primary_action"):
-            actions.append(f"Primary activity: {self.story_elements['primary_action']}")
-            
-        if self.story_elements.get("secondary_action"):
-            actions.append(f"Additional activity: {self.story_elements['secondary_action']}")
+        # Age and ethnicity
+        age = self.story_elements.get("partner_age", "25")
+        ethnicity = self.story_elements.get("partner_ethnicity", "attractive")
         
-        if actions:
-            story_parts.append("Our encounter involves: " + ", ".join(actions) + ".")
+        # Start the narrative
+        story = f"Your name is {partner_name}. You are a {age} year old {ethnicity.lower()} {partner_role}."
         
-        # Skip experience_type and anything_else as they're not needed for the clean scenario
-        # Skip other unmapped fields to keep the scenario clean and focused
+        # Location context - map to more narrative descriptions
+        location_map = {
+            "In a public place": "in a public place",
+            "In nature": "in a forest",
+            "At home": "at home", 
+            "In a dungeon": "in a dungeon"
+        }
+        location = location_map.get(self.story_elements.get("location", ""), "in a secluded place")
+        
+        # Meeting context
+        story += f" I am a {my_role} who you just met {location}."
+        
+        # Create narrative flow based on dominance and actions
+        if self.story_elements.get("dominance") == "You will be in control of me":
+            story += " When we meet"
             
-        return " ".join(story_parts) if story_parts else "Welcome! I'm here to help you with any questions or conversations you'd like to have."
+            # Convert actions to narrative flow
+            action_phrases = []
+            
+            if self.story_elements.get("primary_action"):
+                action = self.story_elements["primary_action"]
+                if "Undress me slowly" in action:
+                    action_phrases.append("you slowly undress me")
+                elif "Instruct me" in action:
+                    action_phrases.append("you give me commands")
+                elif "Gag me" in action:
+                    action_phrases.append("you gag me")
+                elif "Look me in the eyes" in action:
+                    action_phrases.append("you stare into my eyes")
+                elif "Blindfold me" in action:
+                    action_phrases.append("you blindfold me")
+                elif "Caress me gently" in action:
+                    action_phrases.append("you caress me gently")
+                elif "Go down on me" in action:
+                    action_phrases.append("you go down on me")
+                else:
+                    action_phrases.append(f"you {action.lower()}")
+            
+            if self.story_elements.get("secondary_action"):
+                action = self.story_elements["secondary_action"]
+                if "Bring me close to orgasm then stop" in action:
+                    action_phrases.append("bring me close to orgasm then stop")
+                elif "Tie me up" in action:
+                    action_phrases.append("tie me up")
+                elif "Seduce me" in action:
+                    action_phrases.append("seduce me")
+                elif "Take me against my will" in action:
+                    action_phrases.append("force me to have sex with you")
+                elif "Indulge my every whim" in action:
+                    action_phrases.append("indulge my every whim")
+                elif "Punish me" in action:
+                    action_phrases.append("punish me")
+                elif "Tease me" in action:
+                    action_phrases.append("tease me")
+                else:
+                    action_phrases.append(f"{action.lower()}")
+            
+            # Combine actions into flowing narrative
+            if action_phrases:
+                if len(action_phrases) == 1:
+                    story += f" {action_phrases[0]}."
+                elif len(action_phrases) == 2:
+                    story += f" {action_phrases[0]} and {action_phrases[1]}."
+                else:
+                    story += f" {', '.join(action_phrases[:-1])}, and {action_phrases[-1]}."
+                
+                # Add resistance element for certain actions
+                resistance_actions = ["tie me up", "gag me", "force me", "blindfold me"]
+                if any(resist in ' '.join(action_phrases) for resist in resistance_actions):
+                    story += " You don't let me go when I ask you to."
+        
+        elif self.story_elements.get("dominance") == "I will be in control of you":
+            story += " I take control and"
+            # Similar logic but with reversed roles - convert "me" to "you"
+            action_phrases = []
+            
+            if self.story_elements.get("primary_action"):
+                action = self.story_elements["primary_action"].replace("me", "you").replace("my", "your")
+                action_phrases.append(action.lower())
+            
+            if self.story_elements.get("secondary_action"):
+                action = self.story_elements["secondary_action"].replace("me", "you").replace("my", "your")
+                action_phrases.append(action.lower())
+            
+            if action_phrases:
+                story += f" {' and '.join(action_phrases)}."
+        
+        else:  # equals or other dominance
+            story += " We explore together"
+            action_phrases = []
+            
+            if self.story_elements.get("primary_action"):
+                action_phrases.append(self.story_elements["primary_action"].lower())
+            
+            if self.story_elements.get("secondary_action"):
+                action_phrases.append(self.story_elements["secondary_action"].lower())
+            
+            if action_phrases:
+                story += f" through {' and '.join(action_phrases)}."
+            else:
+                story += "."
+        
+        return story
     
     def create_comprehensive_prompt(self):
         """
