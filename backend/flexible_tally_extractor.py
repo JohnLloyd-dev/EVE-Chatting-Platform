@@ -244,11 +244,17 @@ class FlexibleTallyExtractor:
         activity_patterns = [
             r'\bdo\b',
             r'\bactivity\b',
+            r'\bactivities\b',
             r'\baction\b',
             r'\bwant\b',
             r'\blike to\b',
             r'\bhappen\b',
-            r'\bexperience\b'
+            r'\bexperience\b',
+            r'\binterest\b',
+            r'\bprefer\b',
+            r'\benjoy\b',
+            r'\bshould.*do\b',
+            r'\bwould.*like\b'
         ]
         return any(re.search(pattern, label) for pattern in activity_patterns)
     
@@ -463,29 +469,60 @@ class FlexibleTallyExtractor:
         return " ".join(story_parts)
     
     def format_activities_partner_dominant(self, activities: List[str]) -> str:
-        """Format activities for partner-dominant scenarios"""
+        """
+        Format activities for partner-dominant scenarios
+        Partner is in control, so: "you [action] me"
+        """
         formatted = []
         for activity in activities:
-            activity = activity.lower()
-            # Convert to "you [action] me" format
-            if 'me' not in activity:
-                if any(word in activity for word in ['undress', 'strip']):
-                    formatted.append("you undress me")
-                elif any(word in activity for word in ['tie', 'bind']):
+            activity = activity.lower().strip()
+            
+            # Convert all activities to "you [action] me" format
+            if 'me' in activity:
+                # Activity already has "me" - convert to "you [action] me"
+                if activity.startswith('tie me'):
+                    formatted.append("you tie me up")
+                elif activity.startswith('gag me'):
+                    formatted.append("you gag me")
+                elif activity.startswith('blindfold me'):
+                    formatted.append("you blindfold me")
+                elif activity.startswith('undress me'):
+                    formatted.append("you undress me slowly")
+                elif activity.startswith('tease me'):
+                    formatted.append("you tease me")
+                elif activity.startswith('force me'):
+                    formatted.append("you force me to have sex")
+                elif 'command' in activity or 'instruct' in activity:
+                    formatted.append("you give me commands")
+                else:
+                    # Generic: ensure it starts with "you"
+                    if not activity.startswith('you'):
+                        formatted.append(f"you {activity}")
+                    else:
+                        formatted.append(activity)
+            else:
+                # Activity doesn't have "me" - add proper subject/object
+                if any(word in activity for word in ['tie', 'bind']):
                     formatted.append("you tie me up")
                 elif any(word in activity for word in ['gag']):
                     formatted.append("you gag me")
                 elif any(word in activity for word in ['blindfold']):
                     formatted.append("you blindfold me")
+                elif any(word in activity for word in ['undress', 'strip']):
+                    formatted.append("you undress me slowly")
                 elif any(word in activity for word in ['tease']):
                     formatted.append("you tease me")
-                elif any(word in activity for word in ['control', 'command']):
+                elif any(word in activity for word in ['force', 'rape']):
+                    formatted.append("you force me to have sex")
+                elif any(word in activity for word in ['command', 'instruct', 'order']):
+                    formatted.append("you give me commands")
+                elif any(word in activity for word in ['control', 'dominate']):
                     formatted.append("you control me")
                 else:
-                    formatted.append(f"you {activity}")
-            else:
-                formatted.append(activity)
+                    # Generic activity - make it "you [action] me"
+                    formatted.append(f"you {activity} me")
         
+        # Join with proper grammar
         if len(formatted) == 1:
             return formatted[0]
         elif len(formatted) == 2:
@@ -494,18 +531,141 @@ class FlexibleTallyExtractor:
             return f"{', '.join(formatted[:-1])}, and {formatted[-1]}"
     
     def format_activities_user_dominant(self, activities: List[str]) -> str:
-        """Format activities for user-dominant scenarios"""
+        """
+        Format activities for user-dominant scenarios
+        User is in control, so: "I [action] you"
+        """
         formatted = []
         for activity in activities:
-            # Convert "me" to "you" for user dominance
-            activity = activity.replace(' me', ' you').replace(' my', ' your')
-            formatted.append(activity.lower())
+            activity = activity.lower().strip()
+            
+            # Convert all activities to "I [action] you" format
+            if 'me' in activity:
+                # Convert "me" activities to "I [action] you"
+                if 'tie me' in activity:
+                    formatted.append("I tie you up")
+                elif 'gag me' in activity:
+                    formatted.append("I gag you")
+                elif 'blindfold me' in activity:
+                    formatted.append("I blindfold you")
+                elif 'undress me' in activity:
+                    formatted.append("I undress you slowly")
+                elif 'tease me' in activity:
+                    formatted.append("I tease you")
+                elif 'force me' in activity:
+                    formatted.append("I force you to have sex")
+                elif 'command' in activity or 'instruct' in activity:
+                    formatted.append("I give you commands")
+                else:
+                    # Generic: convert "X me" to "I X you"
+                    converted = activity.replace(' me', ' you').replace(' my', ' your')
+                    if not converted.startswith('i '):
+                        formatted.append(f"I {converted}")
+                    else:
+                        formatted.append(converted)
+            elif 'them' in activity or 'they' in activity:
+                # Convert "them/they" to "you" for direct roleplay
+                converted = activity.replace('them', 'you').replace('they', 'you')
+                if not converted.startswith('i '):
+                    formatted.append(f"I {converted}")
+                else:
+                    formatted.append(converted)
+            else:
+                # Activity without clear object - add proper subject/object
+                if any(word in activity for word in ['tie', 'bind']):
+                    formatted.append("I tie you up")
+                elif any(word in activity for word in ['gag']):
+                    formatted.append("I gag you")
+                elif any(word in activity for word in ['blindfold']):
+                    formatted.append("I blindfold you")
+                elif any(word in activity for word in ['undress', 'strip']):
+                    formatted.append("I undress you slowly")
+                elif any(word in activity for word in ['tease']):
+                    formatted.append("I tease you")
+                elif any(word in activity for word in ['force', 'rape']):
+                    formatted.append("I force you to have sex")
+                elif any(word in activity for word in ['command', 'instruct', 'order']):
+                    formatted.append("I give you commands")
+                elif any(word in activity for word in ['control', 'dominate']):
+                    formatted.append("I control you")
+                else:
+                    # Generic activity - make it "I [action] you"
+                    formatted.append(f"I {activity} you")
         
-        return ' and '.join(formatted)
+        # Join with proper grammar
+        if len(formatted) == 1:
+            return formatted[0]
+        elif len(formatted) == 2:
+            return f"{formatted[0]} and {formatted[1]}"
+        else:
+            return f"{', '.join(formatted[:-1])}, and {formatted[-1]}"
     
     def format_activities_equal(self, activities: List[str]) -> str:
-        """Format activities for equal scenarios"""
-        return ' and '.join(activity.lower() for activity in activities)
+        """
+        Format activities for equal control scenarios
+        Both participate equally, so: "we [action]" or neutral phrasing
+        """
+        formatted = []
+        for activity in activities:
+            activity = activity.lower().strip()
+            
+            # Convert activities to mutual/equal format
+            if 'me' in activity:
+                # Convert "X me" to mutual activity
+                if 'tie me' in activity:
+                    formatted.append("bondage play")
+                elif 'gag me' in activity:
+                    formatted.append("gag play")
+                elif 'blindfold me' in activity:
+                    formatted.append("blindfold play")
+                elif 'undress me' in activity:
+                    formatted.append("undressing each other")
+                elif 'tease me' in activity:
+                    formatted.append("teasing each other")
+                elif 'force me' in activity:
+                    formatted.append("intense passion")
+                elif 'command' in activity or 'instruct' in activity:
+                    formatted.append("power exchange")
+                else:
+                    # Generic: make it mutual
+                    base_activity = activity.replace(' me', '').replace(' my', '')
+                    formatted.append(f"{base_activity} together")
+            elif 'them' in activity or 'they' in activity:
+                # Convert to mutual
+                base_activity = activity.replace('them', '').replace('they', '').strip()
+                formatted.append(f"{base_activity} together")
+            else:
+                # Activity without clear subject/object - make it mutual
+                if any(word in activity for word in ['tie', 'bind']):
+                    formatted.append("bondage play")
+                elif any(word in activity for word in ['gag']):
+                    formatted.append("gag play")
+                elif any(word in activity for word in ['blindfold']):
+                    formatted.append("blindfold play")
+                elif any(word in activity for word in ['undress', 'strip']):
+                    formatted.append("undressing each other")
+                elif any(word in activity for word in ['tease']):
+                    formatted.append("teasing each other")
+                elif any(word in activity for word in ['force', 'rape']):
+                    formatted.append("intense passion")
+                elif any(word in activity for word in ['command', 'instruct', 'order']):
+                    formatted.append("power exchange")
+                elif any(word in activity for word in ['control', 'dominate']):
+                    formatted.append("power play")
+                else:
+                    # Generic activity - keep as is or make mutual
+                    if len(activity.split()) == 1:
+                        formatted.append(f"{activity} together")
+                    else:
+                        formatted.append(activity)
+        
+        # Join with proper grammar
+        if len(formatted) == 1:
+            return formatted[0]
+        elif len(formatted) == 2:
+            return f"{formatted[0]} and {formatted[1]}"
+        else:
+            return f"{', '.join(formatted[:-1])}, and {formatted[-1]}"
 
 
 def generate_flexible_scenario(form_data: Dict) -> str:
