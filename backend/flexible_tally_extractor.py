@@ -522,13 +522,8 @@ class FlexibleTallyExtractor:
                     # Generic activity - make it "you [action] me"
                     formatted.append(f"you {activity} me")
         
-        # Join with proper grammar
-        if len(formatted) == 1:
-            return formatted[0]
-        elif len(formatted) == 2:
-            return f"{formatted[0]} and {formatted[1]}"
-        else:
-            return f"{', '.join(formatted[:-1])}, and {formatted[-1]}"
+        # Create natural narrative flow
+        return self.create_natural_flow(formatted, "partner_dominant")
     
     def format_activities_user_dominant(self, activities: List[str]) -> str:
         """
@@ -543,62 +538,58 @@ class FlexibleTallyExtractor:
             if 'me' in activity:
                 # Convert "me" activities to "I [action] you"
                 if 'tie me' in activity:
-                    formatted.append("I tie you up")
+                    formatted.append("tie you up")
                 elif 'gag me' in activity:
-                    formatted.append("I gag you")
+                    formatted.append("gag you")
                 elif 'blindfold me' in activity:
-                    formatted.append("I blindfold you")
+                    formatted.append("blindfold you")
                 elif 'undress me' in activity:
-                    formatted.append("I undress you slowly")
+                    formatted.append("undress you slowly")
                 elif 'tease me' in activity:
-                    formatted.append("I tease you")
+                    formatted.append("tease you")
                 elif 'force me' in activity:
-                    formatted.append("I force you to have sex")
+                    formatted.append("force you to have sex")
+                elif 'go down' in activity or 'oral' in activity:
+                    formatted.append("go down on you")
                 elif 'command' in activity or 'instruct' in activity:
-                    formatted.append("I give you commands")
+                    formatted.append("give you commands")
                 else:
-                    # Generic: convert "X me" to "I X you"
+                    # Generic: convert "X me" to "X you"
                     converted = activity.replace(' me', ' you').replace(' my', ' your')
-                    if not converted.startswith('i '):
-                        formatted.append(f"I {converted}")
-                    else:
-                        formatted.append(converted)
+                    formatted.append(converted)
             elif 'them' in activity or 'they' in activity:
                 # Convert "them/they" to "you" for direct roleplay
                 converted = activity.replace('them', 'you').replace('they', 'you')
-                if not converted.startswith('i '):
-                    formatted.append(f"I {converted}")
+                if converted.startswith('go down'):
+                    formatted.append("go down on you")
                 else:
                     formatted.append(converted)
             else:
                 # Activity without clear object - add proper subject/object
                 if any(word in activity for word in ['tie', 'bind']):
-                    formatted.append("I tie you up")
+                    formatted.append("tie you up")
                 elif any(word in activity for word in ['gag']):
-                    formatted.append("I gag you")
+                    formatted.append("gag you")
                 elif any(word in activity for word in ['blindfold']):
-                    formatted.append("I blindfold you")
+                    formatted.append("blindfold you")
                 elif any(word in activity for word in ['undress', 'strip']):
-                    formatted.append("I undress you slowly")
+                    formatted.append("undress you slowly")
                 elif any(word in activity for word in ['tease']):
-                    formatted.append("I tease you")
+                    formatted.append("tease you")
                 elif any(word in activity for word in ['force', 'rape']):
-                    formatted.append("I force you to have sex")
+                    formatted.append("force you to have sex")
+                elif any(word in activity for word in ['go down', 'oral']):
+                    formatted.append("go down on you")
                 elif any(word in activity for word in ['command', 'instruct', 'order']):
-                    formatted.append("I give you commands")
+                    formatted.append("give you commands")
                 elif any(word in activity for word in ['control', 'dominate']):
-                    formatted.append("I control you")
+                    formatted.append("control you")
                 else:
-                    # Generic activity - make it "I [action] you"
-                    formatted.append(f"I {activity} you")
+                    # Generic activity - make it "[action] you"
+                    formatted.append(f"{activity} you")
         
-        # Join with proper grammar
-        if len(formatted) == 1:
-            return formatted[0]
-        elif len(formatted) == 2:
-            return f"{formatted[0]} and {formatted[1]}"
-        else:
-            return f"{', '.join(formatted[:-1])}, and {formatted[-1]}"
+        # Create natural narrative flow
+        return self.create_natural_flow(formatted, "user_dominant")
     
     def format_activities_equal(self, activities: List[str]) -> str:
         """
@@ -659,13 +650,104 @@ class FlexibleTallyExtractor:
                     else:
                         formatted.append(activity)
         
-        # Join with proper grammar
-        if len(formatted) == 1:
-            return formatted[0]
-        elif len(formatted) == 2:
-            return f"{formatted[0]} and {formatted[1]}"
+        # Create natural narrative flow
+        return self.create_natural_flow(formatted, "equal")
+    
+    def create_natural_flow(self, activities: List[str], control_type: str) -> str:
+        """
+        Create natural narrative flow instead of robotic lists
+        """
+        if not activities:
+            return ""
+        
+        if len(activities) == 1:
+            if control_type == "user_dominant":
+                return f"I {activities[0]}"
+            else:
+                return activities[0]
+        
+        elif len(activities) == 2:
+            if control_type == "user_dominant":
+                return f"I {activities[0]} and {activities[1]}"
+            elif control_type == "partner_dominant":
+                return f"{activities[0]} and {activities[1]}"
+            else:
+                return f"{activities[0]} and {activities[1]}"
+        
+        else:  # 3+ activities - create natural sequence
+            if control_type == "user_dominant":
+                # Create flowing narrative for user dominance
+                first = activities[0]
+                middle = activities[1:-1]
+                last = activities[-1]
+                
+                if len(middle) == 0:
+                    return f"I start by {self.add_ing(first)}, then {last}"
+                elif len(middle) == 1:
+                    return f"I start by {self.add_ing(first)}, then {middle[0]} before {self.add_ing(last)}"
+                else:
+                    middle_text = ", ".join(middle)
+                    return f"I start by {self.add_ing(first)}, then {middle_text} before {self.add_ing(last)}"
+            
+            elif control_type == "partner_dominant":
+                # Create flowing narrative for partner dominance
+                first = activities[0]
+                middle = activities[1:-1]
+                last = activities[-1]
+                
+                if len(middle) == 0:
+                    return f"{first}, then {last}"
+                elif len(middle) == 1:
+                    return f"{first}, then {middle[0]} before {last}"
+                else:
+                    middle_text = ", ".join(middle)
+                    return f"{first}, then {middle_text} before {last}"
+            
+            else:  # equal control
+                # Simple joining for mutual activities
+                return f"{', '.join(activities[:-1])}, and {activities[-1]}"
+    
+    def add_ing(self, verb_phrase: str) -> str:
+        """
+        Convert verb phrase to -ing form for natural flow
+        """
+        verb_phrase = verb_phrase.strip()
+        
+        # Handle common patterns
+        if verb_phrase.startswith('go down on'):
+            return 'going down on you'
+        elif verb_phrase.startswith('tie you'):
+            return 'tying you up'
+        elif verb_phrase.startswith('gag you'):
+            return 'gagging you'
+        elif verb_phrase.startswith('undress you'):
+            return 'undressing you'
+        elif verb_phrase.startswith('tease you'):
+            return 'teasing you'
+        elif verb_phrase.startswith('blindfold you'):
+            return 'blindfolding you'
+        elif verb_phrase.startswith('force you'):
+            return 'forcing you to have sex'
+        elif verb_phrase.startswith('give you'):
+            return 'giving you commands'
+        elif verb_phrase.endswith(' you'):
+            # Generic: "action you" -> "actioning you"
+            base = verb_phrase[:-4]  # Remove " you"
+            if base.endswith('e'):
+                return f"{base[:-1]}ing you"
+            else:
+                return f"{base}ing you"
         else:
-            return f"{', '.join(formatted[:-1])}, and {formatted[-1]}"
+            # Fallback: just add -ing to the first word
+            words = verb_phrase.split()
+            if words:
+                first_word = words[0]
+                if first_word.endswith('e'):
+                    first_word = first_word[:-1] + 'ing'
+                else:
+                    first_word = first_word + 'ing'
+                return ' '.join([first_word] + words[1:])
+            return verb_phrase
 
 
 def generate_flexible_scenario(form_data: Dict) -> str:
