@@ -159,10 +159,11 @@ async def tally_webhook(webhook_data: dict, db: Session = Depends(get_db)):
         # Generate scenario from Tally data
         try:
             scenario = generate_story_from_json(webhook_data)
-            logger.info(f"Generated scenario for user {user.user_code}")
+            logger.info(f"Generated scenario for user {user.user_code}: {scenario[:100]}...")
         except Exception as e:
             logger.error(f"Failed to generate scenario: {str(e)}")
-            scenario = "Default scenario: You are in a conversation."
+            # Try to extract any available data instead of using default
+            scenario = generate_story_from_json(webhook_data) if webhook_data else ""
         
         # Get active system prompt and combine with user scenario
         try:

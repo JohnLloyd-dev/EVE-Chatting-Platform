@@ -165,33 +165,50 @@ class FantasyStoryGenerator:
     def create_story(self):
         """Generate a narrative story that flows naturally like the example provided"""
         
-        # Check if we have the basic required elements
-        if not (self.story_elements.get("my_gender") and self.story_elements.get("partner_gender")):
-            return "Welcome! I'm here to help you with any questions or conversations you'd like to have."
+        # Try to generate scenario with whatever data we have
+        # Only return fallback if we have absolutely no usable data
+        if not any(self.story_elements.values()):
+            return ""  # Return empty string instead of default message
         
-        # Character setup
-        my_role = "man" if self.story_elements["my_gender"] == "Man" else "woman"
-        partner_role = "man" if self.story_elements["partner_gender"] == "Man" else "woman"
-        partner_name = self.generate_name(self.story_elements["partner_gender"])
+        # Character setup - handle missing data gracefully
+        my_role = "man" if self.story_elements.get("my_gender") == "Man" else "woman"
+        partner_role = "man" if self.story_elements.get("partner_gender") == "Man" else "woman"
         
-        # Age and ethnicity
+        # Generate name based on available gender info
+        partner_gender = self.story_elements.get("partner_gender", "Man")  # Default to Man if missing
+        partner_name = self.generate_name(partner_gender)
+        
+        # Age and ethnicity with defaults
         age = self.story_elements.get("partner_age", "25")
-        ethnicity = self.story_elements.get("partner_ethnicity", "attractive")
+        ethnicity = self.story_elements.get("partner_ethnicity", "")
         
-        # Start the narrative
-        story = f"Your name is {partner_name}. You are a {age} year old {ethnicity.lower()} {partner_role}."
+        # Start the narrative - build character description
+        story_parts = [f"Your name is {partner_name}."]
         
-        # Location context - map to more narrative descriptions
-        location_map = {
-            "In a public place": "in a public place",
-            "In nature": "in a forest",
-            "At home": "at home", 
-            "In a dungeon": "in a dungeon"
-        }
-        location = location_map.get(self.story_elements.get("location", ""), "in a secluded place")
+        if ethnicity:
+            story_parts.append(f"You are a {age} year old {ethnicity.lower()} {partner_role}.")
+        else:
+            story_parts.append(f"You are a {age} year old {partner_role}.")
         
-        # Meeting context
-        story += f" I am a {my_role} who you just met {location}."
+        story = " ".join(story_parts)
+        
+        # Location context - only add if we have location data
+        location_text = ""
+        if self.story_elements.get("location"):
+            location_map = {
+                "In a public place": "in a public place",
+                "In nature": "in a forest",
+                "At home": "at home", 
+                "In a dungeon": "in a dungeon"
+            }
+            location = location_map.get(self.story_elements["location"], self.story_elements["location"])
+            location_text = f" {location}"
+        
+        # Meeting context - build based on available data
+        if location_text:
+            story += f" I am a {my_role} who you just met{location_text}."
+        else:
+            story += f" I am a {my_role}."
         
         # Create narrative flow based on dominance and actions
         if self.story_elements.get("dominance") == "You will be in control of me":
@@ -251,6 +268,8 @@ class FantasyStoryGenerator:
                 resistance_actions = ["tie me up", "gag me", "force me", "blindfold me"]
                 if any(resist in ' '.join(action_phrases) for resist in resistance_actions):
                     story += " You don't let me go when I ask you to."
+            else:
+                story += " we begin our encounter."
         
         elif self.story_elements.get("dominance") == "I will be in control of you":
             story += " I take control and"
@@ -267,6 +286,8 @@ class FantasyStoryGenerator:
             
             if action_phrases:
                 story += f" {' and '.join(action_phrases)}."
+            else:
+                story += " we begin our encounter."
         
         else:  # equals or other dominance
             story += " We explore together"
@@ -368,7 +389,7 @@ def generate_story_from_json(form_data):
         str: Generated story scenario with complete field data
     """
     if not form_data:
-        return "Welcome! I'm here to help you with any questions or conversations you'd like to have."
+        return ""  # Return empty string instead of default message
     
     # Handle Tally webhook format (full webhook with 'data' key)
     if isinstance(form_data, dict) and 'data' in form_data:
@@ -403,4 +424,4 @@ def generate_story_from_json(form_data):
     
     else:
         # Handle simple key-value form data or fallback
-        return "Welcome! I'm here to help you with any questions or conversations you'd like to have. What would you like to talk about?"
+        return ""  # Return empty string instead of default message
