@@ -178,14 +178,14 @@ class FantasyStoryGenerator:
         partner_gender = self.story_elements.get("partner_gender", "Man")  # Default to Man if missing
         partner_name = self.generate_name(partner_gender)
         
-        # Age and ethnicity with defaults
+        # Age and ethnicity with defaults and null checks
         age = self.story_elements.get("partner_age", "25")
-        ethnicity = self.story_elements.get("partner_ethnicity", "")
+        ethnicity = self.story_elements.get("partner_ethnicity")
         
         # Start the narrative - build character description
         story_parts = [f"Your name is {partner_name}."]
         
-        if ethnicity:
+        if ethnicity and ethnicity.strip():
             story_parts.append(f"You are a {age} year old {ethnicity.lower()} {partner_role}.")
         else:
             story_parts.append(f"You are a {age} year old {partner_role}.")
@@ -219,40 +219,40 @@ class FantasyStoryGenerator:
             
             if self.story_elements.get("primary_action"):
                 action = self.story_elements["primary_action"]
-                if "Undress me slowly" in action:
+                if action and "Undress me slowly" in action:
                     action_phrases.append("you slowly undress me")
-                elif "Instruct me" in action:
+                elif action and "Instruct me" in action:
                     action_phrases.append("you give me commands")
-                elif "Gag me" in action:
+                elif action and "Gag me" in action:
                     action_phrases.append("you gag me")
-                elif "Look me in the eyes" in action:
+                elif action and "Look me in the eyes" in action:
                     action_phrases.append("you stare into my eyes")
-                elif "Blindfold me" in action:
+                elif action and "Blindfold me" in action:
                     action_phrases.append("you blindfold me")
-                elif "Caress me gently" in action:
+                elif action and "Caress me gently" in action:
                     action_phrases.append("you caress me gently")
-                elif "Go down on me" in action:
+                elif action and "Go down on me" in action:
                     action_phrases.append("you go down on me")
-                else:
+                elif action:
                     action_phrases.append(f"you {action.lower()}")
             
             if self.story_elements.get("secondary_action"):
                 action = self.story_elements["secondary_action"]
-                if "Bring me close to orgasm then stop" in action:
+                if action and "Bring me close to orgasm then stop" in action:
                     action_phrases.append("bring me close to orgasm then stop")
-                elif "Tie me up" in action:
+                elif action and "Tie me up" in action:
                     action_phrases.append("tie me up")
-                elif "Seduce me" in action:
+                elif action and "Seduce me" in action:
                     action_phrases.append("seduce me")
-                elif "Take me against my will" in action:
+                elif action and "Take me against my will" in action:
                     action_phrases.append("force me to have sex with you")
-                elif "Indulge my every whim" in action:
+                elif action and "Indulge my every whim" in action:
                     action_phrases.append("indulge my every whim")
-                elif "Punish me" in action:
+                elif action and "Punish me" in action:
                     action_phrases.append("punish me")
-                elif "Tease me" in action:
+                elif action and "Tease me" in action:
                     action_phrases.append("tease me")
-                else:
+                elif action:
                     action_phrases.append(f"{action.lower()}")
             
             # Combine actions into flowing narrative
@@ -277,12 +277,16 @@ class FantasyStoryGenerator:
             action_phrases = []
             
             if self.story_elements.get("primary_action"):
-                action = self.story_elements["primary_action"].replace("me", "you").replace("my", "your")
-                action_phrases.append(action.lower())
+                action = self.story_elements["primary_action"]
+                if action:
+                    action = action.replace("me", "you").replace("my", "your")
+                    action_phrases.append(action.lower())
             
             if self.story_elements.get("secondary_action"):
-                action = self.story_elements["secondary_action"].replace("me", "you").replace("my", "your")
-                action_phrases.append(action.lower())
+                action = self.story_elements["secondary_action"]
+                if action:
+                    action = action.replace("me", "you").replace("my", "your")
+                    action_phrases.append(action.lower())
             
             if action_phrases:
                 story += f" {' and '.join(action_phrases)}."
@@ -294,10 +298,14 @@ class FantasyStoryGenerator:
             action_phrases = []
             
             if self.story_elements.get("primary_action"):
-                action_phrases.append(self.story_elements["primary_action"].lower())
+                action = self.story_elements["primary_action"]
+                if action:
+                    action_phrases.append(action.lower())
             
             if self.story_elements.get("secondary_action"):
-                action_phrases.append(self.story_elements["secondary_action"].lower())
+                action = self.story_elements["secondary_action"]
+                if action:
+                    action_phrases.append(action.lower())
             
             if action_phrases:
                 story += f" through {' and '.join(action_phrases)}."
