@@ -51,7 +51,10 @@ class FlexibleTallyExtractor:
                     for option in field.get('options', []):
                         if option.get('id') in selected_values:
                             selected_texts.append(option.get('text', ''))
+                    
+                    # Store both joined and individual values for flexibility
                     field_info['processed_value'] = ', '.join(selected_texts) if selected_texts else None
+                    field_info['selected_options'] = selected_texts  # Store individual options
             else:
                 # For other field types, use the value directly
                 value = field.get('value')
@@ -92,11 +95,23 @@ class FlexibleTallyExtractor:
             
             # Ethnicity/race detection
             elif self.is_ethnicity_question(label):
-                elements['ethnicity'] = self.normalize_ethnicity(value)
+                # Handle multiple ethnicities - use the first one for character description
+                if field_info.get('selected_options'):
+                    elements['ethnicity'] = self.normalize_ethnicity(field_info['selected_options'][0])
+                    if len(field_info['selected_options']) > 1:
+                        elements['ethnicity_options'] = [self.normalize_ethnicity(opt) for opt in field_info['selected_options']]
+                else:
+                    elements['ethnicity'] = self.normalize_ethnicity(value)
             
             # Location detection
             elif self.is_location_question(label):
-                elements['location'] = self.normalize_location(value)
+                # Handle multiple locations - use the first one for meeting context
+                if field_info.get('selected_options'):
+                    elements['location'] = self.normalize_location(field_info['selected_options'][0])
+                    if len(field_info['selected_options']) > 1:
+                        elements['location_options'] = [self.normalize_location(opt) for opt in field_info['selected_options']]
+                else:
+                    elements['location'] = self.normalize_location(value)
             
             # Role/profession detection
             elif self.is_role_question(label):
@@ -113,7 +128,19 @@ class FlexibleTallyExtractor:
             elif self.is_activity_question(label):
                 if 'activities' not in elements:
                     elements['activities'] = []
-                elements['activities'].append(value)
+                
+                # Handle multiple activities properly
+                if field_info.get('selected_options'):
+                    # Add each selected activity as a separate item
+                    elements['activities'].extend(field_info['selected_options'])
+                else:
+                    # Single activity or comma-separated string
+                    if ',' in value:
+                        # Split comma-separated activities
+                        activities = [act.strip() for act in value.split(',')]
+                        elements['activities'].extend(activities)
+                    else:
+                        elements['activities'].append(value)
             
             # Scenario/setting detection
             elif self.is_scenario_question(label):
@@ -385,9 +412,15 @@ class FlexibleTallyExtractor:
         
         # Add meeting context
         location = self.story_elements.get('location', 'somewhere')
+        location_options = self.story_elements.get('location_options', [])
         user_desc = user_role if user_role else user_gender
+        
         if location != 'somewhere':
-            story_parts.append(f"I am a {user_desc} who you just met {location}.")
+            if location_options and len(location_options) > 1:
+                # Multiple locations - mention the primary one but hint at variety
+                story_parts.append(f"I am a {user_desc} who you just met {location}.")
+            else:
+                story_parts.append(f"I am a {user_desc} who you just met {location}.")
         else:
             story_parts.append(f"I am a {user_desc}.")
         
