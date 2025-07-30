@@ -315,20 +315,31 @@ class AITallyExtractor:
                 
                 # Determine who performs the activities based on control dynamic
                 user_controls = False
+                equal_control = False
+                
                 if control:
                     control_lower = control.lower()
                     if any(phrase in control_lower for phrase in [
                         "i will be in control", "i am in control of you", "i am in control"
                     ]):
                         user_controls = True
+                    elif any(phrase in control_lower for phrase in [
+                        "we share control", "equal control", "we both", "shared control", 
+                        "we switch control", "mutual control"
+                    ]):
+                        equal_control = True
                 
                 # Convert activities based on control dynamic
                 if user_controls:
                     # User controls AI, so AI performs activities on User
                     continuous_activities = self.convert_to_present_continuous_reverse(activity_text)
                     scenario_parts.append(f"You are {continuous_activities}.")
+                elif equal_control:
+                    # Equal control, so both participate together
+                    continuous_activities = self.convert_to_present_continuous_mutual(activity_text)
+                    scenario_parts.append(f"We are {continuous_activities}.")
                 else:
-                    # AI controls User (or equal), so User performs activities on AI
+                    # AI controls User, so User performs activities on AI
                     continuous_activities = self.convert_to_present_continuous(activity_text)
                     scenario_parts.append(f"I am {continuous_activities}.")
         
@@ -494,6 +505,91 @@ class AITallyExtractor:
                         else:
                             words[0] = first_word + 'ing'
                         converted = ' '.join(words) + ' me'
+                    else:
+                        converted = activity
+            
+            converted_activities.append(converted)
+        
+        return ', '.join(converted_activities)
+    
+    def convert_to_present_continuous_mutual(self, activity_text: str) -> str:
+        """
+        Convert activity text to present continuous tense for mutual/shared activities
+        When control is equal, both participate together
+        """
+        # Mutual conversions - both doing together
+        mutual_conversions = {
+            'undress me slowly': 'undressing each other slowly',
+            'bring me close to orgasm then stop': 'bringing each other close to orgasm then stopping',
+            'kiss me passionately': 'kissing passionately',
+            'kiss me deeply': 'kissing deeply',
+            'touch me gently': 'touching each other gently',
+            'hold me close': 'holding each other close',
+            'whisper in my ear': 'whispering to each other',
+            'whisper to me': 'whispering to each other',
+            'massage me': 'massaging each other',
+            'tease me': 'teasing each other',
+            'caress me': 'caressing each other',
+            'embrace me': 'embracing each other',
+            'pleasure me': 'pleasuring each other',
+            'seduce me': 'seducing each other',
+            'dominate me': 'taking turns dominating',
+            'control me': 'sharing control',
+            'guide me': 'guiding each other',
+            'lead me': 'taking turns leading',
+            'passionate kissing': 'kissing passionately',
+            'intimate cuddling': 'cuddling intimately',
+            'sensual massage': 'giving each other sensual massages',
+            'gentle touching': 'touching each other gently',
+            'exploring each other': 'exploring each other',
+            'playful teasing': 'teasing each other playfully'
+        }
+        
+        # Split by comma and convert each activity
+        activities = [act.strip() for act in activity_text.split(',')]
+        converted_activities = []
+        
+        for activity in activities:
+            activity_lower = activity.lower()
+            
+            # Check for direct conversions first
+            converted = None
+            for original, continuous in mutual_conversions.items():
+                if original in activity_lower:
+                    converted = continuous
+                    break
+            
+            if not converted:
+                # General conversion rules for mutual activities
+                if activity_lower.endswith(' me'):
+                    # "touch me" -> "touching each other"
+                    base_verb = activity_lower[:-3].strip()
+                    if base_verb.endswith('e'):
+                        converted = f"{base_verb[:-1]}ing each other"
+                    else:
+                        converted = f"{base_verb}ing each other"
+                elif 'me' in activity_lower:
+                    # Replace "me" with "each other" and add -ing
+                    converted = activity_lower.replace(' me ', ' each other ').replace(' me,', ' each other,').replace(' me.', ' each other.')
+                    # Try to convert first word to -ing form
+                    words = converted.split()
+                    if words:
+                        first_word = words[0]
+                        if first_word.endswith('e'):
+                            words[0] = first_word[:-1] + 'ing'
+                        else:
+                            words[0] = first_word + 'ing'
+                        converted = ' '.join(words)
+                else:
+                    # Default: try to add -ing to first word
+                    words = activity.split()
+                    if words:
+                        first_word = words[0].lower()
+                        if first_word.endswith('e'):
+                            words[0] = first_word[:-1] + 'ing'
+                        else:
+                            words[0] = first_word + 'ing'
+                        converted = ' '.join(words)
                     else:
                         converted = activity
             
