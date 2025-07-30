@@ -312,9 +312,25 @@ class AITallyExtractor:
             if all_activities:
                 # Limit to most important activities and join naturally
                 activity_text = ", ".join(all_activities[:3])  # Take up to 3 activities
-                # Convert to present continuous tense
-                continuous_activities = self.convert_to_present_continuous(activity_text)
-                scenario_parts.append(f"I am {continuous_activities}.")
+                
+                # Determine who performs the activities based on control dynamic
+                user_controls = False
+                if control:
+                    control_lower = control.lower()
+                    if any(phrase in control_lower for phrase in [
+                        "i will be in control", "i am in control of you", "i am in control"
+                    ]):
+                        user_controls = True
+                
+                # Convert activities based on control dynamic
+                if user_controls:
+                    # User controls AI, so AI performs activities on User
+                    continuous_activities = self.convert_to_present_continuous_reverse(activity_text)
+                    scenario_parts.append(f"You are {continuous_activities}.")
+                else:
+                    # AI controls User (or equal), so User performs activities on AI
+                    continuous_activities = self.convert_to_present_continuous(activity_text)
+                    scenario_parts.append(f"I am {continuous_activities}.")
         
         return " ".join(scenario_parts)
     
@@ -395,6 +411,89 @@ class AITallyExtractor:
                         else:
                             words[0] = first_word + 'ing'
                         converted = ' '.join(words)
+                    else:
+                        converted = activity
+            
+            converted_activities.append(converted)
+        
+        return ', '.join(converted_activities)
+    
+    def convert_to_present_continuous_reverse(self, activity_text: str) -> str:
+        """
+        Convert activity text to present continuous tense from AI's perspective
+        When User controls AI, AI performs activities on User
+        """
+        # Reverse conversions - AI doing to User
+        reverse_conversions = {
+            'undress me slowly': 'undressing me slowly',
+            'bring me close to orgasm then stop': 'bringing me close to orgasm then stopping',
+            'kiss me passionately': 'kissing me passionately',
+            'kiss me deeply': 'kissing me deeply',
+            'touch me gently': 'touching me gently',
+            'hold me close': 'holding me close',
+            'whisper in my ear': 'whispering in my ear',
+            'whisper to me': 'whispering to me',
+            'massage me': 'massaging me',
+            'tease me': 'teasing me',
+            'caress me': 'caressing me',
+            'embrace me': 'embracing me',
+            'pleasure me': 'pleasuring me',
+            'seduce me': 'seducing me',
+            'dominate me': 'dominating me',
+            'control me': 'controlling me',
+            'guide me': 'guiding me',
+            'lead me': 'leading me',
+            'passionate kissing': 'kissing me passionately',
+            'intimate cuddling': 'cuddling me intimately',
+            'sensual massage': 'giving me a sensual massage',
+            'gentle touching': 'touching me gently',
+            'exploring each other': 'exploring me',
+            'playful teasing': 'teasing me playfully'
+        }
+        
+        # Split by comma and convert each activity
+        activities = [act.strip() for act in activity_text.split(',')]
+        converted_activities = []
+        
+        for activity in activities:
+            activity_lower = activity.lower()
+            
+            # Check for direct conversions first
+            converted = None
+            for original, continuous in reverse_conversions.items():
+                if original in activity_lower:
+                    converted = continuous
+                    break
+            
+            if not converted:
+                # General conversion rules for reverse (AI doing to User)
+                if activity_lower.endswith(' me'):
+                    # "touch me" -> "touching me" (AI touching User)
+                    base_verb = activity_lower[:-3].strip()
+                    if base_verb.endswith('e'):
+                        converted = f"{base_verb[:-1]}ing me"
+                    else:
+                        converted = f"{base_verb}ing me"
+                elif 'me' in activity_lower:
+                    # Keep "me" as is since AI is doing to User
+                    words = activity_lower.split()
+                    if words:
+                        first_word = words[0]
+                        if first_word.endswith('e'):
+                            words[0] = first_word[:-1] + 'ing'
+                        else:
+                            words[0] = first_word + 'ing'
+                        converted = ' '.join(words)
+                else:
+                    # Default: try to add -ing to first word and add "me"
+                    words = activity.split()
+                    if words:
+                        first_word = words[0].lower()
+                        if first_word.endswith('e'):
+                            words[0] = first_word[:-1] + 'ing'
+                        else:
+                            words[0] = first_word + 'ing'
+                        converted = ' '.join(words) + ' me'
                     else:
                         converted = activity
             
