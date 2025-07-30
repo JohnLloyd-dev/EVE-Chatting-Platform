@@ -288,9 +288,14 @@ class AITallyExtractor:
         
         # Control dynamics
         if control:
-            if "you will be in control" in control.lower():
+            control_lower = control.lower()
+            if any(phrase in control_lower for phrase in [
+                "you will be in control", "you are in control of me", "they are in control"
+            ]):
                 scenario_parts.append("You are in control of me.")
-            elif "i will be in control" in control.lower():
+            elif any(phrase in control_lower for phrase in [
+                "i will be in control", "i am in control of you", "i am in control"
+            ]):
                 scenario_parts.append("I am in control of you.")
         
         # Activities (handle both single and multiple selections)
