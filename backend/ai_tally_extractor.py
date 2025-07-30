@@ -307,9 +307,95 @@ class AITallyExtractor:
             if all_activities:
                 # Limit to most important activities and join naturally
                 activity_text = ", ".join(all_activities[:3])  # Take up to 3 activities
-                scenario_parts.append(f"I want you to: {activity_text.lower()}.")
+                # Convert to present continuous tense
+                continuous_activities = self.convert_to_present_continuous(activity_text)
+                scenario_parts.append(f"I am {continuous_activities}.")
         
         return " ".join(scenario_parts)
+    
+    def convert_to_present_continuous(self, activity_text: str) -> str:
+        """
+        Convert activity text to present continuous tense
+        """
+        # Common conversions for sexual/romantic activities
+        conversions = {
+            'undress me slowly': 'undressing you slowly',
+            'bring me close to orgasm then stop': 'bringing you close to orgasm then stopping',
+            'kiss me passionately': 'kissing you passionately',
+            'kiss me deeply': 'kissing you deeply',
+            'touch me gently': 'touching you gently',
+            'hold me close': 'holding you close',
+            'whisper in my ear': 'whispering in your ear',
+            'whisper to me': 'whispering to you',
+            'massage me': 'massaging you',
+            'tease me': 'teasing you',
+            'caress me': 'caressing you',
+            'embrace me': 'embracing you',
+            'pleasure me': 'pleasuring you',
+            'seduce me': 'seducing you',
+            'dominate me': 'dominating you',
+            'control me': 'controlling you',
+            'guide me': 'guiding you',
+            'lead me': 'leading you',
+            'passionate kissing': 'kissing passionately',
+            'intimate cuddling': 'cuddling intimately',
+            'sensual massage': 'giving a sensual massage',
+            'gentle touching': 'touching gently',
+            'exploring each other': 'exploring each other',
+            'playful teasing': 'teasing playfully'
+        }
+        
+        # Split by comma and convert each activity
+        activities = [act.strip() for act in activity_text.split(',')]
+        converted_activities = []
+        
+        for activity in activities:
+            activity_lower = activity.lower()
+            
+            # Check for direct conversions first
+            converted = None
+            for original, continuous in conversions.items():
+                if original in activity_lower:
+                    converted = continuous
+                    break
+            
+            if not converted:
+                # General conversion rules
+                if activity_lower.endswith(' me'):
+                    # "touch me" -> "touching you"
+                    base_verb = activity_lower[:-3].strip()
+                    if base_verb.endswith('e'):
+                        converted = f"{base_verb[:-1]}ing you"
+                    else:
+                        converted = f"{base_verb}ing you"
+                elif 'me' in activity_lower:
+                    # Replace "me" with "you" and try to add -ing
+                    converted = activity_lower.replace(' me ', ' you ').replace(' me,', ' you,').replace(' me.', ' you.')
+                    # Try to convert first word to -ing form
+                    words = converted.split()
+                    if words:
+                        first_word = words[0]
+                        if first_word.endswith('e'):
+                            words[0] = first_word[:-1] + 'ing'
+                        else:
+                            words[0] = first_word + 'ing'
+                        converted = ' '.join(words)
+                else:
+                    # Default: try to add -ing to first word
+                    words = activity.split()
+                    if words:
+                        first_word = words[0].lower()
+                        if first_word.endswith('e'):
+                            words[0] = first_word[:-1] + 'ing'
+                        else:
+                            words[0] = first_word + 'ing'
+                        converted = ' '.join(words)
+                    else:
+                        converted = activity
+            
+            converted_activities.append(converted)
+        
+        return ', '.join(converted_activities)
     
     def extract_key_information(self, questions_and_answers):
         """
