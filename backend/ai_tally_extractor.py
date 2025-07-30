@@ -255,6 +255,8 @@ class AITallyExtractor:
         location = info['location']
         control = info['control']
         activities = info['activities']
+        clothing = info['clothing']
+        companion = info['companion']
         
         # Build the scenario directly
         scenario_parts = []
@@ -285,6 +287,26 @@ class AITallyExtractor:
         
         if location:
             scenario_parts.append(f"We meet {location.lower()}.")
+        
+        # Clothing information
+        if clothing:
+            scenario_parts.append(f"You are wearing {clothing.lower()}.")
+        
+        # Companion information
+        if companion:
+            companion_lower = companion.lower()
+            if "another woman" in companion_lower:
+                scenario_parts.append("Another woman is with us.")
+            elif "another man" in companion_lower:
+                scenario_parts.append("Another man is with us.")
+            elif "group" in companion_lower:
+                scenario_parts.append("We are in a group setting.")
+            elif companion_lower == "yes":
+                # "Yes" to "am I alone?" means they are alone - no additional text needed
+                pass
+            elif "no" in companion_lower:
+                # "No" to "am I alone?" but no specific companion mentioned
+                scenario_parts.append("We are not alone.")
         
         # Control dynamics
         if control:
@@ -329,18 +351,21 @@ class AITallyExtractor:
                     ]):
                         equal_control = True
                 
+                # Fix broken grammar first
+                fixed_activity_text = self.fix_broken_grammar(activity_text)
+                
                 # Convert activities based on control dynamic
                 if user_controls:
-                    # User controls AI, so AI performs activities on User
-                    continuous_activities = self.convert_to_present_continuous_reverse(activity_text)
+                    # User controls AI, so AI performs activities on User (following user's commands)
+                    continuous_activities = self.convert_to_present_continuous_reverse(fixed_activity_text)
                     scenario_parts.append(f"You are {continuous_activities}.")
                 elif equal_control:
                     # Equal control, so both participate together
-                    continuous_activities = self.convert_to_present_continuous_mutual(activity_text)
+                    continuous_activities = self.convert_to_present_continuous_mutual(fixed_activity_text)
                     scenario_parts.append(f"We are {continuous_activities}.")
                 else:
                     # AI controls User, so User performs activities on AI
-                    continuous_activities = self.convert_to_present_continuous(activity_text)
+                    continuous_activities = self.convert_to_present_continuous(fixed_activity_text)
                     scenario_parts.append(f"I am {continuous_activities}.")
         
         return " ".join(scenario_parts)
@@ -429,10 +454,69 @@ class AITallyExtractor:
         
         return ', '.join(converted_activities)
     
+    def fix_broken_grammar(self, activity_text: str) -> str:
+        """
+        Fix broken grammar in activity text from Tally forms
+        """
+        if isinstance(activity_text, list):
+            # Handle list of activities
+            fixed_activities = []
+            for activity in activity_text:
+                fixed_activities.append(self.fix_single_activity_grammar(str(activity)))
+            return ', '.join(fixed_activities)
+        else:
+            return self.fix_single_activity_grammar(str(activity_text))
+    
+    def fix_single_activity_grammar(self, activity: str) -> str:
+        """
+        Fix grammar issues in a single activity string
+        """
+        # Common grammar fixes
+        fixes = {
+            'take your against your willl': 'take you against your will',
+            'take your against your will': 'take you against your will',
+            'punish you me': 'punish you',
+            'blindfold you me': 'blindfold you',
+            'gag you me': 'gag you',
+            'your against your': 'you against your',
+            'willl': 'will',
+            'you me': 'you',
+            'me you': 'you'
+        }
+        
+        fixed_text = activity.lower().strip()
+        
+        # Apply specific fixes
+        for broken, fixed in fixes.items():
+            fixed_text = fixed_text.replace(broken, fixed)
+        
+        # Remove duplicate pronouns at the end
+        if fixed_text.endswith(' me') and ' you' in fixed_text:
+            # If it has both 'you' and ends with 'me', remove the 'me'
+            if 'you' in fixed_text[:-3]:  # Check if 'you' appears before the final ' me'
+                fixed_text = fixed_text[:-3].strip()
+        
+        return fixed_text
+    
     def convert_to_present_continuous_reverse(self, activity_text: str) -> str:
         """
         Convert activity text to present continuous tense from AI's perspective
         When User controls AI, AI performs activities on User
+        """
+        # Handle comma-separated activities
+        if ',' in activity_text:
+            activities = [act.strip() for act in activity_text.split(',')]
+            converted_activities = []
+            for activity in activities:
+                converted = self.convert_single_activity_reverse(activity)
+                converted_activities.append(converted)
+            return ', '.join(converted_activities)
+        else:
+            return self.convert_single_activity_reverse(activity_text)
+    
+    def convert_single_activity_reverse(self, activity_text: str) -> str:
+        """
+        Convert a single activity to present continuous tense from AI's perspective
         """
         # Reverse conversions - AI doing to User
         reverse_conversions = {
@@ -459,58 +543,79 @@ class AITallyExtractor:
             'sensual massage': 'giving me a sensual massage',
             'gentle touching': 'touching me gently',
             'exploring each other': 'exploring me',
-            'playful teasing': 'teasing me playfully'
+            'playful teasing': 'teasing me playfully',
+            # Specific fixes for Tally data issues - AI doing to User
+            'blindfold you': 'blindfolding me',
+            'gag you': 'gagging me',
+            'take you against your will': 'taking me against my will',
+            'punish you': 'punishing me',
+            'tie you up': 'tying me up',
+            'instruct you': 'instructing me',
+            'go down on you': 'going down on me',
+            'caress you gently': 'caressing me gently'
         }
         
-        # Split by comma and convert each activity
-        activities = [act.strip() for act in activity_text.split(',')]
-        converted_activities = []
+        activity_lower = activity_text.lower()
         
-        for activity in activities:
-            activity_lower = activity.lower()
-            
-            # Check for direct conversions first
-            converted = None
-            for original, continuous in reverse_conversions.items():
-                if original in activity_lower:
-                    converted = continuous
-                    break
-            
-            if not converted:
-                # General conversion rules for reverse (AI doing to User)
-                if activity_lower.endswith(' me'):
-                    # "touch me" -> "touching me" (AI touching User)
-                    base_verb = activity_lower[:-3].strip()
-                    if base_verb.endswith('e'):
-                        converted = f"{base_verb[:-1]}ing me"
-                    else:
-                        converted = f"{base_verb}ing me"
-                elif 'me' in activity_lower:
-                    # Keep "me" as is since AI is doing to User
-                    words = activity_lower.split()
-                    if words:
-                        first_word = words[0]
-                        if first_word.endswith('e'):
-                            words[0] = first_word[:-1] + 'ing'
-                        else:
-                            words[0] = first_word + 'ing'
-                        converted = ' '.join(words)
+        # Check for direct conversions first
+        converted = None
+        for original, continuous in reverse_conversions.items():
+            if original in activity_lower:
+                converted = continuous
+                break
+        
+        if not converted:
+            # General conversion rules for reverse (AI doing to User)
+            if activity_lower.endswith(' me'):
+                # "touch me" -> "touching me" (AI touching User)
+                base_verb = activity_lower[:-3].strip()
+                if base_verb.endswith('e'):
+                    converted = f"{base_verb[:-1]}ing me"
                 else:
-                    # Default: try to add -ing to first word and add "me"
-                    words = activity.split()
-                    if words:
-                        first_word = words[0].lower()
-                        if first_word.endswith('e'):
-                            words[0] = first_word[:-1] + 'ing'
-                        else:
-                            words[0] = first_word + 'ing'
-                        converted = ' '.join(words) + ' me'
+                    converted = f"{base_verb}ing me"
+            elif 'you' in activity_lower:
+                # Convert "you" to "me" since AI is doing to User
+                words = activity_lower.split()
+                if words:
+                    first_word = words[0]
+                    if first_word.endswith('e'):
+                        words[0] = first_word[:-1] + 'ing'
                     else:
-                        converted = activity
-            
-            converted_activities.append(converted)
+                        words[0] = first_word + 'ing'
+                    # Replace "you" with "me"
+                    converted_words = []
+                    for word in words:
+                        if word == 'you':
+                            converted_words.append('me')
+                        elif word == 'your':
+                            converted_words.append('my')
+                        else:
+                            converted_words.append(word)
+                    converted = ' '.join(converted_words)
+            elif 'me' in activity_lower:
+                # Keep "me" as is since AI is doing to User
+                words = activity_lower.split()
+                if words:
+                    first_word = words[0]
+                    if first_word.endswith('e'):
+                        words[0] = first_word[:-1] + 'ing'
+                    else:
+                        words[0] = first_word + 'ing'
+                    converted = ' '.join(words)
+            else:
+                # Default: try to add -ing to first word and add "me"
+                words = activity_text.split()
+                if words:
+                    first_word = words[0].lower()
+                    if first_word.endswith('e'):
+                        words[0] = first_word[:-1] + 'ing'
+                    else:
+                        words[0] = first_word + 'ing'
+                    converted = ' '.join(words) + ' me'
+                else:
+                    converted = activity_text
         
-        return ', '.join(converted_activities)
+        return converted if converted else activity_text
     
     def convert_to_present_continuous_mutual(self, activity_text: str) -> str:
         """
@@ -600,6 +705,7 @@ class AITallyExtractor:
     def extract_key_information(self, questions_and_answers):
         """
         Extract key information from Q&A with improved pattern matching
+        Enhanced to handle all 10 key data points from Tally form
         """
         user_gender = None
         ai_gender = None
@@ -608,6 +714,11 @@ class AITallyExtractor:
         location = None
         control = None
         activities = []
+        
+        # New data points
+        clothing = None
+        companion = None
+        pick_one_answers = []
         
         for qa in questions_and_answers:
             question = qa['question'].lower()
@@ -651,12 +762,36 @@ class AITallyExtractor:
             ]):
                 control = str(answer) if not isinstance(answer, list) else str(answer[0])
             
+            # Companion patterns (who you are with)
+            elif any(pattern in question for pattern in [
+                'am i alone', 'are you alone', 'who are you with', 'with another'
+            ]):
+                companion = str(answer) if not isinstance(answer, list) else str(answer[0])
+            
+            # Pick One patterns (for clothing, etc.)
+            elif 'pick one' in question:
+                pick_one_answer = str(answer) if not isinstance(answer, list) else str(answer[0])
+                pick_one_answers.append(pick_one_answer)
+            
             # Activity patterns
             elif any(pattern in question for pattern in [
                 'what would you like to do', 'what else', 'activity', 'activities',
-                'what do you want', 'would you like them to', 'what should they do'
+                'what do you want', 'would you like them to', 'what should they do',
+                'describe to me in detail', 'what would you like me to do'
             ]):
                 activities.append(answer)  # Keep as-is to handle multiple selections
+        
+        # Map Pick One answers to clothing if we have them
+        if pick_one_answers:
+            # First Pick One is usually clothing
+            if len(pick_one_answers) > 0:
+                clothing_map = {
+                    'A': 'Uniform',
+                    'B': 'Bondage gear', 
+                    'C': 'Best clothes',
+                    'D': 'Underwear'
+                }
+                clothing = clothing_map.get(pick_one_answers[0], pick_one_answers[0])
         
         return {
             'user_gender': user_gender,
@@ -665,7 +800,10 @@ class AITallyExtractor:
             'ai_ethnicity': ai_ethnicity,
             'location': location,
             'control': control,
-            'activities': activities
+            'activities': activities,
+            'clothing': clothing,
+            'companion': companion,
+            'pick_one_answers': pick_one_answers
         }
     
     def call_ai_model_for_scenario(self, prompt: str) -> str:
