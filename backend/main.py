@@ -18,7 +18,7 @@ from schemas import (
     DashboardStats, MessageHistory, SystemPromptCreate, SystemPromptUpdate, SystemPromptResponse
 )
 from auth import authenticate_admin, create_access_token, get_current_admin, create_admin_session
-from extract_tally import generate_story_from_json
+from ai_tally_extractor import generate_ai_scenario, debug_tally_data
 from celery_app import process_ai_response
 from config import settings
 
@@ -156,14 +156,14 @@ async def tally_webhook(webhook_data: dict, db: Session = Depends(get_db)):
         db.add(user)
         db.flush()  # Get user ID
         
-        # Generate scenario from Tally data
+        # Generate scenario from Tally data using AI
         try:
-            scenario = generate_story_from_json(webhook_data)
-            logger.info(f"Generated scenario for user {user.user_code}: {scenario[:100]}...")
+            scenario = generate_ai_scenario(form_data)
+            logger.info(f"AI-generated scenario for user {user.user_code}: {scenario[:100]}...")
         except Exception as e:
-            logger.error(f"Failed to generate scenario: {str(e)}")
-            # Try to extract any available data instead of using default
-            scenario = generate_story_from_json(webhook_data) if webhook_data else ""
+            logger.error(f"Failed to generate AI scenario: {str(e)}")
+            # Fallback to empty scenario if AI generation fails
+            scenario = ""
         
         # Get active system prompt and combine with user scenario
         try:
@@ -283,6 +283,35 @@ async def get_recent_users(db: Session = Depends(get_db)):
         }
         for user in users
     ]
+
+# Debug endpoint to test AI Tally extraction
+@app.post("/debug/test-ai-extraction")
+async def test_ai_extraction(request_data: dict):
+    """Debug endpoint to test AI-powered Tally extraction"""
+    try:
+        form_data = request_data.get("form_data")
+        if not form_data:
+            raise HTTPException(400, detail="form_data is required")
+        
+        # Debug the data processing
+        debug_info = debug_tally_data(form_data)
+        
+        # Generate scenario
+        scenario = generate_ai_scenario(form_data)
+        
+        return {
+            "success": True,
+            "debug_info": debug_info,
+            "generated_scenario": scenario,
+            "scenario_length": len(scenario) if scenario else 0
+        }
+        
+    except Exception as e:
+        logger.error(f"AI extraction test failed: {str(e)}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
 
 # Device-based session creation for testing
 @app.post("/user/device-session")
@@ -858,7 +887,7 @@ async def get_user_details(
             "respondent_id": user.tally_respondent_id,
             "submitted_at": tally_submission.created_at,
             "form_data": tally_submission.form_data,
-            "generated_prompt": generate_story_from_json(tally_submission.form_data) if tally_submission.form_data else None
+            "generated_prompt": generate_ai_scenario(tally_submission.form_data) if tally_submission.form_data else None
         } if tally_submission else None
     }
 
