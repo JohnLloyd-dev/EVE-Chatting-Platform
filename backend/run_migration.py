@@ -1,28 +1,25 @@
 #!/usr/bin/env python3
 """
-Simple migration runner that can be executed directly
+Comprehensive migration runner that creates missing tables and columns
 """
 
 import sys
 import os
-
-# Add backend to path
-sys.path.append(os.path.join(os.path.dirname(__file__), 'backend'))
 
 try:
     import psycopg2
     from config import settings
     
     def run_migration():
-        """Add ai_responses_enabled column to users table"""
+        """Run all necessary database migrations"""
         
         # Parse database URL
         db_url = settings.database_url
-        # postgresql://postgres:postgres123@localhost:5432/chatting_platform
-        
-        # Extract connection parameters
+        # Handle both postgresql:// and postgres:// schemes
         if db_url.startswith('postgresql://'):
             db_url = db_url[13:]  # Remove postgresql://
+        elif db_url.startswith('postgres://'):
+            db_url = db_url[11:]  # Remove postgres://
         
         parts = db_url.split('@')
         user_pass = parts[0].split(':')
@@ -49,7 +46,8 @@ try:
             
             cursor = conn.cursor()
             
-            # Check if column already exists
+            # Migration 1: Add ai_responses_enabled column to users table
+            print("🔄 Checking ai_responses_enabled column...")
             cursor.execute("""
                 SELECT column_name 
                 FROM information_schema.columns 
@@ -59,25 +57,79 @@ try:
             
             result = cursor.fetchone()
             
-            if result:
+            if not result:
+                print("🔄 Adding ai_responses_enabled column to users table...")
+                cursor.execute("""
+                    ALTER TABLE users 
+                    ADD COLUMN ai_responses_enabled BOOLEAN DEFAULT TRUE
+                """)
+                
+                # Update existing users to have AI responses enabled by default
+                cursor.execute("""
+                    UPDATE users 
+                    SET ai_responses_enabled = TRUE 
+                    WHERE ai_responses_enabled IS NULL
+                """)
+                print("✅ Successfully added ai_responses_enabled column to users table")
+            else:
                 print("✅ Column ai_responses_enabled already exists in users table")
-                return
             
-            # Add the column
+            # Migration 2: Create active_ai_tasks table if it doesn't exist
+            print("🔄 Checking active_ai_tasks table...")
             cursor.execute("""
-                ALTER TABLE users 
-                ADD COLUMN ai_responses_enabled BOOLEAN DEFAULT TRUE
+                SELECT table_name 
+                FROM information_schema.tables 
+                WHERE table_name = 'active_ai_tasks'
             """)
             
-            # Update existing users to have AI responses enabled by default
+            result = cursor.fetchone()
+            
+            if not result:
+                print("🔄 Creating active_ai_tasks table...")
+                cursor.execute("""
+                    CREATE TABLE active_ai_tasks (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        task_id VARCHAR(255) UNIQUE NOT NULL,
+                        session_id UUID NOT NULL REFERENCES chat_sessions(id),
+                        user_id UUID NOT NULL REFERENCES users(id),
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                        is_cancelled BOOLEAN DEFAULT FALSE
+                    )
+                """)
+                print("✅ Successfully created active_ai_tasks table")
+            else:
+                print("✅ Table active_ai_tasks already exists")
+            
+            # Migration 3: Check if system_prompts table exists and has all required columns
+            print("🔄 Checking system_prompts table...")
             cursor.execute("""
-                UPDATE users 
-                SET ai_responses_enabled = TRUE 
-                WHERE ai_responses_enabled IS NULL
+                SELECT table_name 
+                FROM information_schema.tables 
+                WHERE table_name = 'system_prompts'
             """)
+            
+            result = cursor.fetchone()
+            
+            if not result:
+                print("🔄 Creating system_prompts table...")
+                cursor.execute("""
+                    CREATE TABLE system_prompts (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        name VARCHAR(255) NOT NULL,
+                        content TEXT NOT NULL,
+                        is_active BOOLEAN DEFAULT FALSE,
+                        admin_id UUID REFERENCES admin_users(id),
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                        user_id UUID REFERENCES users(id)
+                    )
+                """)
+                print("✅ Successfully created system_prompts table")
+            else:
+                print("✅ Table system_prompts already exists")
             
             conn.commit()
-            print("✅ Successfully added ai_responses_enabled column to users table")
+            print("🎉 All migrations completed successfully!")
             
         except Exception as e:
             print(f"❌ Migration failed: {str(e)}")
