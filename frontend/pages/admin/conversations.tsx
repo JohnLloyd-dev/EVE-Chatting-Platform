@@ -81,6 +81,31 @@ export default function AdminConversations() {
     }
   );
 
+  // Toggle AI responses mutation
+  const toggleAIMutation = useMutation(
+    ({ userId, aiEnabled }: { userId: string; aiEnabled: boolean }) =>
+      adminApi.toggleAIResponses(userId, aiEnabled),
+    {
+      onSuccess: (_, variables) => {
+        toast.success(
+          `AI responses ${
+            variables.aiEnabled ? "enabled" : "disabled"
+          } successfully`
+        );
+        queryClient.invalidateQueries("conversations");
+        queryClient.invalidateQueries([
+          "conversationDetails",
+          selectedConversation,
+        ]);
+      },
+      onError: (error: any) => {
+        toast.error(
+          error.response?.data?.detail || "Failed to toggle AI responses"
+        );
+      },
+    }
+  );
+
   const handleIntervention = () => {
     if (!selectedConversation || !interventionMessage.trim()) return;
 
@@ -92,6 +117,10 @@ export default function AdminConversations() {
 
   const handleBlockUser = (userId: string, block: boolean) => {
     blockUserMutation.mutate({ userId, block });
+  };
+
+  const handleToggleAI = (userId: string, aiEnabled: boolean) => {
+    toggleAIMutation.mutate({ userId, aiEnabled });
   };
 
   if (isLoading) {
@@ -165,6 +194,11 @@ export default function AdminConversations() {
                           Blocked
                         </span>
                       )}
+                      {!conversation.ai_responses_enabled && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">
+                          AI Disabled
+                        </span>
+                      )}
                     </div>
                     <span
                       className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
@@ -225,6 +259,25 @@ export default function AdminConversations() {
                             ? "Unblock"
                             : "Block"}{" "}
                           User
+                        </button>
+                        <button
+                          onClick={() =>
+                            handleToggleAI(
+                              conversationDetails.user_info.id,
+                              !conversationDetails.user_info
+                                .ai_responses_enabled
+                            )
+                          }
+                          className={`text-sm px-3 py-1 rounded ${
+                            conversationDetails.user_info.ai_responses_enabled
+                              ? "bg-orange-100 text-orange-700 hover:bg-orange-200"
+                              : "bg-blue-100 text-blue-700 hover:bg-blue-200"
+                          }`}
+                          disabled={toggleAIMutation.isLoading}
+                        >
+                          {conversationDetails.user_info.ai_responses_enabled
+                            ? "Disable AI"
+                            : "Enable AI"}
                         </button>
                       </div>
                     )}

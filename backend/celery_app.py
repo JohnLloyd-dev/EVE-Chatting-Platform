@@ -2,7 +2,7 @@ from celery import Celery
 import httpx
 import asyncio
 from config import settings
-from database import SessionLocal, Message, ChatSession, User, SystemPrompt
+from database import SessionLocal, Message, ChatSession, User, SystemPrompt, ActiveAITask
 from datetime import datetime, timezone
 import uuid
 import logging
@@ -36,6 +36,13 @@ def process_ai_response(self, session_id: str, user_message: str, max_tokens: in
         # Get database session
         db = SessionLocal()
         
+        # Check if this task has been cancelled
+        active_task = db.query(ActiveAITask).filter(ActiveAITask.task_id == self.request.id).first()
+        if active_task and active_task.is_cancelled:
+            logger.info(f"Task {self.request.id} was cancelled, skipping AI response")
+            db.close()
+            return {"success": False, "error": "Task was cancelled"}
+        
         # Get chat session
         chat_session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
         if not chat_session:
@@ -43,11 +50,18 @@ def process_ai_response(self, session_id: str, user_message: str, max_tokens: in
         
         # Check if user is blocked
         if chat_session.user.is_blocked:
+            logger.info(f"User {chat_session.user.user_code} is blocked, cancelling AI response")
             raise Exception("User is blocked")
         
-        # Get conversation history
+        # Check if AI responses are enabled for this user
+        if not chat_session.user.ai_responses_enabled:
+            logger.info(f"AI responses disabled for user {chat_session.user.user_code}, cancelling AI response")
+            raise Exception("AI responses are disabled for this user")
+        
+        # Get conversation history (excluding admin interventions)
         messages = db.query(Message).filter(
-            Message.session_id == session_id
+            Message.session_id == session_id,
+            Message.is_admin_intervention == False  # Exclude admin messages from AI context
         ).order_by(Message.created_at).all()
         
         # Build conversation history for AI

@@ -38,6 +38,7 @@ export interface ConversationSummary {
   last_message?: string;
   is_active: boolean;
   user_blocked: boolean;
+  ai_responses_enabled: boolean;
 }
 
 export interface DashboardStats {

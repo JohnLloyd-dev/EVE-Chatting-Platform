@@ -10,11 +10,11 @@ import json
 import logging
 
 # Local imports
-from database import get_db, User, ChatSession, Message, TallySubmission, AdminUser, SystemPrompt, generate_user_code
+from database import get_db, User, ChatSession, Message, TallySubmission, AdminUser, SystemPrompt, ActiveAITask, generate_user_code
 from schemas import (
     TallyWebhookData, ChatMessageRequest, ChatMessageResponse, 
     ChatSessionResponse, UserResponse, AdminLoginRequest, AdminLoginResponse,
-    ConversationSummary, AdminInterventionRequest, UserBlockRequest,
+    ConversationSummary, AdminInterventionRequest, UserBlockRequest, UserAIToggleRequest,
     DashboardStats, MessageHistory, SystemPromptCreate, SystemPromptUpdate, SystemPromptResponse
 )
 from auth import authenticate_admin, create_access_token, get_current_admin, create_admin_session
@@ -279,7 +279,8 @@ async def get_recent_users(db: Session = Depends(get_db)):
             "tally_response_id": user.tally_response_id,
             "tally_respondent_id": user.tally_respondent_id,
             "created_at": user.created_at,
-            "is_blocked": user.is_blocked
+            "is_blocked": user.is_blocked,
+            "ai_responses_enabled": user.ai_responses_enabled
         }
         for user in users
     ]
@@ -497,6 +498,15 @@ async def send_message(
         message_request.max_tokens
     )
     
+    # Track the active AI task
+    active_task = ActiveAITask(
+        task_id=task.id,
+        session_id=session_uuid,
+        user_id=session.user.id
+    )
+    db.add(active_task)
+    db.commit()
+    
     return {
         "message": "Message sent, AI response is being processed",
         "user_message_id": str(user_message.id),
@@ -582,7 +592,8 @@ async def get_all_conversations(
             message_count=message_count,
             last_message=last_message.content[:100] + "..." if last_message and len(last_message.content) > 100 else last_message.content if last_message else None,
             is_active=session.is_active,
-            user_blocked=session.user.is_blocked
+            user_blocked=session.user.is_blocked,
+            ai_responses_enabled=session.user.ai_responses_enabled
         ))
     
     return conversations
@@ -635,6 +646,7 @@ async def get_conversation_details(
             tally_response_id=session.user.tally_response_id,
             created_at=session.user.created_at,
             is_blocked=session.user.is_blocked,
+            ai_responses_enabled=session.user.ai_responses_enabled,
             last_active=session.user.last_active,
             email=session.user.email
         )
@@ -700,10 +712,82 @@ async def block_user(
         raise HTTPException(404, detail="User not found")
     
     user.is_blocked = block_request.block
+    
+    # If blocking the user, cancel any active AI tasks
+    if block_request.block:
+        from celery_app import celery_app
+        
+        # Find and cancel active AI tasks for this user
+        active_tasks = db.query(ActiveAITask).filter(
+            ActiveAITask.user_id == user.id,
+            ActiveAITask.is_cancelled == False
+        ).all()
+        
+        for active_task in active_tasks:
+            try:
+                # Cancel the Celery task
+                celery_app.control.revoke(active_task.task_id, terminate=True)
+                # Mark as cancelled in database
+                active_task.is_cancelled = True
+                logger.info(f"Cancelled AI task {active_task.task_id} for blocked user {user.user_code}")
+            except Exception as e:
+                logger.error(f"Failed to cancel task {active_task.task_id}: {str(e)}")
+    
     db.commit()
     
     action = "blocked" if block_request.block else "unblocked"
     return {"message": f"User {action} successfully"}
+
+# Toggle AI responses for user
+@app.post("/admin/toggle-ai-responses")
+async def toggle_ai_responses(
+    ai_toggle_request: UserAIToggleRequest,
+    admin: AdminUser = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    Enable or disable AI responses for a user
+    """
+    # Try to find user by user_code first, then by UUID for backward compatibility
+    user = db.query(User).filter(User.user_code == ai_toggle_request.user_id).first()
+    
+    if not user:
+        # Try UUID format for backward compatibility
+        try:
+            user_uuid = uuid.UUID(ai_toggle_request.user_id)
+            user = db.query(User).filter(User.id == user_uuid).first()
+        except ValueError:
+            pass
+    
+    if not user:
+        raise HTTPException(404, detail="User not found")
+    
+    user.ai_responses_enabled = ai_toggle_request.ai_responses_enabled
+    
+    # If disabling AI responses, cancel any active AI tasks
+    if not ai_toggle_request.ai_responses_enabled:
+        from celery_app import celery_app
+        
+        # Find and cancel active AI tasks for this user
+        active_tasks = db.query(ActiveAITask).filter(
+            ActiveAITask.user_id == user.id,
+            ActiveAITask.is_cancelled == False
+        ).all()
+        
+        for active_task in active_tasks:
+            try:
+                # Cancel the Celery task
+                celery_app.control.revoke(active_task.task_id, terminate=True)
+                # Mark as cancelled in database
+                active_task.is_cancelled = True
+                logger.info(f"Cancelled AI task {active_task.task_id} for user {user.user_code} (AI responses disabled)")
+            except Exception as e:
+                logger.error(f"Failed to cancel task {active_task.task_id}: {str(e)}")
+    
+    db.commit()
+    
+    action = "enabled" if ai_toggle_request.ai_responses_enabled else "disabled"
+    return {"message": f"AI responses {action} for user successfully"}
 
 # Dashboard statistics
 @app.get("/admin/stats", response_model=DashboardStats)

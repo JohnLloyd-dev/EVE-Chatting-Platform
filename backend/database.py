@@ -25,6 +25,7 @@ class User(Base):
     email = Column(String(255))
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     is_blocked = Column(Boolean, default=False)
+    ai_responses_enabled = Column(Boolean, default=True)  # Control AI responses separately from blocking
     last_active = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     
     # Relationships
@@ -116,6 +117,20 @@ class SystemPrompt(Base):
     # Relationships
     admin = relationship("AdminUser")
     user = relationship("User", backref="custom_system_prompts")
+
+class ActiveAITask(Base):
+    __tablename__ = "active_ai_tasks"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    task_id = Column(String(255), unique=True, nullable=False)  # Celery task ID
+    session_id = Column(UUID(as_uuid=True), ForeignKey("chat_sessions.id"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    is_cancelled = Column(Boolean, default=False)
+    
+    # Relationships
+    session = relationship("ChatSession")
+    user = relationship("User")
 
 def generate_user_code(db: SessionLocal) -> str:
     """

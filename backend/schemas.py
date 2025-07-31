@@ -36,6 +36,7 @@ class UserResponse(BaseModel):
     tally_response_id: str
     created_at: datetime
     is_blocked: bool
+    ai_responses_enabled: bool
     last_active: datetime
     email: Optional[str] = None
 
@@ -68,6 +69,7 @@ class ConversationSummary(BaseModel):
     last_message: Optional[str]
     is_active: bool
     user_blocked: bool
+    ai_responses_enabled: bool
 
 class AdminInterventionRequest(BaseModel):
     session_id: str
@@ -76,6 +78,10 @@ class AdminInterventionRequest(BaseModel):
 class UserBlockRequest(BaseModel):
     user_id: str
     block: bool = True
+
+class UserAIToggleRequest(BaseModel):
+    user_id: str
+    ai_responses_enabled: bool = True
 
 # Statistics schemas
 class DashboardStats(BaseModel):

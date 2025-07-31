@@ -118,6 +118,17 @@ export const adminApi = {
     return response.data;
   },
 
+  toggleAIResponses: async (
+    userId: string,
+    aiResponsesEnabled: boolean = true
+  ) => {
+    const response = await api.post("/admin/toggle-ai-responses", {
+      user_id: userId,
+      ai_responses_enabled: aiResponsesEnabled,
+    });
+    return response.data;
+  },
+
   getStats: async (): Promise<DashboardStats> => {
     const response = await api.get("/admin/stats");
     return response.data;
