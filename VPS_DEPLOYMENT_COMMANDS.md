@@ -16,30 +16,36 @@ git pull origin main
 ### 2. Run the database migration
 
 ```bash
-# Option A: Using the Python migration script (recommended)
+# Option A: Using the comprehensive Python migration script (recommended)
 docker compose exec backend python run_migration.py
 
-# Option B: Using direct SQL (if Option A doesn't work)
+# Option B: Manual SQL commands to create missing tables (if Option A doesn't work)
 docker compose exec postgres psql -U postgres -d chatting_platform -c "
-DO \$\$
-BEGIN
-    IF NOT EXISTS (
-        SELECT column_name
-        FROM information_schema.columns
-        WHERE table_name = 'users'
-        AND column_name = 'ai_responses_enabled'
-    ) THEN
-        ALTER TABLE users ADD COLUMN ai_responses_enabled BOOLEAN DEFAULT TRUE;
-        UPDATE users SET ai_responses_enabled = TRUE WHERE ai_responses_enabled IS NULL;
-        RAISE NOTICE 'Successfully added ai_responses_enabled column to users table';
-    ELSE
-        RAISE NOTICE 'Column ai_responses_enabled already exists in users table';
-    END IF;
-END \$\$;
-"
+-- Add ai_responses_enabled column
+ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_responses_enabled BOOLEAN DEFAULT TRUE;
 
-# Option C: Simple SQL command (if the above doesn't work)
-docker compose exec postgres psql -U postgres -d chatting_platform -c "ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_responses_enabled BOOLEAN DEFAULT TRUE;"
+-- Create active_ai_tasks table
+CREATE TABLE IF NOT EXISTS active_ai_tasks (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    task_id VARCHAR(255) UNIQUE NOT NULL,
+    session_id UUID NOT NULL REFERENCES chat_sessions(id),
+    user_id UUID NOT NULL REFERENCES users(id),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    is_cancelled BOOLEAN DEFAULT FALSE
+);
+
+-- Create system_prompts table if missing
+CREATE TABLE IF NOT EXISTS system_prompts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    content TEXT NOT NULL,
+    is_active BOOLEAN DEFAULT FALSE,
+    admin_id UUID REFERENCES admin_users(id),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    user_id UUID REFERENCES users(id)
+);
+"
 ```
 
 ### 3. Restart the services
