@@ -225,6 +225,18 @@ You are a helpful AI assistant.</textarea
             sendMessage();
           }
         });
+
+      // Auto-focus text input and send initial AI greeting
+      window.addEventListener("load", function () {
+        // Focus the message input box
+        document.getElementById("messageInput").focus();
+
+        // Check if we have a session (coming from Tally loading screen)
+        // Send initial AI greeting
+        setTimeout(() => {
+          addMessage("AI", "Hi", "ai-message");
+        }, 500); // Small delay for better UX
+      });
     </script>
   </body>
 </html>
