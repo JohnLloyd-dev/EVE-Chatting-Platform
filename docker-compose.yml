@@ -87,7 +87,6 @@ services:
     command: npm run dev
 
   # Custom AI Server
-  yaml
   custom-ai-server:
     build:
       context: .
