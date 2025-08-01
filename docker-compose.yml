@@ -113,15 +113,16 @@ services:
     ports:
       - "8002:8000"
     environment:
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics
-      - NVIDIA_VISIBLE_DEVICES=all
+      - CUDA_VISIBLE_DEVICES=0
     volumes:
       - ./:/app
-    # Use device_requests instead of deploy.reservations
-    device_requests:
-      - driver: nvidia
-        count: 1
-        capabilities: [gpu]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     restart: unless-stopped
 
 volumes:
