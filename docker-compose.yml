@@ -22,7 +22,26 @@ services:
   # Redis for Celery
   redis:
     image: redis:7-alpine
+    ports:custom-ai-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.custom_server
     ports:
+      - "8000:8000"
+    environment:
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - NVIDIA_VISIBLE_DEVICES=all
+    volumes:
+      - ./:/app
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    runtime: nvidia  # Add this critical line
+    restart: unless-stopped
       - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -92,20 +111,17 @@ services:
       context: .
       dockerfile: Dockerfile.custom_server
     ports:
-      - "8000:8000"
+      - "8002:8000"
     environment:
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics
       - NVIDIA_VISIBLE_DEVICES=all
     volumes:
       - ./:/app
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    runtime: nvidia  # Add this critical line
+    # Use device_requests instead of deploy.reservations
+    device_requests:
+      - driver: nvidia
+        count: 1
+        capabilities: [gpu]
     restart: unless-stopped
 
 volumes:
