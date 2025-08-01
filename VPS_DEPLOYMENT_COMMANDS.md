@@ -2,7 +2,7 @@
 
 ## Summary
 
-The AI response control feature has been successfully implemented and pushed to the repository. Here are the commands to deploy it on your VPS:
+The Custom AI Server with Docker integration has been successfully implemented and pushed to the repository. This includes the AI response control feature and the new custom AI server. Here are the commands to deploy it on your VPS:
 
 ## Commands to Run on VPS
 
@@ -13,7 +13,25 @@ cd /path/to/your/eve/project
 git pull origin main
 ```
 
-### 2. Run the database migration
+### 2. Deploy Custom AI Server (NEW!)
+
+```bash
+# Make deployment script executable
+chmod +x deploy-custom-ai.sh
+
+# Deploy the custom AI server
+./deploy-custom-ai.sh
+```
+
+**Alternative manual deployment:**
+
+```bash
+# Build and start custom AI server
+docker-compose -f docker-compose.prod.yml build custom-ai-server
+docker-compose -f docker-compose.prod.yml up -d custom-ai-server
+```
+
+### 3. Run the database migration
 
 ```bash
 # Option A: Using the comprehensive Python migration script (recommended)
@@ -48,13 +66,13 @@ CREATE TABLE IF NOT EXISTS system_prompts (
 "
 ```
 
-### 3. Restart the services
+### 4. Restart the services
 
 ```bash
 docker compose restart backend celery-worker frontend
 ```
 
-### 4. Verify deployment
+### 5. Verify deployment
 
 ```bash
 # Check if services are running
@@ -65,9 +83,22 @@ docker compose logs backend
 
 # Check if the new API endpoint is working
 curl -X GET http://localhost:8001/health
+
+# Check Custom AI Server (NEW!)
+curl http://localhost:8002/
+docker-compose -f docker-compose.prod.yml logs -f custom-ai-server
 ```
 
 ## What's New
+
+### Custom AI Server (NEW!)
+
+- **Standalone AI Server**: `custom_server.py` with FastAPI and transformers
+- **Docker Integration**: Containerized with GPU support
+- **Web Interfaces**: Chat interface at `:8002/` and test interface at `:8002/test-bot`
+- **API Endpoints**: `/scenario`, `/chat`, `/tally-scenario`
+- **Authentication**: Built-in HTTP Basic Auth (adam/eve2025)
+- **Memory Optimized**: 4-bit quantization for efficient GPU usage
 
 ### Admin Interface
 
@@ -82,6 +113,15 @@ curl -X GET http://localhost:8001/health
 - Users with disabled AI won't get AI responses but can still send messages
 
 ### Testing
+
+**Custom AI Server:**
+
+1. Visit `http://your-vps-ip:8002/` for chat interface
+2. Visit `http://your-vps-ip:8002/test-bot` for test interface
+3. Test authentication with adam/eve2025
+4. Set scenarios and test chat functionality
+
+**Admin Interface:**
 
 1. Go to admin panel → Conversations
 2. Select a conversation
