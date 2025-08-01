@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Chat Interface</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+        background-color: #f5f5f5;
+      }
+      .container {
+        background: white;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      }
+      .chat-container {
+        height: 400px;
+        overflow-y: auto;
+        border: 1px solid #ddd;
+        padding: 10px;
+        margin: 10px 0;
+        background-color: #fafafa;
+      }
+      .message {
+        margin: 10px 0;
+        padding: 10px;
+        border-radius: 5px;
+      }
+      .user-message {
+        background-color: #e3f2fd;
+        text-align: right;
+      }
+      .ai-message {
+        background-color: #f3e5f5;
+      }
+      .input-group {
+        display: flex;
+        gap: 10px;
+        margin: 10px 0;
+      }
+      input,
+      textarea,
+      button {
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+      }
+      textarea {
+        flex: 1;
+        resize: vertical;
+        min-height: 60px;
+      }
+      button {
+        background-color: #007bff;
+        color: white;
+        border: none;
+        cursor: pointer;
+        min-width: 100px;
+      }
+      button:hover {
+        background-color: #0056b3;
+      }
+      .scenario-section {
+        margin-bottom: 20px;
+        padding: 15px;
+        background-color: #f8f9fa;
+        border-radius: 5px;
+      }
+      .auth-section {
+        margin-bottom: 20px;
+        padding: 15px;
+        background-color: #fff3cd;
+        border-radius: 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>AI Chat Interface</h1>
+
+      <div class="auth-section">
+        <h3>Authentication</h3>
+        <div class="input-group">
+          <input
+            type="text"
+            id="username"
+            placeholder="Username"
+            value="adam"
+          />
+          <input
+            type="password"
+            id="password"
+            placeholder="Password"
+            value="eve2025"
+          />
+        </div>
+      </div>
+
+      <div class="scenario-section">
+        <h3>Set Scenario</h3>
+        <div class="input-group">
+          <textarea
+            id="scenario"
+            placeholder="Enter your scenario/system prompt here..."
+          >
+You are a helpful AI assistant.</textarea
+          >
+          <button onclick="setScenario()">Set Scenario</button>
+        </div>
+      </div>
+
+      <div class="chat-container" id="chatContainer">
+        <!-- Chat messages will appear here -->
+      </div>
+
+      <div class="input-group">
+        <textarea
+          id="messageInput"
+          placeholder="Type your message here..."
+        ></textarea>
+        <input
+          type="number"
+          id="maxTokens"
+          value="150"
+          min="10"
+          max="500"
+          placeholder="Max tokens"
+        />
+        <button onclick="sendMessage()">Send</button>
+      </div>
+    </div>
+
+    <script>
+      let authHeader = "";
+
+      function updateAuthHeader() {
+        const username = document.getElementById("username").value;
+        const password = document.getElementById("password").value;
+        authHeader = "Basic " + btoa(username + ":" + password);
+      }
+
+      async function setScenario() {
+        updateAuthHeader();
+        const scenario = document.getElementById("scenario").value;
+
+        try {
+          const response = await fetch("/scenario", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: authHeader,
+            },
+            body: JSON.stringify({ scenario: scenario }),
+          });
+
+          if (response.ok) {
+            addMessage("System", "Scenario set successfully!", "ai-message");
+          } else {
+            addMessage(
+              "System",
+              "Failed to set scenario: " + response.statusText,
+              "ai-message"
+            );
+          }
+        } catch (error) {
+          addMessage("System", "Error: " + error.message, "ai-message");
+        }
+      }
+
+      async function sendMessage() {
+        updateAuthHeader();
+        const messageInput = document.getElementById("messageInput");
+        const maxTokens = document.getElementById("maxTokens").value;
+        const message = messageInput.value.trim();
+
+        if (!message) return;
+
+        addMessage("You", message, "user-message");
+        messageInput.value = "";
+
+        try {
+          const response = await fetch("/chat", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: authHeader,
+            },
+            body: JSON.stringify({
+              message: message,
+              max_tokens: parseInt(maxTokens),
+            }),
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            addMessage("AI", data.response, "ai-message");
+          } else {
+            addMessage("System", "Error: " + response.statusText, "ai-message");
+          }
+        } catch (error) {
+          addMessage("System", "Error: " + error.message, "ai-message");
+        }
+      }
+
+      function addMessage(sender, message, className) {
+        const chatContainer = document.getElementById("chatContainer");
+        const messageDiv = document.createElement("div");
+        messageDiv.className = "message " + className;
+        messageDiv.innerHTML = `<strong>${sender}:</strong> ${message}`;
+        chatContainer.appendChild(messageDiv);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+      }
+
+      // Allow Enter key to send message
+      document
+        .getElementById("messageInput")
+        .addEventListener("keypress", function (e) {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+          }
+        });
+    </script>
+  </body>
+</html>

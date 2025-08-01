@@ -84,6 +84,24 @@ services:
     depends_on:
       - backend
 
+  # Custom AI Server
+  custom-ai-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.custom_server
+    ports:
+      - "8002:8000"
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
   # Nginx Reverse Proxy (Optional)
   nginx:
     image: nginx:alpine
@@ -96,6 +114,7 @@ services:
     depends_on:
       - frontend
       - backend
+      - custom-ai-server
     restart: unless-stopped
 
 volumes:

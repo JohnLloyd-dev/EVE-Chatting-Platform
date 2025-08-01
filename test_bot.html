@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Bot Test Interface</title>
+    <style>
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        max-width: 1000px;
+        margin: 0 auto;
+        padding: 20px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+      }
+      .container {
+        background: white;
+        padding: 30px;
+        border-radius: 15px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+      }
+      .header {
+        text-align: center;
+        margin-bottom: 30px;
+        color: #333;
+      }
+      .test-section {
+        margin: 20px 0;
+        padding: 20px;
+        border: 2px solid #e0e0e0;
+        border-radius: 10px;
+        background-color: #f9f9f9;
+      }
+      .test-section h3 {
+        margin-top: 0;
+        color: #555;
+      }
+      .chat-container {
+        height: 300px;
+        overflow-y: auto;
+        border: 2px solid #ddd;
+        padding: 15px;
+        margin: 15px 0;
+        background-color: #ffffff;
+        border-radius: 8px;
+      }
+      .message {
+        margin: 10px 0;
+        padding: 12px;
+        border-radius: 8px;
+        max-width: 80%;
+      }
+      .user-message {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        margin-left: auto;
+        text-align: right;
+      }
+      .ai-message {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        color: white;
+      }
+      .system-message {
+        background-color: #28a745;
+        color: white;
+        text-align: center;
+        font-style: italic;
+      }
+      .input-group {
+        display: flex;
+        gap: 10px;
+        margin: 15px 0;
+        align-items: center;
+      }
+      input,
+      textarea,
+      button,
+      select {
+        padding: 12px;
+        border: 2px solid #ddd;
+        border-radius: 8px;
+        font-size: 14px;
+      }
+      textarea {
+        flex: 1;
+        resize: vertical;
+        min-height: 80px;
+        font-family: inherit;
+      }
+      button {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        cursor: pointer;
+        min-width: 120px;
+        font-weight: bold;
+        transition: transform 0.2s;
+      }
+      button:hover {
+        transform: translateY(-2px);
+      }
+      .quick-test-buttons {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 10px;
+        margin: 15px 0;
+      }
+      .quick-test-buttons button {
+        min-width: auto;
+        padding: 10px;
+        font-size: 12px;
+      }
+      .status {
+        padding: 10px;
+        border-radius: 5px;
+        margin: 10px 0;
+        font-weight: bold;
+      }
+      .status.success {
+        background-color: #d4edda;
+        color: #155724;
+      }
+      .status.error {
+        background-color: #f8d7da;
+        color: #721c24;
+      }
+      .status.info {
+        background-color: #d1ecf1;
+        color: #0c5460;
+      }
+      .auth-section {
+        background: linear-gradient(135deg, #ffeaa7 0%, #fab1a0 100%);
+        border: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>🤖 AI Bot Test Interface</h1>
+        <p>Comprehensive testing environment for the AI chat system</p>
+      </div>
+
+      <div class="test-section auth-section">
+        <h3>🔐 Authentication</h3>
+        <div class="input-group">
+          <input
+            type="text"
+            id="username"
+            placeholder="Username"
+            value="adam"
+          />
+          <input
+            type="password"
+            id="password"
+            placeholder="Password"
+            value="eve2025"
+          />
+          <button onclick="testAuth()">Test Auth</button>
+        </div>
+        <div id="authStatus"></div>
+      </div>
+
+      <div class="test-section">
+        <h3>🎭 Scenario Testing</h3>
+        <div class="input-group">
+          <select id="scenarioPreset">
+            <option value="">Custom Scenario</option>
+            <option value="helpful">Helpful Assistant</option>
+            <option value="creative">Creative Writer</option>
+            <option value="technical">Technical Expert</option>
+            <option value="roleplay">Fantasy Character</option>
+          </select>
+          <button onclick="loadPreset()">Load Preset</button>
+        </div>
+        <div class="input-group">
+          <textarea
+            id="scenario"
+            placeholder="Enter your scenario/system prompt here..."
+          >
+You are a helpful AI assistant that provides clear and concise answers.</textarea
+          >
+          <button onclick="setScenario()">Set Scenario</button>
+        </div>
+        <div id="scenarioStatus"></div>
+      </div>
+
+      <div class="test-section">
+        <h3>💬 Chat Testing</h3>
+        <div class="chat-container" id="chatContainer">
+          <div class="message system-message">
+            Chat interface ready. Set a scenario and start testing!
+          </div>
+        </div>
+
+        <div class="input-group">
+          <textarea
+            id="messageInput"
+            placeholder="Type your test message here..."
+          ></textarea>
+          <input
+            type="number"
+            id="maxTokens"
+            value="150"
+            min="10"
+            max="500"
+            placeholder="Max tokens"
+            style="width: 100px"
+          />
+          <button onclick="sendMessage()">Send</button>
+          <button onclick="clearChat()">Clear</button>
+        </div>
+
+        <div class="quick-test-buttons">
+          <button onclick="quickTest('Hello, how are you?')">
+            Basic Greeting
+          </button>
+          <button onclick="quickTest('What is the capital of France?')">
+            Factual Question
+          </button>
+          <button onclick="quickTest('Tell me a short story about a robot.')">
+            Creative Request
+          </button>
+          <button
+            onclick="quickTest('Explain quantum physics in simple terms.')"
+          >
+            Complex Topic
+          </button>
+          <button onclick="quickTest('What is 2+2?')">Math Question</button>
+          <button onclick="quickTest('Can you help me with coding?')">
+            Technical Help
+          </button>
+        </div>
+      </div>
+
+      <div class="test-section">
+        <h3>🧪 Advanced Testing</h3>
+        <div class="input-group">
+          <button onclick="testLongConversation()">
+            Test Long Conversation
+          </button>
+          <button onclick="testTokenLimits()">Test Token Limits</button>
+          <button onclick="testSpecialCharacters()">
+            Test Special Characters
+          </button>
+          <button onclick="testEmptyMessages()">Test Edge Cases</button>
+        </div>
+      </div>
+
+      <div class="test-section">
+        <h3>📊 System Status</h3>
+        <div id="systemStatus">
+          <div class="status info">System ready for testing</div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      let authHeader = "";
+      let conversationCount = 0;
+
+      const scenarioPresets = {
+        helpful:
+          "You are a helpful AI assistant that provides clear, accurate, and concise answers to user questions. Always be polite and professional.",
+        creative:
+          "You are a creative writing assistant. Help users with storytelling, character development, and creative ideas. Be imaginative and inspiring.",
+        technical:
+          "You are a technical expert specializing in programming, software development, and technology. Provide detailed technical explanations and code examples when appropriate.",
+        roleplay:
+          "You are a wise wizard named Gandalf living in a magical realm. Speak in character and help users with their quests and magical problems.",
+      };
+
+      function updateAuthHeader() {
+        const username = document.getElementById("username").value;
+        const password = document.getElementById("password").value;
+        authHeader = "Basic " + btoa(username + ":" + password);
+      }
+
+      function showStatus(elementId, message, type = "info") {
+        const element = document.getElementById(elementId);
+        element.innerHTML = `<div class="status ${type}">${message}</div>`;
+      }
+
+      async function testAuth() {
+        updateAuthHeader();
+        try {
+          const response = await fetch("/scenario", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: authHeader,
+            },
+            body: JSON.stringify({ scenario: "Test auth" }),
+          });
+
+          if (response.ok) {
+            showStatus(
+              "authStatus",
+              "✅ Authentication successful!",
+              "success"
+            );
+          } else {
+            showStatus(
+              "authStatus",
+              "❌ Authentication failed: " + response.statusText,
+              "error"
+            );
+          }
+        } catch (error) {
+          showStatus(
+            "authStatus",
+            "❌ Auth test error: " + error.message,
+            "error"
+          );
+        }
+      }
+
+      function loadPreset() {
+        const preset = document.getElementById("scenarioPreset").value;
+        if (preset && scenarioPresets[preset]) {
+          document.getElementById("scenario").value = scenarioPresets[preset];
+        }
+      }
+
+      async function setScenario() {
+        updateAuthHeader();
+        const scenario = document.getElementById("scenario").value;
+
+        try {
+          const response = await fetch("/scenario", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: authHeader,
+            },
+            body: JSON.stringify({ scenario: scenario }),
+          });
+
+          if (response.ok) {
+            showStatus(
+              "scenarioStatus",
+              "✅ Scenario set successfully!",
+              "success"
+            );
+            addMessage("System", "Scenario updated", "system-message");
+          } else {
+            showStatus(
+              "scenarioStatus",
+              "❌ Failed to set scenario: " + response.statusText,
+              "error"
+            );
+          }
+        } catch (error) {
+          showStatus(
+            "scenarioStatus",
+            "❌ Scenario error: " + error.message,
+            "error"
+          );
+        }
+      }
+
+      async function sendMessage(customMessage = null) {
+        updateAuthHeader();
+        const messageInput = document.getElementById("messageInput");
+        const maxTokens = document.getElementById("maxTokens").value;
+        const message = customMessage || messageInput.value.trim();
+
+        if (!message) return;
+
+        addMessage("You", message, "user-message");
+        if (!customMessage) messageInput.value = "";
+
+        const startTime = Date.now();
+
+        try {
+          const response = await fetch("/chat", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: authHeader,
+            },
+            body: JSON.stringify({
+              message: message,
+              max_tokens: parseInt(maxTokens),
+            }),
+          });
+
+          const endTime = Date.now();
+          const responseTime = endTime - startTime;
+
+          if (response.ok) {
+            const data = await response.json();
+            addMessage("AI", data.response, "ai-message");
+            conversationCount++;
+            showStatus(
+              "systemStatus",
+              `✅ Response received in ${responseTime}ms (${conversationCount} messages)`,
+              "success"
+            );
+          } else {
+            addMessage(
+              "System",
+              "Error: " + response.statusText,
+              "system-message"
+            );
+            showStatus(
+              "systemStatus",
+              "❌ Request failed: " + response.statusText,
+              "error"
+            );
+          }
+        } catch (error) {
+          addMessage("System", "Error: " + error.message, "system-message");
+          showStatus(
+            "systemStatus",
+            "❌ Network error: " + error.message,
+            "error"
+          );
+        }
+      }
+
+      function quickTest(message) {
+        sendMessage(message);
+      }
+
+      function addMessage(sender, message, className) {
+        const chatContainer = document.getElementById("chatContainer");
+        const messageDiv = document.createElement("div");
+        messageDiv.className = "message " + className;
+        messageDiv.innerHTML = `<strong>${sender}:</strong> ${message}`;
+        chatContainer.appendChild(messageDiv);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+      }
+
+      function clearChat() {
+        const chatContainer = document.getElementById("chatContainer");
+        chatContainer.innerHTML =
+          '<div class="message system-message">Chat cleared. Ready for new tests!</div>';
+        conversationCount = 0;
+      }
+
+      async function testLongConversation() {
+        const messages = [
+          "Hello, let's have a conversation.",
+          "What's your favorite color and why?",
+          "Tell me about that color's history.",
+          "How does color affect human psychology?",
+          "Can you give me examples of color in art?",
+        ];
+
+        for (let i = 0; i < messages.length; i++) {
+          await new Promise((resolve) => setTimeout(resolve, 2000)); // Wait 2 seconds between messages
+          await sendMessage(messages[i]);
+        }
+      }
+
+      async function testTokenLimits() {
+        document.getElementById("maxTokens").value = 10;
+        await sendMessage(
+          "Please write a very long story about dragons and magic kingdoms with lots of details and characters."
+        );
+
+        setTimeout(() => {
+          document.getElementById("maxTokens").value = 500;
+          sendMessage("Now write the same story but with maximum tokens.");
+        }, 3000);
+      }
+
+      async function testSpecialCharacters() {
+        const specialMessages = [
+          "Test émojis: 🤖🎭🔥💫",
+          "Special chars: @#$%^&*()_+-={}[]|\\:;\"'<>?,./",
+          "Unicode: αβγδε ñáéíóú çüöäß",
+          "Code: function test() { return 'hello'; }",
+        ];
+
+        for (const msg of specialMessages) {
+          await sendMessage(msg);
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+        }
+      }
+
+      async function testEdgeCases() {
+        const edgeCases = [
+          "", // Empty message (should be ignored)
+          " ", // Whitespace only
+          "a", // Single character
+          "A".repeat(1000), // Very long message
+        ];
+
+        for (const msg of edgeCases) {
+          await sendMessage(msg);
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+      }
+
+      // Allow Enter key to send message
+      document
+        .getElementById("messageInput")
+        .addEventListener("keypress", function (e) {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+          }
+        });
+
+      // Auto-test auth on page load
+      window.addEventListener("load", function () {
+        setTimeout(testAuth, 1000);
+      });
+    </script>
+  </body>
+</html>
