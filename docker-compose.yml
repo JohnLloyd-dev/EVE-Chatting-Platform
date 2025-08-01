@@ -111,7 +111,7 @@ services:
       context: .
       dockerfile: Dockerfile.custom_server
     ports:
-      - "8002:8000"
+      - "8000:8000"
     environment:
       - CUDA_VISIBLE_DEVICES=0
     volumes:
