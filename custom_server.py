@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from extract_tally import generate_story_from_json
@@ -155,7 +155,7 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
 
 @app.post("/tally-scenario")
 async def tally_scenario( request: Request):
-    # Tally passes no auth — secure it using secret token in query
+    # Tally passes no auth ï¿½ secure it using secret token in query
 #    secret = request.query_params.get("auth")
 #    if secret != "tally2025":
 #        raise HTTPException(401, detail="Unauthorized")
@@ -181,7 +181,8 @@ async def tally_scenario( request: Request):
    }
 
 
-    response = JSONResponse({"message": "Scenario set from Tally!"})
+    # Create redirect response to loading page
+    response = RedirectResponse(url="/loading", status_code=302)
     response.set_cookie(key="session_id", value=session_id, httponly=True)
     return response
 
@@ -192,5 +193,9 @@ async def index():
     return FileResponse("index.html")
 
 @app.get("/test-bot")
-async def index():
+async def test_bot():
     return FileResponse("test_bot.html")
+
+@app.get("/loading")
+async def loading():
+    return FileResponse("loading.html")

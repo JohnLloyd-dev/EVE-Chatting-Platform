@@ -21,6 +21,7 @@ COPY custom_server.py .
 COPY extract_tally.py .
 COPY index.html .
 COPY test_bot.html .
+COPY loading.html .
 
 # Expose port
 EXPOSE 8000
