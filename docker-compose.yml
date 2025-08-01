@@ -87,14 +87,16 @@ services:
     command: npm run dev
 
   # Custom AI Server
+  yaml
   custom-ai-server:
     build:
       context: .
       dockerfile: Dockerfile.custom_server
     ports:
-      - "8002:8000"
+      - "8000:8000"
     environment:
-      - CUDA_VISIBLE_DEVICES=0
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - NVIDIA_VISIBLE_DEVICES=all
     volumes:
       - ./:/app
     deploy:
@@ -104,6 +106,7 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+    runtime: nvidia  # Add this critical line
     restart: unless-stopped
 
 volumes:
