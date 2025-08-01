@@ -108,12 +108,59 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
     }
   }, [showLoadingAnimation]);
 
-  // Auto-focus text input when loading is done
+  // Auto-focus text input when component mounts and maintain focus
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.focus();
+    }
+  }, []);
+
+  // Re-focus after loading animation completes
   useEffect(() => {
     if (!showLoadingAnimation && textareaRef.current) {
       textareaRef.current.focus();
     }
   }, [showLoadingAnimation]);
+
+  // Re-focus after sending a message
+  useEffect(() => {
+    if (
+      !sendMessageMutation.isLoading &&
+      !isProcessing &&
+      textareaRef.current
+    ) {
+      textareaRef.current.focus();
+    }
+  }, [sendMessageMutation.isLoading, isProcessing]);
+
+  // Global keyboard event listener to focus input on any key press
+  useEffect(() => {
+    const handleGlobalKeyPress = (e: KeyboardEvent) => {
+      // Don't interfere with special keys or if user is typing in another input
+      if (
+        e.ctrlKey ||
+        e.altKey ||
+        e.metaKey ||
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        sendMessageMutation.isLoading ||
+        isProcessing
+      ) {
+        return;
+      }
+
+      // Focus the textarea if it's not already focused
+      if (
+        textareaRef.current &&
+        document.activeElement !== textareaRef.current
+      ) {
+        textareaRef.current.focus();
+      }
+    };
+
+    document.addEventListener("keydown", handleGlobalKeyPress);
+    return () => document.removeEventListener("keydown", handleGlobalKeyPress);
+  }, [sendMessageMutation.isLoading, isProcessing]);
 
   // Send initial AI message
   useEffect(() => {
@@ -150,6 +197,17 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
+    }
+  };
+
+  // Handle clicking anywhere in the chat area to focus the input
+  const handleChatAreaClick = () => {
+    if (
+      textareaRef.current &&
+      !sendMessageMutation.isLoading &&
+      !isProcessing
+    ) {
+      textareaRef.current.focus();
     }
   };
 
@@ -218,7 +276,7 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full" onClick={handleChatAreaClick}>
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {session.messages.length === 0 ? (
