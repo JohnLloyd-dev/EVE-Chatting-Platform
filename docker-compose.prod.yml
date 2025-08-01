@@ -84,7 +84,7 @@ services:
     depends_on:
       - backend
 
-  # Custom AI Server
+  # Custom AI Server (CPU-only for VPS compatibility)
   custom-ai-server:
     build:
       context: .
@@ -92,15 +92,14 @@ services:
     ports:
       - "8002:8000"
     environment:
-      - CUDA_VISIBLE_DEVICES=0
+      - FORCE_CPU=1
     restart: unless-stopped
     deploy:
       resources:
+        limits:
+          memory: 8G
         reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+          memory: 4G
 
   # Nginx Reverse Proxy (Optional)
   nginx:

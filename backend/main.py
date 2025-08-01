@@ -477,6 +477,36 @@ async def send_message(
     if session.user.is_blocked:
         raise HTTPException(403, detail="User is blocked")
     
+    # Handle special START_CONVERSATION message
+    if message_request.message == "START_CONVERSATION":
+        # Don't save this as a user message, just trigger AI to send "hi"
+        # Update session timestamp
+        session.updated_at = datetime.now(timezone.utc)
+        session.user.last_active = datetime.now(timezone.utc)
+        db.commit()
+        
+        # Queue AI response processing with "hi" as the message
+        task = process_ai_response.delay(
+            str(session_uuid), 
+            "hi", 
+            message_request.max_tokens,
+            True  # is_ai_initiated
+        )
+        
+        # Track the active AI task
+        active_task = ActiveAITask(
+            task_id=task.id,
+            session_id=session_uuid,
+            user_id=session.user.id
+        )
+        db.add(active_task)
+        db.commit()
+        
+        return {
+            "message": "AI conversation started",
+            "task_id": task.id
+        }
+    
     # Save user message
     user_message = Message(
         session_id=session_uuid,

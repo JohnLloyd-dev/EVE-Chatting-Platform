@@ -12,7 +12,11 @@ interface ChatInterfaceProps {
 export default function ChatInterface({ userId }: ChatInterfaceProps) {
   const [message, setMessage] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
+  const [showLoadingAnimation, setShowLoadingAnimation] = useState(true);
+  const [loadingStep, setLoadingStep] = useState(0);
+  const [hasInitializedAI, setHasInitializedAI] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const queryClient = useQueryClient();
 
   // Get chat session
@@ -77,6 +81,57 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
     poll();
   };
 
+  // Loading animation effect
+  useEffect(() => {
+    if (showLoadingAnimation) {
+      const steps = [
+        "Hold please…",
+        "Loading your preferences…",
+        "Connecting you with your partner…",
+      ];
+
+      const interval = setInterval(() => {
+        setLoadingStep((prev) => {
+          if (prev < steps.length - 1) {
+            return prev + 1;
+          } else {
+            clearInterval(interval);
+            setTimeout(() => {
+              setShowLoadingAnimation(false);
+            }, 1000);
+            return prev;
+          }
+        });
+      }, 1500);
+
+      return () => clearInterval(interval);
+    }
+  }, [showLoadingAnimation]);
+
+  // Auto-focus text input when loading is done
+  useEffect(() => {
+    if (!showLoadingAnimation && textareaRef.current) {
+      textareaRef.current.focus();
+    }
+  }, [showLoadingAnimation]);
+
+  // Send initial AI message
+  useEffect(() => {
+    if (
+      session &&
+      !hasInitializedAI &&
+      session.messages.length === 0 &&
+      !showLoadingAnimation
+    ) {
+      setHasInitializedAI(true);
+      // Trigger AI to send first message by sending a system message
+      sendMessageMutation.mutate({
+        sessionId: session.id,
+        message: "START_CONVERSATION",
+      });
+    }
+  }, [session, hasInitializedAI, showLoadingAnimation]);
+
   // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -98,13 +153,39 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
     }
   };
 
-  if (isLoading) {
+  if (isLoading || showLoadingAnimation) {
+    const loadingSteps = [
+      "Hold please…",
+      "Loading your preferences…",
+      "Connecting you with your partner…",
+    ];
+
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="relative">
-          <div className="animate-spin rounded-full h-16 w-16 border-4 border-purple-500/30 border-t-purple-500"></div>
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="w-6 h-6 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full animate-pulse"></div>
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center">
+          <div className="relative mb-8">
+            <div className="animate-spin rounded-full h-16 w-16 border-4 border-purple-500/30 border-t-purple-500 mx-auto"></div>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-6 h-6 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full animate-pulse"></div>
+            </div>
+          </div>
+          <div className="space-y-2">
+            {loadingSteps.map((step, index) => (
+              <div
+                key={index}
+                className={`text-lg transition-all duration-500 ${
+                  index <= loadingStep
+                    ? "text-white opacity-100 transform translate-y-0"
+                    : "text-gray-500 opacity-50 transform translate-y-2"
+                }`}
+              >
+                {index < loadingStep && "✓ "}
+                {index === loadingStep && (
+                  <span className="inline-block w-2 h-2 bg-purple-500 rounded-full animate-pulse mr-2"></span>
+                )}
+                {step}
+              </div>
+            ))}
           </div>
         </div>
       </div>
@@ -142,7 +223,9 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {session.messages.length === 0 ? (
           <div className="text-center text-gray-300 py-8">
-            Start the conversation by sending a message!
+            {hasInitializedAI
+              ? "Waiting for AI response..."
+              : "Initializing conversation..."}
           </div>
         ) : (
           session.messages.map((msg: ChatMessage) => (
@@ -197,6 +280,7 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
       <div className="border-t border-gray-700/50 p-4">
         <div className="flex space-x-2">
           <textarea
+            ref={textareaRef}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyPress={handleKeyPress}
@@ -204,6 +288,7 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
             className="flex-1 resize-none px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent text-white placeholder-gray-400 transition-all duration-200"
             rows={2}
             disabled={sendMessageMutation.isLoading || isProcessing}
+            autoFocus
           />
           <button
             onClick={handleSendMessage}

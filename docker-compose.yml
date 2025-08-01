@@ -86,25 +86,5 @@ services:
       - /app/node_modules
     command: npm run dev
 
-  # Custom AI Server
-  custom-ai-server:
-    build:
-      context: .
-      dockerfile: Dockerfile.custom_server
-    ports:
-      - "8000:8000"
-    environment:
-      - CUDA_VISIBLE_DEVICES=0
-    volumes:
-      - ./:/app
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    restart: unless-stopped
-
 volumes:
   postgres_data:

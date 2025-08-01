@@ -28,7 +28,7 @@ celery_app.conf.update(
 )
 
 @celery_app.task(bind=True, max_retries=3)
-def process_ai_response(self, session_id: str, user_message: str, max_tokens: int = 150):
+def process_ai_response(self, session_id: str, user_message: str, max_tokens: int = 150, is_ai_initiated: bool = False):
     """
     Process AI response asynchronously
     """
@@ -72,18 +72,24 @@ def process_ai_response(self, session_id: str, user_message: str, max_tokens: in
             else:
                 history.append(f"AI: {msg.content}")
         
-        # Add current user message
-        history.append(f"User: {user_message}")
-        
-        # Use the session's scenario_prompt which already contains the complete combined prompt
-        # This was built in main.py using: head_prompt + tally_prompt + rule_prompt
-        combined_prompt = chat_session.scenario_prompt
-        logger.info(f"Using session scenario prompt (already contains head + tally + rule)")
-        logger.info(f"Session scenario prompt length: {len(combined_prompt)} characters")
-        logger.info(f"Session scenario preview: {combined_prompt[:300]}...")
-        
-        # Call AI model API
-        ai_response = call_ai_model(combined_prompt, history, max_tokens)
+        # Handle AI-initiated messages differently
+        if is_ai_initiated:
+            # For AI-initiated messages, don't add to history as user message
+            # Just use the message as the AI's intended response
+            ai_response = user_message  # "hi" in this case
+        else:
+            # Add current user message
+            history.append(f"User: {user_message}")
+            
+            # Use the session's scenario_prompt which already contains the complete combined prompt
+            # This was built in main.py using: head_prompt + tally_prompt + rule_prompt
+            combined_prompt = chat_session.scenario_prompt
+            logger.info(f"Using session scenario prompt (already contains head + tally + rule)")
+            logger.info(f"Session scenario prompt length: {len(combined_prompt)} characters")
+            logger.info(f"Session scenario preview: {combined_prompt[:300]}...")
+            
+            # Call AI model API
+            ai_response = call_ai_model(combined_prompt, history, max_tokens)
         
         # Save AI response to database
         ai_message = Message(
