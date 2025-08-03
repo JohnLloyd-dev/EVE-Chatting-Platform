@@ -26,11 +26,33 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod up -d postgres re
 
 # Wait for PostgreSQL to be ready
 echo "⏳ Waiting for PostgreSQL to start..."
-sleep 20
+sleep 30
 
-# Get the actual postgres container name
-POSTGRES_CONTAINER=$(docker ps --format "table {{.Names}}" | grep postgres)
-echo "📋 Found PostgreSQL container: $POSTGRES_CONTAINER"
+# Wait for container to be fully running (not restarting)
+echo "⏳ Waiting for PostgreSQL to stabilize..."
+for i in {1..10}; do
+    POSTGRES_CONTAINER=$(docker ps --format "table {{.Names}}" | grep postgres | head -1)
+    if [ ! -z "$POSTGRES_CONTAINER" ]; then
+        # Check if container is running (not restarting)
+        STATUS=$(docker inspect --format='{{.State.Status}}' $POSTGRES_CONTAINER)
+        if [ "$STATUS" = "running" ]; then
+            echo "📋 Found PostgreSQL container: $POSTGRES_CONTAINER (Status: $STATUS)"
+            break
+        else
+            echo "⏳ PostgreSQL container status: $STATUS, waiting..."
+            sleep 10
+        fi
+    else
+        echo "⏳ Waiting for PostgreSQL container to appear..."
+        sleep 10
+    fi
+done
+
+# Final check
+if [ -z "$POSTGRES_CONTAINER" ]; then
+    echo "❌ Error: PostgreSQL container not found!"
+    exit 1
+fi
 
 # Copy backup file to container
 echo "📁 Copying backup file to container..."
