@@ -1,9 +1,7 @@
-version: "3.8"
-
 services:
   # PostgreSQL Database
   postgres:
-    image: postgres:15
+    image: postgres:latest
     environment:
       POSTGRES_DB: chatting_platform
       POSTGRES_USER: postgres
@@ -84,23 +82,6 @@ services:
     depends_on:
       - backend
 
-  # Custom AI Server (CPU-only for VPS compatibility)
-  custom-ai-server:
-    build:
-      context: .
-      dockerfile: Dockerfile.custom_server
-    ports:
-      - "8002:8000"
-    environment:
-      - FORCE_CPU=1
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 8G
-        reservations:
-          memory: 4G
-
   # Nginx Reverse Proxy (Optional)
   nginx:
     image: nginx:alpine
@@ -113,7 +94,6 @@ services:
     depends_on:
       - frontend
       - backend
-      - custom-ai-server
     restart: unless-stopped
 
 volumes:

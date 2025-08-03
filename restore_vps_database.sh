@@ -28,18 +28,22 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod up -d postgres re
 echo "⏳ Waiting for PostgreSQL to start..."
 sleep 20
 
+# Get the actual postgres container name
+POSTGRES_CONTAINER=$(docker ps --format "table {{.Names}}" | grep postgres)
+echo "📋 Found PostgreSQL container: $POSTGRES_CONTAINER"
+
 # Copy backup file to container
 echo "📁 Copying backup file to container..."
-docker cp backup_for_vps.sql eve-postgres-1:/tmp/backup_for_vps.sql
+docker cp backup_for_vps.sql $POSTGRES_CONTAINER:/tmp/backup_for_vps.sql
 
 # Run migrations first to ensure schema compatibility
 echo "🔧 Running database migrations..."
-docker cp scripts/migrations/comprehensive_migration.sql eve-postgres-1:/tmp/comprehensive_migration.sql
-docker exec eve-postgres-1 psql -U postgres -d chatting_platform -f /tmp/comprehensive_migration.sql
+docker cp scripts/migrations/comprehensive_migration.sql $POSTGRES_CONTAINER:/tmp/comprehensive_migration.sql
+docker exec $POSTGRES_CONTAINER psql -U postgres -d chatting_platform -f /tmp/comprehensive_migration.sql
 
 # Add missing columns for compatibility
 echo "🔧 Adding missing columns..."
-docker exec eve-postgres-1 psql -U postgres -d chatting_platform -c "
+docker exec $POSTGRES_CONTAINER psql -U postgres -d chatting_platform -c "
 ALTER TABLE users ADD COLUMN IF NOT EXISTS user_code VARCHAR(50);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS device_id VARCHAR(255);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS user_type VARCHAR(50) DEFAULT 'regular';
@@ -51,11 +55,11 @@ ALTER TABLE system_prompts ALTER COLUMN content DROP NOT NULL;
 
 # Restore the database
 echo "📥 Restoring database..."
-docker exec eve-postgres-1 pg_restore -U postgres -d chatting_platform --verbose --no-owner --no-privileges --clean --if-exists /tmp/backup_for_vps.sql
+docker exec $POSTGRES_CONTAINER pg_restore -U postgres -d chatting_platform --verbose --no-owner --no-privileges --clean --if-exists /tmp/backup_for_vps.sql
 
 # Check restoration results
 echo "📊 Checking restored data..."
-docker exec eve-postgres-1 psql -U postgres -d chatting_platform -c "
+docker exec $POSTGRES_CONTAINER psql -U postgres -d chatting_platform -c "
 SELECT 'users' as table_name, COUNT(*) as count FROM users
 UNION ALL
 SELECT 'chat_sessions', COUNT(*) FROM chat_sessions
