@@ -43,8 +43,8 @@ done
 echo "📁 Copying final123.sql to postgres container..."
 docker compose -f docker-compose.prod.yml --env-file .env.prod cp final123.sql postgres:/tmp/final123.sql
 
-echo "📥 Restoring final123.sql..."
-docker compose -f docker-compose.prod.yml --env-file .env.prod exec postgres psql -U postgres -d chatting_platform -f /tmp/final123.sql
+echo "📥 Restoring final123.sql using pg_restore (custom format)..."
+docker compose -f docker-compose.prod.yml --env-file .env.prod exec postgres pg_restore -U postgres -d chatting_platform --clean --if-exists --verbose /tmp/final123.sql
 
 # Check results
 echo "📊 Checking restored data..."
