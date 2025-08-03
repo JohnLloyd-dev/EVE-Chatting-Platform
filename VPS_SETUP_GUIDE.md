@@ -53,23 +53,27 @@ chmod +x deploy_to_vps.sh
 If you prefer to deploy manually, follow these steps:
 
 ### 1. Clone Repository
+
 ```bash
 git clone <your-repo-url>
 cd eve
 ```
 
 ### 2. Ensure final123.sql is present
+
 ```bash
 ls -la final123.sql
 ```
 
 ### 3. Start Services
+
 ```bash
 # Start all services with production configuration
 docker-compose -f docker-compose.prod.yml up -d
 ```
 
 ### 4. Restore Database
+
 ```bash
 # Run the database restoration script
 chmod +x restore_final123.sh
@@ -109,6 +113,7 @@ EOF
 ## ✅ Step 5: Verify Deployment
 
 ### Check Services
+
 ```bash
 # Check if all containers are running
 docker ps
@@ -124,6 +129,7 @@ curl -I http://localhost:3000
 ```
 
 ### Check Database
+
 ```bash
 # Verify database restoration
 docker exec eve-postgres-1 psql -U postgres -d chatting_platform -c "SELECT COUNT(*) FROM users;"
@@ -146,6 +152,7 @@ Once deployed, your application will be available at:
 ## 📊 Database Status
 
 After restoration, you should have:
+
 - ✅ 16 users (EVE001-EVE016)
 - ✅ 16 chat sessions
 - ✅ 259 messages
@@ -159,6 +166,7 @@ After restoration, you should have:
 ### Common Issues
 
 1. **Port Already in Use**
+
    ```bash
    # Check what's using the port
    sudo netstat -tulpn | grep :3000
@@ -166,6 +174,7 @@ After restoration, you should have:
    ```
 
 2. **Database Connection Failed**
+
    ```bash
    # Check PostgreSQL logs
    docker logs eve-postgres-1
@@ -174,6 +183,7 @@ After restoration, you should have:
    ```
 
 3. **Frontend Not Loading**
+
    ```bash
    # Check frontend logs
    docker logs eve-frontend-1
@@ -213,11 +223,13 @@ docker-compose -f docker-compose.prod.yml up -d --build
 ## 🔒 Security Recommendations
 
 1. **Change Default Passwords**
+
    - Update admin password
    - Use strong PostgreSQL password
    - Generate secure JWT secret
 
 2. **SSL/HTTPS Setup**
+
    ```bash
    # Install Certbot for Let's Encrypt
    sudo apt install certbot python3-certbot-nginx
@@ -237,9 +249,10 @@ docker-compose -f docker-compose.prod.yml up -d --build
 ## 📞 Support
 
 If you encounter issues:
+
 1. Check the logs: `docker-compose -f docker-compose.prod.yml logs`
 2. Verify all prerequisites are installed
 3. Ensure `final123.sql` is in the project directory
 4. Check firewall and port configurations
 
-Your EVE Chat Platform should now be fully operational on your VPS! 🎉 
+Your EVE Chat Platform should now be fully operational on your VPS! 🎉
