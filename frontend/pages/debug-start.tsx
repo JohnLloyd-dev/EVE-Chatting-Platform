@@ -11,9 +11,9 @@ export default function DebugStart() {
     const params = new URLSearchParams(window.location.search);
     const paramObj: Record<string, string> = {};
 
-    for (const [key, value] of params.entries()) {
+    params.forEach((value, key) => {
       paramObj[key] = value;
-    }
+    });
 
     setUrlParams(paramObj);
     console.log("All URL parameters:", paramObj);
