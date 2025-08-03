@@ -11,6 +11,10 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod down
 echo "🗑️ Removing postgres volume..."
 docker volume rm eve-chatting-platform_postgres_data 2>/dev/null || true
 
+# Create network if it doesn't exist
+echo "🌐 Creating network..."
+docker network create eve-chatting-platform_default 2>/dev/null || true
+
 # Start only postgres with basic configuration
 echo "🚀 Starting PostgreSQL with basic config..."
 docker run -d \
