@@ -139,7 +139,11 @@ CREATE TABLE IF NOT EXISTS admin_sessions (
 
 # Restore the database
 echo "📥 Restoring database data..."
-docker exec temp-postgres pg_restore -U postgres -d chatting_platform --verbose --no-owner --no-privileges --data-only /tmp/backup_for_vps.sql
+# Try pg_restore first, if it fails, try psql (for SQL format)
+if ! docker exec temp-postgres pg_restore -U postgres -d chatting_platform --verbose --no-owner --no-privileges --data-only /tmp/backup_for_vps.sql 2>/dev/null; then
+    echo "📥 pg_restore failed, trying psql for SQL format..."
+    docker exec temp-postgres psql -U postgres -d chatting_platform -f /tmp/backup_for_vps.sql
+fi
 
 # Check results
 echo "📊 Checking restored data..."
