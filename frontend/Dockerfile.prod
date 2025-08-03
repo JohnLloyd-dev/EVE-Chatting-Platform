@@ -5,8 +5,8 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies (use npm install since package-lock.json might not exist)
-RUN npm install --omit=dev
+# Install all dependencies including devDependencies (needed for TypeScript build)
+RUN npm install
 
 # Copy source code
 COPY . .
