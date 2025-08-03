@@ -9,6 +9,7 @@ export interface User {
   is_blocked: boolean;
   last_active: string;
   email?: string;
+  ai_responses_enabled: boolean;
 }
 
 export interface ChatMessage {
