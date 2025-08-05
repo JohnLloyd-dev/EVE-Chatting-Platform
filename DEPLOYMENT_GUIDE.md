@@ -1,92 +1,147 @@
-# AI Response Control Feature - Deployment Guide
+# 🚀 EVE Chat Platform - Deployment Guide
 
-## Overview
+## Quick Deployment
 
-This update adds the ability to disable/enable AI model responses for individual users, separate from the user blocking functionality. It also fixes the issue where admin messages were being included in the AI model's conversation context.
+### Prerequisites
+- Docker and Docker Compose installed
+- Git installed
+- `final123.sql` database backup file (optional)
 
-## Changes Made
-
-### Backend Changes
-
-1. **Database Schema**: Added `ai_responses_enabled` column to `users` table
-2. **API Endpoints**: Added `/admin/toggle-ai-responses` endpoint
-3. **AI Processing**: Modified to exclude admin messages from AI context
-4. **Celery Worker**: Added check for AI responses enabled before processing
-
-### Frontend Changes
-
-1. **Admin Interface**: Added AI toggle button next to block user button
-2. **Visual Indicators**: Added "AI Disabled" badge in conversation list
-3. **API Client**: Added `toggleAIResponses` method
-
-## Deployment Steps
-
-### 1. Pull Latest Changes
+### One-Command Deployment
 
 ```bash
-cd /path/to/eve
+# 1. Clone the repository
+git clone https://github.com/JohnLloyd-dev/EVE-Chatting-Platform.git
+cd EVE-Chatting-Platform
+
+# 2. Make the deployment script executable
+chmod +x deploy.sh
+
+# 3. Run the deployment script
+./deploy.sh
+```
+
+That's it! The script will handle everything automatically.
+
+## What the Deployment Script Does
+
+1. **Pulls latest changes** from GitHub
+2. **Stops all containers** and cleans up
+3. **Restores database** from `final123.sql` (if available)
+4. **Starts PostgreSQL** and Redis
+5. **Builds and starts backend** with CORS fixes
+6. **Builds and starts frontend** with external access
+7. **Starts Celery worker** for background tasks
+8. **Tests all services** and verifies connectivity
+9. **Shows final status** with access URLs
+
+## Access URLs
+
+After deployment, you can access:
+
+- **Frontend**: http://204.12.223.76:3000
+- **Backend API**: http://204.12.223.76:8001
+- **Admin Dashboard**: http://204.12.223.76:3000/admin
+
+## Admin Credentials
+
+- **Username**: admin
+- **Password**: admin123
+
+## Troubleshooting
+
+### If deployment fails:
+
+```bash
+# Check container status
+docker ps
+
+# Check logs for specific service
+docker-compose logs backend
+docker-compose logs frontend
+docker-compose logs postgres
+
+# Restart specific service
+docker-compose restart backend
+docker-compose restart frontend
+
+# Rebuild specific service
+docker-compose build backend
+docker-compose build frontend
+```
+
+### If services are not accessible:
+
+```bash
+# Check firewall status
+sudo ufw status
+
+# Allow ports if needed
+sudo ufw allow 3000
+sudo ufw allow 8001
+
+# Check if ports are listening
+netstat -tlnp | grep 3000
+netstat -tlnp | grep 8001
+```
+
+### If database issues:
+
+```bash
+# Check database connection
+docker exec eve-chatting-platform_postgres_1 pg_isready -U "adam@2025@man"
+
+# Check database logs
+docker-compose logs postgres
+```
+
+## Manual Deployment (Alternative)
+
+If you prefer manual deployment:
+
+```bash
+# 1. Pull changes
 git pull origin main
+
+# 2. Stop all services
+docker-compose down
+
+# 3. Start services in order
+docker-compose up -d postgres
+sleep 15
+docker-compose up -d redis
+docker-compose up -d backend
+sleep 20
+docker-compose up -d celery-worker
+docker-compose up -d frontend
+
+# 4. Check status
+docker ps
 ```
 
-### 2. Run Database Migration
+## Configuration
 
-```bash
-# Option A: Using Docker (recommended)
-docker compose exec backend python /app/run_migration.py
+The deployment uses these default configurations:
 
-# Option B: Direct SQL execution
-docker compose exec postgres psql -U postgres -d chatting_platform -f /docker-entrypoint-initdb.d/add_ai_responses_enabled.sql
-```
+- **Database User**: adam@2025@man
+- **Database Password**: eve@postgres@3241
+- **Backend Port**: 8001
+- **Frontend Port**: 3000
+- **VPS IP**: 204.12.223.76
 
-### 3. Restart Services
+## Security Features
 
-```bash
-docker compose restart backend celery-worker frontend
-```
+The deployment includes:
+- ✅ CORS configuration for frontend-backend communication
+- ✅ External access for frontend
+- ✅ Database security with restricted access
+- ✅ Firewall configuration
+- ✅ Secure environment variables
 
-### 4. Verify Deployment
+## Support
 
-1. Check admin panel - should see new "Enable/Disable AI" buttons
-2. Test AI toggle functionality
-3. Verify admin messages don't appear in AI context
-4. Check conversation list shows "AI Disabled" badges
-
-## New Features
-
-### Admin Panel
-
-- **AI Toggle Button**: Next to block user button in conversation details
-- **Visual Indicators**: "AI Disabled" badge in conversation list
-- **Separate Control**: AI responses can be disabled without blocking the user
-
-### API Endpoints
-
-- `POST /admin/toggle-ai-responses`: Toggle AI responses for a user
-  ```json
-  {
-    "user_id": "EVE001",
-    "ai_responses_enabled": false
-  }
-  ```
-
-### Behavior Changes
-
-1. **AI Context**: Admin messages are now excluded from AI conversation history
-2. **User Experience**: Users with disabled AI won't receive AI responses but can still chat
-3. **Admin Control**: Separate controls for blocking users vs disabling AI responses
-
-## Rollback Plan
-
-If issues occur, you can rollback by:
-
-1. `git checkout <previous-commit>`
-2. `docker compose restart backend celery-worker frontend`
-3. Optionally remove the database column: `ALTER TABLE users DROP COLUMN ai_responses_enabled;`
-
-## Testing Checklist
-
-- [ ] Admin can toggle AI responses for users
-- [ ] AI disabled users don't receive AI responses
-- [ ] Admin messages don't appear in AI context
-- [ ] Visual indicators work correctly
-- [ ] Existing functionality remains intact
+If you encounter issues:
+1. Check the logs: `docker-compose logs [service_name]`
+2. Verify firewall settings: `sudo ufw status`
+3. Test connectivity: `curl http://localhost:8001/health`
+4. Check container status: `docker ps`
