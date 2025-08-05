@@ -25,6 +25,7 @@ chmod +x deploy.sh
 ## 🔧 AI Integration
 
 The platform includes a custom AI server running the OpenHermes-2.5-Mistral-7B model with:
+
 - 4-bit quantization for memory efficiency
 - ChatML format support
 - Session-based conversation history
@@ -74,6 +75,7 @@ For detailed setup and deployment instructions, see the `docs/` directory.
 ## 🔄 Deployment
 
 The `deploy.sh` script handles:
+
 - Database restoration from backup
 - Service building and startup
 - Health checks and verification
