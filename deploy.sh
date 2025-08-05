@@ -76,23 +76,64 @@ if [ "$DB_RESTORE_NEEDED" = true ]; then
     
     # Wait for PostgreSQL to be ready
     print_status "Waiting for PostgreSQL to be ready..."
-    sleep 15
+    sleep 20
     
     # Check if PostgreSQL is ready
+    for i in {1..5}; do
+        if docker exec eve-chatting-platform_postgres_1 pg_isready -U "$DB_USER"; then
+            print_success "PostgreSQL is ready"
+            break
+        else
+            print_warning "PostgreSQL not ready yet, attempt $i/5"
+            sleep 10
+        fi
+    done
+    
+    # Verify PostgreSQL is ready
     if docker exec eve-chatting-platform_postgres_1 pg_isready -U "$DB_USER"; then
-        print_success "PostgreSQL is ready"
+        print_success "PostgreSQL is ready for database restore"
         
-        # Restore database
-        print_status "Restoring database from final123.sql..."
+        # Drop and recreate database to ensure clean restore
+        print_status "Preparing database for restore..."
+        docker exec eve-chatting-platform_postgres_1 psql -U "$DB_USER" -c "DROP DATABASE IF EXISTS chatting_platform;"
+        docker exec eve-chatting-platform_postgres_1 psql -U "$DB_USER" -c "CREATE DATABASE chatting_platform;"
+        
+        # Copy backup file to container
+        print_status "Copying final123.sql to PostgreSQL container..."
         docker cp final123.sql eve-chatting-platform_postgres_1:/tmp/
         
-        # Convert and restore
-        docker exec eve-chatting-platform_postgres_1 pg_restore -U "$DB_USER" -d chatting_platform --clean --if-exists /tmp/final123.sql
+        # Check if it's a binary dump or SQL file
+        if file final123.sql | grep -q "PostgreSQL"; then
+            print_status "Detected binary PostgreSQL dump, using pg_restore..."
+            docker exec eve-chatting-platform_postgres_1 pg_restore -U "$DB_USER" -d chatting_platform --clean --if-exists /tmp/final123.sql
+        else
+            print_status "Detected SQL file, using psql..."
+            docker exec eve-chatting-platform_postgres_1 psql -U "$DB_USER" -d chatting_platform -f /tmp/final123.sql
+        fi
         
         if [ $? -eq 0 ]; then
             print_success "Database restored successfully"
+            
+            # Verify data was restored
+            print_status "Verifying database restore..."
+            USER_COUNT=$(docker exec eve-chatting-platform_postgres_1 psql -U "$DB_USER" -d chatting_platform -t -c "SELECT COUNT(*) FROM users;" | tr -d ' ')
+            if [ "$USER_COUNT" -gt 0 ]; then
+                print_success "Database verification successful - found $USER_COUNT users"
+            else
+                print_warning "Database restore may not have worked - no users found"
+            fi
         else
-            print_warning "Database restore had some issues, but continuing..."
+            print_error "Database restore failed"
+            print_status "Attempting alternative restore method..."
+            
+            # Try alternative method
+            docker exec eve-chatting-platform_postgres_1 psql -U "$DB_USER" -d chatting_platform -f /tmp/final123.sql
+            if [ $? -eq 0 ]; then
+                print_success "Database restored with alternative method"
+            else
+                print_error "Database restore failed completely"
+                exit 1
+            fi
         fi
     else
         print_error "PostgreSQL failed to start"
@@ -101,7 +142,7 @@ if [ "$DB_RESTORE_NEEDED" = true ]; then
 else
     print_status "Step 5: Starting PostgreSQL..."
     docker-compose up -d postgres
-    sleep 10
+    sleep 15
 fi
 
 # Step 6: Start Redis
@@ -153,6 +194,20 @@ if [ "$BACKEND_STATUS" != "200" ]; then
     else
         print_error "Backend still not healthy after database fix (Status: $BACKEND_STATUS)"
         print_status "Check backend logs: docker-compose logs backend"
+    fi
+fi
+
+# Verify database data is accessible through backend
+if [ "$BACKEND_STATUS" = "200" ] && [ "$DB_RESTORE_NEEDED" = true ]; then
+    print_status "Verifying database data through backend API..."
+    sleep 5
+    
+    # Test a simple API call to verify data access
+    API_TEST=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8001/health 2>/dev/null || echo "000")
+    if [ "$API_TEST" = "200" ]; then
+        print_success "Backend API is responding correctly"
+    else
+        print_warning "Backend API test failed (Status: $API_TEST)"
     fi
 fi
 
