@@ -14,7 +14,7 @@ services:
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U adam@2025@man"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -38,7 +38,7 @@ services:
     ports:
       - "8001:8000"
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres123@postgres:5432/chatting_platform
+      - DATABASE_URL=postgresql://adam@2025@man:eve@postgres@3241@postgres:5432/chatting_platform
       - REDIS_URL=redis://redis:6379/0
       - AI_MODEL_URL=http://204.12.223.76:8000
       - AI_MODEL_AUTH_USERNAME=adam
@@ -58,7 +58,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres123@postgres:5432/chatting_platform
+      - DATABASE_URL=postgresql://adam@2025@man:eve@postgres@3241@postgres:5432/chatting_platform
       - REDIS_URL=redis://redis:6379/0
       - AI_MODEL_URL=http://204.12.223.76:8000
       - AI_MODEL_AUTH_USERNAME=adam

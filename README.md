@@ -5,6 +5,7 @@ A modern chat platform with AI-powered responses, admin dashboard, and comprehen
 ## 🚀 Quick Start
 
 ### Prerequisites
+
 - Docker and Docker Compose
 - Git
 - `final123.sql` database backup (optional)
@@ -24,6 +25,7 @@ chmod +x deploy.sh
 ## 🌐 Access URLs
 
 After deployment:
+
 - **Frontend**: http://204.12.223.76:3000
 - **Backend API**: http://204.12.223.76:8001
 - **Admin Dashboard**: http://204.12.223.76:3000/admin
@@ -102,6 +104,7 @@ docker-compose restart
 ## 🤝 Support
 
 For issues or questions:
+
 1. Check the troubleshooting script: `./troubleshoot.sh`
 2. Review the deployment guide: `docs/deployment/DEPLOYMENT_GUIDE.md`
 3. Check service logs: `docker-compose logs [service_name]`
