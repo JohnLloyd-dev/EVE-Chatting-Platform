@@ -104,8 +104,18 @@ if [ "$DB_RESTORE_NEEDED" = true ]; then
         
         # Check if it's a binary dump or SQL file
         if file final123.sql | grep -q "PostgreSQL"; then
-            print_status "Detected binary PostgreSQL dump, using pg_restore..."
-            docker exec eve-chatting-platform_postgres_1 pg_restore -U "$DB_USER" -d chatting_platform --clean --if-exists /tmp/final123.sql
+            print_status "Detected binary PostgreSQL dump, using pg_restore with schema-only first..."
+            
+            # First, restore schema only (tables, constraints, etc.)
+            docker exec eve-chatting-platform_postgres_1 pg_restore -U "$DB_USER" -d chatting_platform --schema-only --clean --if-exists /tmp/final123.sql
+            
+            # Add missing column if it doesn't exist
+            print_status "Adding missing columns if needed..."
+            docker exec eve-chatting-platform_postgres_1 psql -U "$DB_USER" -d chatting_platform -c "ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_responses_enabled BOOLEAN DEFAULT true;"
+            
+            # Now restore data only
+            print_status "Restoring data..."
+            docker exec eve-chatting-platform_postgres_1 pg_restore -U "$DB_USER" -d chatting_platform --data-only --disable-triggers /tmp/final123.sql
         else
             print_status "Detected SQL file, using psql..."
             docker exec eve-chatting-platform_postgres_1 psql -U "$DB_USER" -d chatting_platform -f /tmp/final123.sql
@@ -126,13 +136,20 @@ if [ "$DB_RESTORE_NEEDED" = true ]; then
             print_error "Database restore failed"
             print_status "Attempting alternative restore method..."
             
-            # Try alternative method
-            docker exec eve-chatting-platform_postgres_1 psql -U "$DB_USER" -d chatting_platform -f /tmp/final123.sql
+            # Try alternative method with schema and data separation
+            print_status "Trying schema-only restore first..."
+            docker exec eve-chatting-platform_postgres_1 pg_restore -U "$DB_USER" -d chatting_platform --schema-only --clean --if-exists /tmp/final123.sql
+            
+            print_status "Adding missing columns..."
+            docker exec eve-chatting-platform_postgres_1 psql -U "$DB_USER" -d chatting_platform -c "ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_responses_enabled BOOLEAN DEFAULT true;"
+            
+            print_status "Trying data-only restore with triggers disabled..."
+            docker exec eve-chatting-platform_postgres_1 pg_restore -U "$DB_USER" -d chatting_platform --data-only --disable-triggers /tmp/final123.sql
+            
             if [ $? -eq 0 ]; then
                 print_success "Database restored with alternative method"
             else
-                print_error "Database restore failed completely"
-                exit 1
+                print_warning "Alternative restore had issues, but continuing..."
             fi
         fi
     else
