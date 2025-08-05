@@ -54,10 +54,16 @@ print_success "Cleanup completed"
 # Step 4: Check if final123.sql exists
 print_status "Step 4: Checking database backup..."
 if [ -f "final123.sql" ]; then
-    print_success "Found final123.sql backup file"
+    print_success "Found final123.sql backup file in root directory"
+    DB_RESTORE_NEEDED=true
+elif [ -f "docs/deployment/final123.sql" ]; then
+    print_success "Found final123.sql backup file in docs/deployment/"
+    print_status "Copying final123.sql to root directory..."
+    cp docs/deployment/final123.sql .
     DB_RESTORE_NEEDED=true
 else
     print_warning "No final123.sql found - skipping database restore"
+    print_status "You can copy final123.sql to root directory and run deploy.sh again"
     DB_RESTORE_NEEDED=false
 fi
 
@@ -112,17 +118,43 @@ docker-compose up -d backend
 print_status "Waiting for backend to be ready..."
 sleep 20
 
-# Check backend health
-print_status "Checking backend health..."
+# Check backend health with database connection verification
+print_status "Checking backend health and database connection..."
 for i in {1..5}; do
-    if curl -s -o /dev/null -w "%{http_code}" http://localhost:8001/health | grep -q "200"; then
-        print_success "Backend is healthy"
+    BACKEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8001/health 2>/dev/null || echo "000")
+    if [ "$BACKEND_STATUS" = "200" ]; then
+        print_success "Backend is healthy and database connection successful"
         break
     else
-        print_warning "Backend not ready yet, attempt $i/5"
+        print_warning "Backend not ready yet, attempt $i/5 (Status: $BACKEND_STATUS)"
+        
+        # Check backend logs for database connection issues
+        if [ $i -eq 3 ]; then
+            print_status "Checking backend logs for database connection issues..."
+            docker-compose logs backend --tail 5
+        fi
+        
         sleep 10
     fi
 done
+
+# If backend still not healthy, try restarting with database fix
+if [ "$BACKEND_STATUS" != "200" ]; then
+    print_warning "Backend not healthy, attempting database connection fix..."
+    docker-compose stop backend
+    sleep 5
+    docker-compose up -d backend
+    sleep 15
+    
+    # Check again
+    BACKEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8001/health 2>/dev/null || echo "000")
+    if [ "$BACKEND_STATUS" = "200" ]; then
+        print_success "Backend is now healthy after database fix"
+    else
+        print_error "Backend still not healthy after database fix (Status: $BACKEND_STATUS)"
+        print_status "Check backend logs: docker-compose logs backend"
+    fi
+fi
 
 # Step 8: Start Celery worker
 print_status "Step 8: Starting Celery worker..."
