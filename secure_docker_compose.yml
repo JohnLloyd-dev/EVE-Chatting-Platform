@@ -105,6 +105,8 @@ services:
       - "0.0.0.0:3000:3000"  # Allow external access for frontend
     environment:
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8001}
+      - HOSTNAME=0.0.0.0
+      - PORT=3000
     volumes:
       - ./frontend:/app
       - /app/node_modules
