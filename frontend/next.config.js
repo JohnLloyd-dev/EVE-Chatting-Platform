@@ -28,17 +28,17 @@ const nextConfig = {
   },
   // Enable standalone output for Docker
   output: "standalone",
-  // API rewrites
-  async rewrites() {
-    return [
-      {
-        source: "/api/:path*",
-        destination: `${
-          process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001"
-        }/:path*`,
-      },
-    ];
-  },
+  // Disable API rewrites to prevent routing conflicts
+  // async rewrites() {
+  //   return [
+  //     {
+  //       source: "/api/:path*",
+  //       destination: `${
+  //         process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001"
+  //       }/:path*`,
+  //     },
+  //   ];
+  // },
 };
 
 module.exports = nextConfig;

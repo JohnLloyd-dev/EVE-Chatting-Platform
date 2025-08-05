@@ -13,7 +13,12 @@ export default function Home() {
     const existingSession = userSession.get();
     if (existingSession) {
       // User already logged in, redirect to chat
-      router.push(`/chat/${existingSession.userId}`);
+      const chatPath = `/chat/${existingSession.userId}`;
+      if (router.pathname !== chatPath) {
+        router.push(chatPath);
+      } else {
+        setIsLoading(false);
+      }
       return;
     }
 
@@ -22,19 +27,27 @@ export default function Home() {
     if (user_id && typeof user_id === "string") {
       // Save user session and redirect to chat immediately
       userSession.save(user_id, "tally");
-      router.push(`/chat/${user_id}`);
+      const chatPath = `/chat/${user_id}`;
+      if (router.pathname !== chatPath) {
+        router.push(chatPath);
+      } else {
+        setIsLoading(false);
+      }
       return;
     }
 
     // No session and no URL params, show login form
     setIsLoading(false);
-  }, [router.query, router]);
+  }, [router.query, router.pathname]);
 
   const handleStartChat = () => {
     if (userId.trim()) {
       // Save session for manual login and redirect
       userSession.save(userId.trim(), "tally");
-      router.push(`/chat/${userId.trim()}`);
+      const chatPath = `/chat/${userId.trim()}`;
+      if (router.pathname !== chatPath) {
+        router.push(chatPath);
+      }
     }
   };
 
