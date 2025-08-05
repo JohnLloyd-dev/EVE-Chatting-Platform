@@ -78,9 +78,11 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "3000:3000"
+      - "0.0.0.0:3000:3000"  # Allow external access for frontend
     environment:
       - NEXT_PUBLIC_API_URL=http://204.12.223.76:8001
+      - HOSTNAME=0.0.0.0
+      - PORT=3000
     volumes:
       - ./frontend:/app
       - /app/node_modules
