@@ -95,11 +95,15 @@ app.add_middleware(
         "http://localhost:3000", 
         "http://frontend:3000",
         "http://204.12.223.76:3000",  # VPS public IP frontend
-        "http://204.12.223.76:8001"   # Allow backend port access for debugging
+        "http://204.12.223.76:8001",  # Allow backend port access for debugging
+        "http://0.0.0.0:3000",        # Docker internal access
+        "http://127.0.0.1:3000",      # Local access
+        "*"  # Allow all origins for development (remove in production)
     ],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # Health check
