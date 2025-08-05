@@ -6,8 +6,8 @@ services:
     image: postgres:17
     environment:
       POSTGRES_DB: chatting_platform
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres123
+      POSTGRES_USER: adam@2025@man
+      POSTGRES_PASSWORD: eve@postgres@3241
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
