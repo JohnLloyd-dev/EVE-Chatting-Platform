@@ -4,7 +4,7 @@ services:
     image: postgres:latest
     environment:
       POSTGRES_DB: chatting_platform
-      POSTGRES_USER: postgres
+      POSTGRES_USER: adam@2025@man
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres123}
     volumes:
       - postgres_data:/var/lib/postgresql/data
