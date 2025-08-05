@@ -6,12 +6,17 @@
 echo "🔒 Security Fix Script"
 echo "====================="
 
-# Generate secure passwords
-echo "Step 1: Generating secure passwords..."
+# Use provided database credentials
+echo "Step 1: Using provided database credentials..."
 
-# Generate a secure database password
-DB_PASSWORD=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
-echo "Generated Database Password: $DB_PASSWORD"
+# Database credentials (provided by user)
+DB_USERNAME="adam@2025@man"
+DB_PASSWORD="eve@postgres@3241"
+echo "Database Username: $DB_USERNAME"
+echo "Database Password: $DB_PASSWORD"
+
+# Generate secure passwords for other services
+echo "Step 2: Generating secure passwords for other services..."
 
 # Generate a secure admin password
 ADMIN_PASSWORD=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
@@ -30,11 +35,12 @@ TALLY_SECRET=$(openssl rand -base64 32 | tr -d "=+/")
 echo "Generated Tally Webhook Secret: $TALLY_SECRET"
 
 # Create .env file with secure credentials
-echo "Step 2: Creating secure .env file..."
+echo "Step 3: Creating secure .env file..."
 cat > .env << EOF
 # Database Configuration
+POSTGRES_USER=$DB_USERNAME
 POSTGRES_PASSWORD=$DB_PASSWORD
-DATABASE_URL=postgresql://postgres:$DB_PASSWORD@postgres:5432/chatting_platform
+DATABASE_URL=postgresql://$DB_USERNAME:$DB_PASSWORD@postgres:5432/chatting_platform
 
 # Redis Configuration
 REDIS_URL=redis://redis:6379/0
@@ -65,17 +71,17 @@ EOF
 echo "✅ Created secure .env file"
 
 # Set proper permissions
-echo "Step 3: Setting secure file permissions..."
+echo "Step 4: Setting secure file permissions..."
 chmod 600 .env
 echo "✅ Set .env file permissions to 600 (owner read/write only)"
 
 # Create secure docker-compose override
-echo "Step 4: Creating secure docker-compose configuration..."
+echo "Step 5: Creating secure docker-compose configuration..."
 cp secure_docker_compose.yml docker-compose.secure.yml
 echo "✅ Created secure docker-compose configuration"
 
 # Update backend config to use environment variables
-echo "Step 5: Updating backend configuration..."
+echo "Step 6: Updating backend configuration..."
 cat > backend/config_secure.py << EOF
 from pydantic_settings import BaseSettings
 from typing import Optional
@@ -83,7 +89,7 @@ import os
 
 class Settings(BaseSettings):
     # Database
-    database_url: str = os.getenv("DATABASE_URL", "postgresql://postgres:password@localhost:5432/chatting_platform")
+    database_url: str = os.getenv("DATABASE_URL", "postgresql://adam@2025@man:password@localhost:5432/chatting_platform")
     
     # Redis
     redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
@@ -118,14 +124,15 @@ EOF
 echo "✅ Created secure backend configuration"
 
 # Create security checklist
-echo "Step 6: Creating security checklist..."
+echo "Step 7: Creating security checklist..."
 cat > SECURITY_CHECKLIST.md << EOF
 # Security Checklist
 
 ## ✅ Completed Security Measures
 
 ### 1. Password Security
-- [x] Generated secure database password: \`$DB_PASSWORD\`
+- [x] Using provided database username: \`$DB_USERNAME\`
+- [x] Using provided database password: \`$DB_PASSWORD\`
 - [x] Generated secure admin password: \`$ADMIN_PASSWORD\`
 - [x] Generated secure AI model password: \`$AI_PASSWORD\`
 - [x] Generated secure JWT secret: \`$JWT_SECRET\`
@@ -148,6 +155,7 @@ cat > SECURITY_CHECKLIST.md << EOF
 
 **IMPORTANT: Save these credentials securely!**
 
+- **Database Username**: \`$DB_USERNAME\`
 - **Database Password**: \`$DB_PASSWORD\`
 - **Admin Password**: \`$ADMIN_PASSWORD\`
 - **AI Model Password**: \`$AI_PASSWORD\`
@@ -191,7 +199,7 @@ EOF
 echo "✅ Created security checklist"
 
 # Create firewall rules
-echo "Step 7: Creating firewall configuration..."
+echo "Step 8: Creating firewall configuration..."
 cat > firewall_rules.sh << 'EOF'
 #!/bin/bash
 
@@ -226,7 +234,8 @@ echo ""
 echo "🎉 Security Fix Complete!"
 echo ""
 echo "📋 Summary:"
-echo "   ✅ Generated secure passwords"
+echo "   ✅ Updated with provided database credentials"
+echo "   ✅ Generated secure passwords for other services"
 echo "   ✅ Created secure .env file"
 echo "   ✅ Updated docker-compose configuration"
 echo "   ✅ Created secure backend config"
@@ -234,6 +243,7 @@ echo "   ✅ Created security checklist"
 echo "   ✅ Created firewall rules"
 echo ""
 echo "🔐 IMPORTANT CREDENTIALS:"
+echo "   Database Username: $DB_USERNAME"
 echo "   Database Password: $DB_PASSWORD"
 echo "   Admin Password: $ADMIN_PASSWORD"
 echo "   AI Model Password: $AI_PASSWORD"

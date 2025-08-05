@@ -6,7 +6,7 @@ services:
     image: postgres:17
     environment:
       POSTGRES_DB: chatting_platform
-      POSTGRES_USER: postgres
+      POSTGRES_USER: adam@2025@man
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -14,7 +14,7 @@ services:
     ports:
       - "127.0.0.1:5432:5432"  # Only accessible from localhost
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U adam@2025@man"]
       interval: 10s
       timeout: 5s
       retries: 5
