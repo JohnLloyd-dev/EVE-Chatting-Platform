@@ -3,6 +3,7 @@
 ## Quick Deployment
 
 ### Prerequisites
+
 - Docker and Docker Compose installed
 - Git installed
 - `final123.sql` database backup file (optional)
@@ -132,16 +133,42 @@ The deployment uses these default configurations:
 ## Security Features
 
 The deployment includes:
+
 - ✅ CORS configuration for frontend-backend communication
 - ✅ External access for frontend
 - ✅ Database security with restricted access
 - ✅ Firewall configuration
 - ✅ Secure environment variables
 
+## Project Structure
+
+```
+├── backend/                 # FastAPI backend
+├── frontend/               # Next.js frontend
+├── docs/                   # Documentation
+│   ├── deployment/         # Deployment guides (this folder)
+│   ├── security/           # Security documentation
+│   ├── testing/            # Test files
+│   └── guides/             # General guides
+├── old_scripts/            # Legacy scripts
+├── deploy.sh              # Main deployment script
+├── troubleshoot.sh        # Troubleshooting script
+├── docker-compose.yml     # Docker configuration
+└── README.md              # Main project README
+```
+
 ## Support
 
 If you encounter issues:
+
 1. Check the logs: `docker-compose logs [service_name]`
 2. Verify firewall settings: `sudo ufw status`
 3. Test connectivity: `curl http://localhost:8001/health`
 4. Check container status: `docker ps`
+5. Run troubleshooting script: `./troubleshoot.sh`
+
+## Related Documentation
+
+- **[Security Documentation](../security/FINAL_SECURITY_SUMMARY.md)** - Security features and configuration
+- **[VPS Setup Guide](VPS_SETUP_GUIDE.md)** - VPS-specific setup instructions
+- **[Main README](../../README.md)** - Project overview and quick start
