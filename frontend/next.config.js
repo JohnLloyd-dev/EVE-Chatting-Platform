@@ -1,14 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Enable external access
-  experimental: {
-    appDir: true,
-  },
-  // Configure server for external access
-  server: {
-    hostname: '0.0.0.0',
-    port: 3000,
-  },
   // Security headers
   async headers() {
     return [
@@ -32,6 +23,19 @@ const nextConfig = {
             value: 'strict-origin-when-cross-origin',
           },
         ],
+      },
+    ];
+  },
+  // Enable standalone output for Docker
+  output: "standalone",
+  // API rewrites
+  async rewrites() {
+    return [
+      {
+        source: "/api/:path*",
+        destination: `${
+          process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001"
+        }/:path*`,
       },
     ];
   },
