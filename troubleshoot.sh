@@ -1,7 +1,7 @@
 #!/bin/bash
 
 echo "🔧 EVE Chat Platform - Troubleshooting"
-echo "====================================="
+echo "======================================"
 
 # Colors for output
 RED='\033[0;31m'
@@ -41,6 +41,14 @@ else
     print_error "Backend: FAILED (Status: $BACKEND_STATUS)"
 fi
 
+# Test AI server
+AI_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health 2>/dev/null || echo "000")
+if [ "$AI_STATUS" = "200" ]; then
+    print_success "AI Server: OK (http://localhost:8000)"
+else
+    print_warning "AI Server: FAILED (Status: $AI_STATUS)"
+fi
+
 # Test frontend
 FRONTEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000 2>/dev/null || echo "000")
 if [ "$FRONTEND_STATUS" = "200" ]; then
@@ -49,29 +57,39 @@ else
     print_warning "Frontend: FAILED (Status: $FRONTEND_STATUS)"
 fi
 
-# Test external access
-print_status "Testing external access..."
-EXTERNAL_BACKEND=$(curl -s -o /dev/null -w "%{http_code}" http://204.12.223.76:8001/health 2>/dev/null || echo "000")
-EXTERNAL_FRONTEND=$(curl -s -o /dev/null -w "%{http_code}" http://204.12.223.76:3000 2>/dev/null || echo "000")
-
-if [ "$EXTERNAL_BACKEND" = "200" ]; then
-    print_success "External Backend: OK"
-else
-    print_warning "External Backend: FAILED (Status: $EXTERNAL_BACKEND)"
-fi
-
-if [ "$EXTERNAL_FRONTEND" = "200" ]; then
-    print_success "External Frontend: OK"
-else
-    print_warning "External Frontend: FAILED (Status: $EXTERNAL_FRONTEND)"
-fi
-
 echo ""
 print_status "Quick fixes:"
-echo "1. Restart all services: docker-compose restart"
-echo "2. Rebuild services: docker-compose build"
-echo "3. Check logs: docker-compose logs [service_name]"
-echo "4. Check firewall: sudo ufw status"
-echo "5. Full redeploy: ./deploy.sh"
+
+# Check if containers are running
+if ! docker ps | grep -q "eve-chatting-platform_backend_1"; then
+    print_warning "Backend container not running"
+    echo "  Fix: docker-compose up -d backend"
+fi
+
+if ! docker ps | grep -q "eve-chatting-platform_ai-server_1"; then
+    print_warning "AI Server container not running"
+    echo "  Fix: docker-compose up -d ai-server"
+fi
+
+if ! docker ps | grep -q "eve-chatting-platform_frontend_1"; then
+    print_warning "Frontend container not running"
+    echo "  Fix: docker-compose up -d frontend"
+fi
+
+if ! docker ps | grep -q "eve-chatting-platform_postgres_1"; then
+    print_warning "PostgreSQL container not running"
+    echo "  Fix: docker-compose up -d postgres"
+fi
+
+if ! docker ps | grep -q "eve-chatting-platform_redis_1"; then
+    print_warning "Redis container not running"
+    echo "  Fix: docker-compose up -d redis"
+fi
+
 echo ""
-print_success "Troubleshooting completed!" 
+print_status "Useful commands:"
+echo "  View logs: docker-compose logs [service_name]"
+echo "  Restart service: docker-compose restart [service_name]"
+echo "  Rebuild service: docker-compose build [service_name]"
+echo "  Full restart: docker-compose down && docker-compose up -d"
+echo "  Check AI model loading: docker-compose logs ai-server" 

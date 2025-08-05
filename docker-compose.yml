@@ -5,12 +5,11 @@ services:
   postgres:
     image: postgres:17
     environment:
-      POSTGRES_DB: chatting_platform
       POSTGRES_USER: adam@2025@man
       POSTGRES_PASSWORD: eve@postgres@3241
+      POSTGRES_DB: chatting_platform
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
       - "5432:5432"
     healthcheck:
@@ -19,7 +18,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # Redis for Celery
+  # Redis Cache/Broker
   redis:
     image: redis:7-alpine
     ports:
@@ -40,17 +39,18 @@ services:
     environment:
       - DATABASE_URL=postgresql://adam%402025%40man:eve%40postgres%403241@postgres:5432/chatting_platform
       - REDIS_URL=redis://redis:6379/0
-      - AI_MODEL_URL=http://204.12.223.76:8000
+      - AI_MODEL_URL=http://ai-server:8000
       - AI_MODEL_AUTH_USERNAME=adam
       - AI_MODEL_AUTH_PASSWORD=eve2025
+    volumes:
+      - ./backend:/app
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - ./backend:/app
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+      ai-server:
+        condition: service_healthy
 
   # Celery Worker
   celery-worker:
@@ -60,17 +60,45 @@ services:
     environment:
       - DATABASE_URL=postgresql://adam%402025%40man:eve%40postgres%403241@postgres:5432/chatting_platform
       - REDIS_URL=redis://redis:6379/0
-      - AI_MODEL_URL=http://204.12.223.76:8000
+      - AI_MODEL_URL=http://ai-server:8000
       - AI_MODEL_AUTH_USERNAME=adam
       - AI_MODEL_AUTH_PASSWORD=eve2025
+    volumes:
+      - ./backend:/app
+    command: celery -A celery_app worker --loglevel=info
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      ai-server:
+        condition: service_healthy
+
+  # AI Server
+  ai-server:
+    build:
+      context: ./ai_server
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - TRANSFORMERS_CACHE=/app/.cache/huggingface
+      - HF_HOME=/app/.cache/huggingface
     volumes:
-      - ./backend:/app
-    command: celery -A celery_app worker --loglevel=info
+      - ai_model_cache:/app/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+      start_period: 60s
 
   # Next.js Frontend
   frontend:
@@ -87,6 +115,10 @@ services:
       - ./frontend:/app
       - /app/node_modules
     command: npm run dev
+    depends_on:
+      backend:
+        condition: service_started
 
 volumes:
   postgres_data:
+  ai_model_cache:

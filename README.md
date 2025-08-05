@@ -1,16 +1,8 @@
-# 🚀 EVE Chat Platform
+# EVE Chat Platform
 
-A modern chat platform with AI-powered responses, admin dashboard, and comprehensive security features.
+A modern chat platform with AI integration, built with FastAPI, Next.js, PostgreSQL, and Redis.
 
 ## 🚀 Quick Start
-
-### Prerequisites
-
-- Docker and Docker Compose
-- Git
-- `final123.sql` database backup (optional)
-
-### Deploy in One Command
 
 ```bash
 # Clone the repository
@@ -22,93 +14,74 @@ chmod +x deploy.sh
 ./deploy.sh
 ```
 
-## 🌐 Access URLs
+## 📋 Services
 
-After deployment:
+- **Frontend**: Next.js application (Port 3000)
+- **Backend**: FastAPI REST API (Port 8001)
+- **AI Server**: Custom AI model server (Port 8000)
+- **Database**: PostgreSQL (Port 5432)
+- **Cache**: Redis (Port 6379)
 
-- **Frontend**: http://204.12.223.76:3000
-- **Backend API**: http://204.12.223.76:8001
-- **Admin Dashboard**: http://204.12.223.76:3000/admin
+## 🔧 AI Integration
 
-## 🔐 Admin Credentials
-
-- **Username**: admin
-- **Password**: admin123
-
-## 🏗️ Architecture
-
-- **Frontend**: Next.js with TypeScript
-- **Backend**: FastAPI (Python)
-- **Database**: PostgreSQL
-- **Cache**: Redis
-- **Background Tasks**: Celery
-- **Containerization**: Docker & Docker Compose
+The platform includes a custom AI server running the OpenHermes-2.5-Mistral-7B model with:
+- 4-bit quantization for memory efficiency
+- ChatML format support
+- Session-based conversation history
+- Token-based history trimming
+- HTTP Basic authentication
 
 ## 📁 Project Structure
 
 ```
-├── backend/                 # FastAPI backend
-├── frontend/               # Next.js frontend
-├── docs/                   # Documentation
-│   ├── deployment/         # Deployment guides
-│   ├── security/           # Security documentation
-│   ├── testing/            # Test files
-│   └── guides/             # General guides
-├── old_scripts/            # Legacy scripts
-├── deploy.sh              # Main deployment script
-├── troubleshoot.sh        # Troubleshooting script
-├── docker-compose.yml     # Docker configuration
-└── README.md              # This file
+├── frontend/          # Next.js frontend application
+├── backend/           # FastAPI backend API
+├── ai_server/         # Custom AI model server
+├── docs/              # Documentation and deployment files
+├── deploy.sh          # Main deployment script
+├── troubleshoot.sh    # Troubleshooting script
+└── docker-compose.yml # Docker services configuration
 ```
 
-## 🔧 Troubleshooting
+## 🌐 Access URLs
 
-If you encounter issues:
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:8001
+- **AI Server**: http://localhost:8000
+
+## 🔐 Authentication
+
+- **AI Server**: Username: `adam`, Password: `eve2025`
+- **Admin Dashboard**: Username: `admin`, Password: `admin123`
+
+## 🛠️ Troubleshooting
 
 ```bash
-# Run the troubleshooting script
+# Check service status
 ./troubleshoot.sh
 
-# Check service logs
+# View logs
 docker-compose logs [service_name]
 
 # Restart services
-docker-compose restart
+docker-compose restart [service_name]
 ```
 
 ## 📚 Documentation
 
-- **[Deployment Guide](docs/deployment/DEPLOYMENT_GUIDE.md)** - Complete deployment instructions
-- **[Security Documentation](docs/security/FINAL_SECURITY_SUMMARY.md)** - Security features and configuration
-- **[VPS Setup Guide](docs/deployment/VPS_SETUP_GUIDE.md)** - VPS-specific setup instructions
+For detailed setup and deployment instructions, see the `docs/` directory.
 
-## 🛡️ Security Features
+## 🔄 Deployment
 
-- ✅ CORS configuration
-- ✅ External access control
-- ✅ Database security
-- ✅ Firewall configuration
-- ✅ Environment variable protection
-- ✅ Input validation
-- ✅ Rate limiting
+The `deploy.sh` script handles:
+- Database restoration from backup
+- Service building and startup
+- Health checks and verification
+- AI model loading and initialization
 
-## 🚀 Features
+## 🚨 Requirements
 
-- **AI-Powered Chat**: Intelligent responses using AI models
-- **Admin Dashboard**: User management and conversation monitoring
-- **Real-time Messaging**: WebSocket-based communication
-- **Background Processing**: Celery for async tasks
-- **Database Management**: PostgreSQL with backup/restore
-- **Containerized**: Easy deployment with Docker
-
-## 🤝 Support
-
-For issues or questions:
-
-1. Check the troubleshooting script: `./troubleshoot.sh`
-2. Review the deployment guide: `docs/deployment/DEPLOYMENT_GUIDE.md`
-3. Check service logs: `docker-compose logs [service_name]`
-
-## 📄 License
-
-This project is proprietary software.
+- Docker and Docker Compose
+- NVIDIA GPU with CUDA support (for AI server)
+- At least 16GB RAM (8GB for AI model)
+- 50GB+ free disk space

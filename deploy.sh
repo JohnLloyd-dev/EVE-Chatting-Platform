@@ -27,45 +27,53 @@ print_error() {
 }
 
 # Configuration
-VPS_IP="204.12.223.76"
 DB_USER="adam@2025@man"
 DB_PASSWORD="eve@postgres@3241"
 
-# Step 1: Pull latest changes
-print_status "Step 1: Pulling latest changes..."
-git pull origin main
-if [ $? -ne 0 ]; then
-    print_error "Failed to pull changes"
-    exit 1
-fi
-print_success "Latest changes pulled"
-
-# Step 2: Stop all containers
-print_status "Step 2: Stopping all containers..."
-docker-compose down
-print_success "All containers stopped"
-
-# Step 3: Clean up any orphaned containers
-print_status "Step 3: Cleaning up orphaned containers..."
-docker container prune -f
-docker network prune -f
-print_success "Cleanup completed"
-
-# Step 4: Check if final123.sql exists
-print_status "Step 4: Checking database backup..."
+# Step 1: Check if backup file exists
+print_status "Step 1: Checking backup file..."
 if [ -f "final123.sql" ]; then
-    print_success "Found final123.sql backup file in root directory"
+    print_success "Found final123.sql in root directory"
     DB_RESTORE_NEEDED=true
 elif [ -f "docs/deployment/final123.sql" ]; then
-    print_success "Found final123.sql backup file in docs/deployment/"
-    print_status "Copying final123.sql to root directory..."
+    print_success "Found final123.sql in docs/deployment/"
     cp docs/deployment/final123.sql .
     DB_RESTORE_NEEDED=true
 else
-    print_warning "No final123.sql found - skipping database restore"
-    print_status "You can copy final123.sql to root directory and run deploy.sh again"
+    print_warning "No final123.sql found, skipping database restore"
     DB_RESTORE_NEEDED=false
 fi
+
+# Step 2: Stop existing containers
+print_status "Step 2: Stopping existing containers..."
+docker-compose down
+
+# Step 3: Build all services
+print_status "Step 3: Building all services..."
+docker-compose build --no-cache
+
+if [ $? -ne 0 ]; then
+    print_error "Build failed"
+    exit 1
+fi
+
+# Step 4: Start PostgreSQL and Redis first
+print_status "Step 4: Starting PostgreSQL and Redis..."
+docker-compose up -d postgres redis
+
+# Wait for PostgreSQL to be ready
+print_status "Waiting for PostgreSQL to be ready..."
+sleep 20
+
+for i in {1..5}; do
+    if docker exec eve-chatting-platform_postgres_1 pg_isready -U "$DB_USER"; then
+        print_success "PostgreSQL is ready"
+        break
+    else
+        print_warning "PostgreSQL not ready yet, attempt $i/5"
+        sleep 10
+    fi
+done
 
 # Step 5: Start PostgreSQL and restore database if needed
 if [ "$DB_RESTORE_NEEDED" = true ]; then
@@ -107,15 +115,25 @@ if [ "$DB_RESTORE_NEEDED" = true ]; then
             print_status "Detected binary PostgreSQL dump, using pg_restore with schema-only first..."
             
             # First, restore schema only (tables, constraints, etc.)
+            print_status "Restoring database schema..."
             docker exec eve-chatting-platform_postgres_1 pg_restore -U "$DB_USER" -d chatting_platform --schema-only --clean --if-exists /tmp/final123.sql
             
-            # Add missing column if it doesn't exist
-            print_status "Adding missing columns if needed..."
-            docker exec eve-chatting-platform_postgres_1 psql -U "$DB_USER" -d chatting_platform -c "ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_responses_enabled BOOLEAN DEFAULT true;"
-            
-            # Now restore data only
-            print_status "Restoring data..."
-            docker exec eve-chatting-platform_postgres_1 pg_restore -U "$DB_USER" -d chatting_platform --data-only --disable-triggers /tmp/final123.sql
+            if [ $? -eq 0 ]; then
+                print_success "Schema restored successfully"
+                
+                # Then restore data only
+                print_status "Restoring database data..."
+                docker exec eve-chatting-platform_postgres_1 pg_restore -U "$DB_USER" -d chatting_platform --data-only --disable-triggers /tmp/final123.sql
+                
+                if [ $? -eq 0 ]; then
+                    print_success "Data restored successfully"
+                else
+                    print_warning "Data restore had issues, but continuing..."
+                fi
+            else
+                print_error "Schema restore failed"
+                exit 1
+            fi
         else
             print_status "Detected SQL file, using psql..."
             docker exec eve-chatting-platform_postgres_1 psql -U "$DB_USER" -d chatting_platform -f /tmp/final123.sql
@@ -162,19 +180,30 @@ else
     sleep 15
 fi
 
-# Step 6: Start Redis
-print_status "Step 6: Starting Redis..."
-docker-compose up -d redis
-sleep 5
+# Step 6: Start AI Server
+print_status "Step 6: Starting AI Server..."
+docker-compose up -d ai-server
 
-# Step 7: Build and start backend
-print_status "Step 7: Building and starting backend..."
-docker-compose build backend
-docker-compose up -d backend
+# Wait for AI server to be ready (it takes time to load the model)
+print_status "Waiting for AI Server to load model (this may take several minutes)..."
+for i in {1..20}; do
+    AI_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health 2>/dev/null || echo "000")
+    if [ "$AI_STATUS" = "200" ]; then
+        print_success "AI Server is ready"
+        break
+    else
+        print_warning "AI Server not ready yet, attempt $i/20 (Status: $AI_STATUS)"
+        sleep 30
+    fi
+done
+
+# Step 7: Start Backend and Celery
+print_status "Step 7: Starting Backend and Celery..."
+docker-compose up -d backend celery-worker
 
 # Wait for backend to be ready
-print_status "Waiting for backend to be ready..."
-sleep 20
+print_status "Waiting for Backend to be ready..."
+sleep 15
 
 # Check backend health with database connection verification
 print_status "Checking backend health and database connection..."
@@ -214,117 +243,54 @@ if [ "$BACKEND_STATUS" != "200" ]; then
     fi
 fi
 
-# Verify database data is accessible through backend
-if [ "$BACKEND_STATUS" = "200" ] && [ "$DB_RESTORE_NEEDED" = true ]; then
-    print_status "Verifying database data through backend API..."
-    sleep 5
-    
-    # Test a simple API call to verify data access
-    API_TEST=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8001/health 2>/dev/null || echo "000")
-    if [ "$API_TEST" = "200" ]; then
-        print_success "Backend API is responding correctly"
-    else
-        print_warning "Backend API test failed (Status: $API_TEST)"
-    fi
-fi
-
-# Step 8: Start Celery worker
-print_status "Step 8: Starting Celery worker..."
-docker-compose up -d celery-worker
-sleep 5
-
-# Step 9: Build and start frontend
-print_status "Step 9: Building and starting frontend..."
-docker-compose build frontend
+# Step 8: Start Frontend
+print_status "Step 8: Starting Frontend..."
 docker-compose up -d frontend
 
 # Wait for frontend to be ready
-print_status "Waiting for frontend to be ready..."
-sleep 20
+print_status "Waiting for Frontend to be ready..."
+sleep 15
 
-# Step 10: Verify all services
-print_status "Step 10: Verifying all services..."
+# Step 9: Final health checks
+print_status "Step 9: Running final health checks..."
 
-# Check all containers are running
-print_status "Checking container status..."
+# Check all services
+print_status "Checking all services..."
 docker ps
 
-# Test backend access
-print_status "Testing backend access..."
-BACKEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8001/health)
+echo ""
+print_status "Testing service connectivity..."
+
+# Test backend
+BACKEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8001/health 2>/dev/null || echo "000")
 if [ "$BACKEND_STATUS" = "200" ]; then
-    print_success "Backend accessible locally"
+    print_success "Backend: OK (http://localhost:8001)"
 else
-    print_error "Backend not accessible locally (Status: $BACKEND_STATUS)"
+    print_error "Backend: FAILED (Status: $BACKEND_STATUS)"
 fi
 
-# Test external backend access
-EXTERNAL_BACKEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://$VPS_IP:8001/health)
-if [ "$EXTERNAL_BACKEND_STATUS" = "200" ]; then
-    print_success "Backend accessible externally"
+# Test AI server
+AI_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health 2>/dev/null || echo "000")
+if [ "$AI_STATUS" = "200" ]; then
+    print_success "AI Server: OK (http://localhost:8000)"
 else
-    print_warning "Backend not accessible externally (Status: $EXTERNAL_BACKEND_STATUS)"
+    print_warning "AI Server: FAILED (Status: $AI_STATUS)"
 fi
 
-# Test frontend access
-print_status "Testing frontend access..."
-FRONTEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000)
+# Test frontend
+FRONTEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000 2>/dev/null || echo "000")
 if [ "$FRONTEND_STATUS" = "200" ]; then
-    print_success "Frontend accessible locally"
+    print_success "Frontend: OK (http://localhost:3000)"
 else
-    print_warning "Frontend not accessible locally (Status: $FRONTEND_STATUS)"
+    print_warning "Frontend: FAILED (Status: $FRONTEND_STATUS)"
 fi
 
-# Test external frontend access
-EXTERNAL_FRONTEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://$VPS_IP:3000)
-if [ "$EXTERNAL_FRONTEND_STATUS" = "200" ]; then
-    print_success "Frontend accessible externally"
-else
-    print_warning "Frontend not accessible externally (Status: $EXTERNAL_FRONTEND_STATUS)"
-fi
-
-# Step 11: Test CORS
-print_status "Step 11: Testing CORS configuration..."
-CORS_TEST=$(curl -s -H "Origin: http://$VPS_IP:3000" \
-     -H "Access-Control-Request-Method: GET" \
-     -H "Access-Control-Request-Headers: Content-Type" \
-     -X OPTIONS \
-     http://localhost:8001/health)
-if [ $? -eq 0 ]; then
-    print_success "CORS preflight test passed"
-else
-    print_warning "CORS preflight test failed"
-fi
-
-# Step 12: Final status report
 echo ""
-echo "🎉 Deployment Complete!"
-echo "======================"
+print_success "🚀 Deployment completed!"
 echo ""
-echo "📋 Service Status:"
-echo "   Backend API: http://$VPS_IP:8001"
-echo "   Frontend: http://$VPS_IP:3000"
-echo "   Admin Dashboard: http://$VPS_IP:3000/admin"
+print_status "Access URLs:"
+echo "  Frontend: http://localhost:3000"
+echo "  Backend API: http://localhost:8001"
+echo "  AI Server: http://localhost:8000"
 echo ""
-echo "🔐 Admin Credentials:"
-echo "   Username: admin"
-echo "   Password: admin123"
-echo ""
-echo "📊 Container Status:"
-docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-echo ""
-echo "🔧 Troubleshooting:"
-echo "   If services are not accessible:"
-echo "   1. Check firewall: sudo ufw status"
-echo "   2. Check logs: docker-compose logs [service_name]"
-echo "   3. Restart service: docker-compose restart [service_name]"
-echo "   4. Rebuild service: docker-compose build [service_name]"
-echo ""
-echo "🌐 Access URLs:"
-echo "   Local Backend: http://localhost:8001"
-echo "   Local Frontend: http://localhost:3000"
-echo "   External Backend: http://$VPS_IP:8001"
-echo "   External Frontend: http://$VPS_IP:3000"
-echo ""
-
-print_success "Deployment completed successfully!" 
+print_status "For troubleshooting, run: ./troubleshoot.sh" 
