@@ -30,6 +30,25 @@ print_error() {
 DB_USER="adam@2025@man"
 DB_PASSWORD="eve@postgres@3241"
 
+# Function to get the correct PostgreSQL container name
+get_postgres_container() {
+    # Try the new naming convention first (hyphens)
+    if docker ps --format "table {{.Names}}" | grep -q "eve-chatting-platform-postgres-1"; then
+        echo "eve-chatting-platform-postgres-1"
+    # Try the old naming convention (underscores)
+    elif docker ps --format "table {{.Names}}" | grep -q "eve-chatting-platform_postgres_1"; then
+        echo "eve-chatting-platform_postgres_1"
+    else
+        # If neither exists, try to find any postgres container
+        POSTGRES_CONTAINER=$(docker ps --format "table {{.Names}}" | grep -i postgres | head -1)
+        if [ -n "$POSTGRES_CONTAINER" ]; then
+            echo "$POSTGRES_CONTAINER"
+        else
+            echo ""
+        fi
+    fi
+}
+
 # Step 1: Check if backup file exists
 print_status "Step 1: Checking backup file..."
 if [ -f "final123.sql" ]; then
@@ -65,8 +84,17 @@ docker-compose up -d postgres redis
 print_status "Waiting for PostgreSQL to be ready..."
 sleep 20
 
+# Get the correct container name
+POSTGRES_CONTAINER=$(get_postgres_container)
+if [ -z "$POSTGRES_CONTAINER" ]; then
+    print_error "Could not find PostgreSQL container"
+    exit 1
+fi
+
+print_status "Using PostgreSQL container: $POSTGRES_CONTAINER"
+
 for i in {1..5}; do
-    if docker exec eve-chatting-platform_postgres_1 pg_isready -U "$DB_USER"; then
+    if docker exec "$POSTGRES_CONTAINER" pg_isready -U "$DB_USER"; then
         print_success "PostgreSQL is ready"
         break
     else
@@ -86,9 +114,16 @@ if [ "$DB_RESTORE_NEEDED" = true ]; then
     print_status "Waiting for PostgreSQL to be ready..."
     sleep 20
     
+    # Get the correct container name again
+    POSTGRES_CONTAINER=$(get_postgres_container)
+    if [ -z "$POSTGRES_CONTAINER" ]; then
+        print_error "Could not find PostgreSQL container"
+        exit 1
+    fi
+    
     # Check if PostgreSQL is ready
     for i in {1..5}; do
-        if docker exec eve-chatting-platform_postgres_1 pg_isready -U "$DB_USER"; then
+        if docker exec "$POSTGRES_CONTAINER" pg_isready -U "$DB_USER"; then
             print_success "PostgreSQL is ready"
             break
         else
@@ -98,17 +133,17 @@ if [ "$DB_RESTORE_NEEDED" = true ]; then
     done
     
     # Verify PostgreSQL is ready
-    if docker exec eve-chatting-platform_postgres_1 pg_isready -U "$DB_USER"; then
+    if docker exec "$POSTGRES_CONTAINER" pg_isready -U "$DB_USER"; then
         print_success "PostgreSQL is ready for database restore"
         
         # Drop and recreate database to ensure clean restore
         print_status "Preparing database for restore..."
-        docker exec eve-chatting-platform_postgres_1 psql -U "$DB_USER" -c "DROP DATABASE IF EXISTS chatting_platform;"
-        docker exec eve-chatting-platform_postgres_1 psql -U "$DB_USER" -c "CREATE DATABASE chatting_platform;"
+        docker exec "$POSTGRES_CONTAINER" psql -U "$DB_USER" -c "DROP DATABASE IF EXISTS chatting_platform;"
+        docker exec "$POSTGRES_CONTAINER" psql -U "$DB_USER" -c "CREATE DATABASE chatting_platform;"
         
         # Copy backup file to container
         print_status "Copying final123.sql to PostgreSQL container..."
-        docker cp final123.sql eve-chatting-platform_postgres_1:/tmp/
+        docker cp final123.sql "$POSTGRES_CONTAINER:/tmp/"
         
         # Check if it's a binary dump or SQL file
         if file final123.sql | grep -q "PostgreSQL"; then
@@ -116,14 +151,14 @@ if [ "$DB_RESTORE_NEEDED" = true ]; then
             
             # First, restore schema only (tables, constraints, etc.)
             print_status "Restoring database schema..."
-            docker exec eve-chatting-platform_postgres_1 pg_restore -U "$DB_USER" -d chatting_platform --schema-only --clean --if-exists /tmp/final123.sql
+            docker exec "$POSTGRES_CONTAINER" pg_restore -U "$DB_USER" -d chatting_platform --schema-only --clean --if-exists /tmp/final123.sql
             
             if [ $? -eq 0 ]; then
                 print_success "Schema restored successfully"
                 
                 # Then restore data only
                 print_status "Restoring database data..."
-                docker exec eve-chatting-platform_postgres_1 pg_restore -U "$DB_USER" -d chatting_platform --data-only --disable-triggers /tmp/final123.sql
+                docker exec "$POSTGRES_CONTAINER" pg_restore -U "$DB_USER" -d chatting_platform --data-only --disable-triggers /tmp/final123.sql
                 
                 if [ $? -eq 0 ]; then
                     print_success "Data restored successfully"
@@ -136,7 +171,7 @@ if [ "$DB_RESTORE_NEEDED" = true ]; then
             fi
         else
             print_status "Detected SQL file, using psql..."
-            docker exec eve-chatting-platform_postgres_1 psql -U "$DB_USER" -d chatting_platform -f /tmp/final123.sql
+            docker exec "$POSTGRES_CONTAINER" psql -U "$DB_USER" -d chatting_platform -f /tmp/final123.sql
         fi
         
         if [ $? -eq 0 ]; then
@@ -144,7 +179,7 @@ if [ "$DB_RESTORE_NEEDED" = true ]; then
             
             # Verify data was restored
             print_status "Verifying database restore..."
-            USER_COUNT=$(docker exec eve-chatting-platform_postgres_1 psql -U "$DB_USER" -d chatting_platform -t -c "SELECT COUNT(*) FROM users;" | tr -d ' ')
+            USER_COUNT=$(docker exec "$POSTGRES_CONTAINER" psql -U "$DB_USER" -d chatting_platform -t -c "SELECT COUNT(*) FROM users;" | tr -d ' ')
             if [ "$USER_COUNT" -gt 0 ]; then
                 print_success "Database verification successful - found $USER_COUNT users"
             else
@@ -156,13 +191,13 @@ if [ "$DB_RESTORE_NEEDED" = true ]; then
             
             # Try alternative method with schema and data separation
             print_status "Trying schema-only restore first..."
-            docker exec eve-chatting-platform_postgres_1 pg_restore -U "$DB_USER" -d chatting_platform --schema-only --clean --if-exists /tmp/final123.sql
+            docker exec "$POSTGRES_CONTAINER" pg_restore -U "$DB_USER" -d chatting_platform --schema-only --clean --if-exists /tmp/final123.sql
             
             print_status "Adding missing columns..."
-            docker exec eve-chatting-platform_postgres_1 psql -U "$DB_USER" -d chatting_platform -c "ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_responses_enabled BOOLEAN DEFAULT true;"
+            docker exec "$POSTGRES_CONTAINER" psql -U "$DB_USER" -d chatting_platform -c "ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_responses_enabled BOOLEAN DEFAULT true;"
             
             print_status "Trying data-only restore with triggers disabled..."
-            docker exec eve-chatting-platform_postgres_1 pg_restore -U "$DB_USER" -d chatting_platform --data-only --disable-triggers /tmp/final123.sql
+            docker exec "$POSTGRES_CONTAINER" pg_restore -U "$DB_USER" -d chatting_platform --data-only --disable-triggers /tmp/final123.sql
             
             if [ $? -eq 0 ]; then
                 print_success "Database restored with alternative method"
