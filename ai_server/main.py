@@ -23,17 +23,37 @@ class MessageRequest(BaseModel):
 
 # Load model
 model_name = "teknium/OpenHermes-2.5-Mistral-7B"
-bnb_config = BitsAndBytesConfig(
-    load_in_4bit=True,
-    bnb_4bit_compute_dtype=torch.float16
-)
+
+# Check if GPU is available
+gpu_available = torch.cuda.is_available()
+print(f"GPU available: {gpu_available}")
+
 tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = AutoModelForCausalLM.from_pretrained(
-    model_name,
-    device_map="auto",
-    quantization_config=bnb_config
-)
+
+if gpu_available:
+    # Use GPU with quantization
+    print("Loading model with GPU and 4-bit quantization...")
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_compute_dtype=torch.float16
+    )
+    model = AutoModelForCausalLM.from_pretrained(
+        model_name,
+        device_map="auto",
+        quantization_config=bnb_config,
+        torch_dtype=torch.float16
+    )
+else:
+    # Use CPU without quantization
+    print("Loading model on CPU (no quantization)...")
+    model = AutoModelForCausalLM.from_pretrained(
+        model_name,
+        device_map="cpu",
+        torch_dtype=torch.float32
+    )
+
 model.eval()  # Enable evaluation mode
+print(f"Model loaded on device: {model.device}")
 
 # Helper to build ChatML format prompt
 def build_chatml_prompt(system, history):

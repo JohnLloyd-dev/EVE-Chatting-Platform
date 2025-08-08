@@ -74,11 +74,11 @@ services:
       ai-server:
         condition: service_healthy
 
-  # AI Server (CPU Version)
+  # AI Server (GPU Version)
   ai-server:
     build:
       context: ./ai_server
-      dockerfile: Dockerfile.cpu
+      dockerfile: Dockerfile
     ports:
       - "8000:8000"
     environment:
@@ -86,6 +86,13 @@ services:
       - HF_HOME=/app/.cache/huggingface
     volumes:
       - ai_model_cache:/app/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
