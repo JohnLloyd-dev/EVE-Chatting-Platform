@@ -121,7 +121,7 @@ if [ "$DB_RESTORE_NEEDED" = true ]; then
         exit 1
     fi
     
-    # Check if PostgreSQL is ready
+    # Check if PostgreSQL is ready (connect using the configured user)
     for i in {1..5}; do
         if docker exec "$POSTGRES_CONTAINER" pg_isready -U "$DB_USER"; then
             print_success "PostgreSQL is ready"
@@ -147,63 +147,52 @@ if [ "$DB_RESTORE_NEEDED" = true ]; then
         
         # Check if it's a binary dump or SQL file
         if file final123.sql | grep -q "PostgreSQL"; then
-            print_status "Detected binary PostgreSQL dump, using pg_restore with schema-only first..."
+            print_status "Detected binary PostgreSQL dump, using pg_restore..."
             
-            # First, restore schema only (tables, constraints, etc.)
-            print_status "Restoring database schema..."
-            docker exec "$POSTGRES_CONTAINER" pg_restore -U "$DB_USER" -d chatting_platform --schema-only --clean --if-exists /tmp/final123.sql
+            # Try full restore first (this often works better)
+            print_status "Attempting full restore..."
+            docker exec "$POSTGRES_CONTAINER" pg_restore -U "$DB_USER" -d chatting_platform --clean --if-exists --no-owner --no-privileges /tmp/final123.sql
             
             if [ $? -eq 0 ]; then
-                print_success "Schema restored successfully"
+                print_success "Full restore completed successfully"
+            else
+                print_warning "Full restore failed, trying schema-only then data-only approach..."
                 
-                # Then restore data only
-                print_status "Restoring database data..."
-                docker exec "$POSTGRES_CONTAINER" pg_restore -U "$DB_USER" -d chatting_platform --data-only --disable-triggers /tmp/final123.sql
+                # First, restore schema only (tables, constraints, etc.)
+                print_status "Restoring database schema..."
+                docker exec "$POSTGRES_CONTAINER" pg_restore -U "$DB_USER" -d chatting_platform --schema-only --clean --if-exists /tmp/final123.sql
                 
                 if [ $? -eq 0 ]; then
-                    print_success "Data restored successfully"
+                    print_success "Schema restored successfully"
+                    
+                    # Then restore data only
+                    print_status "Restoring database data..."
+                    docker exec "$POSTGRES_CONTAINER" pg_restore -U "$DB_USER" -d chatting_platform --data-only --disable-triggers /tmp/final123.sql
+                    
+                    if [ $? -eq 0 ]; then
+                        print_success "Data restored successfully"
+                    else
+                        print_warning "Data restore had issues, but continuing..."
+                    fi
                 else
-                    print_warning "Data restore had issues, but continuing..."
+                    print_error "Schema restore failed"
+                    exit 1
                 fi
-            else
-                print_error "Schema restore failed"
-                exit 1
             fi
         else
             print_status "Detected SQL file, using psql..."
             docker exec "$POSTGRES_CONTAINER" psql -U "$DB_USER" -d chatting_platform -f /tmp/final123.sql
         fi
         
-        if [ $? -eq 0 ]; then
-            print_success "Database restored successfully"
-            
-            # Verify data was restored
-            print_status "Verifying database restore..."
-            USER_COUNT=$(docker exec "$POSTGRES_CONTAINER" psql -U "$DB_USER" -d chatting_platform -t -c "SELECT COUNT(*) FROM users;" | tr -d ' ')
-            if [ "$USER_COUNT" -gt 0 ]; then
-                print_success "Database verification successful - found $USER_COUNT users"
-            else
-                print_warning "Database restore may not have worked - no users found"
-            fi
+        # Verify data was restored
+        print_status "Verifying database restore..."
+        USER_COUNT=$(docker exec "$POSTGRES_CONTAINER" psql -U "$DB_USER" -d chatting_platform -t -c "SELECT COUNT(*) FROM users;" 2>/dev/null | tr -d ' ' | grep -E '^[0-9]+$' || echo "0")
+        if [ "$USER_COUNT" -gt 0 ]; then
+            print_success "Database verification successful - found $USER_COUNT users"
         else
-            print_error "Database restore failed"
-            print_status "Attempting alternative restore method..."
-            
-            # Try alternative method with schema and data separation
-            print_status "Trying schema-only restore first..."
-            docker exec "$POSTGRES_CONTAINER" pg_restore -U "$DB_USER" -d chatting_platform --schema-only --clean --if-exists /tmp/final123.sql
-            
-            print_status "Adding missing columns..."
-            docker exec "$POSTGRES_CONTAINER" psql -U "$DB_USER" -d chatting_platform -c "ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_responses_enabled BOOLEAN DEFAULT true;"
-            
-            print_status "Trying data-only restore with triggers disabled..."
-            docker exec "$POSTGRES_CONTAINER" pg_restore -U "$DB_USER" -d chatting_platform --data-only --disable-triggers /tmp/final123.sql
-            
-            if [ $? -eq 0 ]; then
-                print_success "Database restored with alternative method"
-            else
-                print_warning "Alternative restore had issues, but continuing..."
-            fi
+            print_warning "Database restore may not have worked - no users found"
+            print_status "Checking what tables exist..."
+            docker exec "$POSTGRES_CONTAINER" psql -U "$DB_USER" -d chatting_platform -c "\dt"
         fi
     else
         print_error "PostgreSQL failed to start"
@@ -222,15 +211,43 @@ docker-compose up -d ai-server
 # Wait for AI server to be ready (it takes time to load the model)
 print_status "Waiting for AI Server to load model (this may take several minutes)..."
 for i in {1..20}; do
+    # Check if container is running first
+    if ! docker ps --format "table {{.Names}}" | grep -q "eve-chatting-platform-ai-server-1\|eve-chatting-platform_ai-server_1"; then
+        print_warning "AI Server container not running, attempt $i/20"
+        sleep 30
+        continue
+    fi
+    
+    # Check if the model is still loading by looking at logs
+    if docker-compose logs ai-server --tail 5 | grep -q "Loading model\|Downloading\|Installing"; then
+        print_warning "AI Server still loading model, attempt $i/20"
+        sleep 30
+        continue
+    fi
+    
+    # Try health check
     AI_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health 2>/dev/null || echo "000")
     if [ "$AI_STATUS" = "200" ]; then
         print_success "AI Server is ready"
         break
     else
         print_warning "AI Server not ready yet, attempt $i/20 (Status: $AI_STATUS)"
+        
+        # Show logs every 5 attempts
+        if [ $((i % 5)) -eq 0 ]; then
+            print_status "AI Server logs (last 10 lines):"
+            docker-compose logs ai-server --tail 10
+        fi
+        
         sleep 30
     fi
 done
+
+# If AI server still not ready after 20 attempts, show logs and continue
+if [ "$AI_STATUS" != "200" ]; then
+    print_warning "AI Server not ready after 20 attempts, showing logs and continuing..."
+    docker-compose logs ai-server --tail 20
+fi
 
 # Step 7: Start Backend and Celery
 print_status "Step 7: Starting Backend and Celery..."
