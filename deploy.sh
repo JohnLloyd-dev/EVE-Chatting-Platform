@@ -149,25 +149,33 @@ if [ "$DB_RESTORE_NEEDED" = true ]; then
         if file final123.sql | grep -q "PostgreSQL"; then
             print_status "Detected binary PostgreSQL dump, using pg_restore..."
             
-            # Try full restore first (this often works better)
-            print_status "Attempting full restore..."
-            docker exec "$POSTGRES_CONTAINER" pg_restore -U "$DB_USER" -d chatting_platform --clean --if-exists --no-owner --no-privileges /tmp/final123.sql
+            # Try verbose full restore with better error checking
+            print_status "Attempting full restore with verbose output..."
+            docker exec "$POSTGRES_CONTAINER" pg_restore -U "$DB_USER" -d chatting_platform --verbose --clean --if-exists --no-owner --no-privileges /tmp/final123.sql 2>&1
+            RESTORE_EXIT_CODE=$?
             
-            if [ $? -eq 0 ]; then
-                print_success "Full restore completed successfully"
+            # Check if any tables were actually created
+            TABLE_COUNT=$(docker exec "$POSTGRES_CONTAINER" psql -U "$DB_USER" -d chatting_platform -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';" 2>/dev/null | tr -d ' ' || echo "0")
+            
+            if [ "$RESTORE_EXIT_CODE" -eq 0 ] && [ "$TABLE_COUNT" -gt 0 ]; then
+                print_success "Full restore completed successfully with $TABLE_COUNT tables"
             else
-                print_warning "Full restore failed, trying schema-only then data-only approach..."
+                print_warning "Full restore failed or incomplete (exit code: $RESTORE_EXIT_CODE, tables: $TABLE_COUNT)"
+                print_status "Trying alternative restore methods..."
                 
-                # First, restore schema only (tables, constraints, etc.)
-                print_status "Restoring database schema..."
-                docker exec "$POSTGRES_CONTAINER" pg_restore -U "$DB_USER" -d chatting_platform --schema-only --clean --if-exists /tmp/final123.sql
+                # Method 1: Try restoring with create statements first
+                print_status "Creating database schema manually..."
+                docker exec "$POSTGRES_CONTAINER" pg_restore -U "$DB_USER" -d chatting_platform --schema-only --verbose --clean --if-exists --create /tmp/final123.sql 2>&1
                 
-                if [ $? -eq 0 ]; then
-                    print_success "Schema restored successfully"
+                # Check if tables were created
+                TABLE_COUNT=$(docker exec "$POSTGRES_CONTAINER" psql -U "$DB_USER" -d chatting_platform -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';" 2>/dev/null | tr -d ' ' || echo "0")
+                
+                if [ "$TABLE_COUNT" -gt 0 ]; then
+                    print_success "Schema created successfully with $TABLE_COUNT tables"
                     
-                    # Then restore data only
+                    # Now try to restore data
                     print_status "Restoring database data..."
-                    docker exec "$POSTGRES_CONTAINER" pg_restore -U "$DB_USER" -d chatting_platform --data-only --disable-triggers /tmp/final123.sql
+                    docker exec "$POSTGRES_CONTAINER" pg_restore -U "$DB_USER" -d chatting_platform --data-only --verbose --disable-triggers /tmp/final123.sql 2>&1
                     
                     if [ $? -eq 0 ]; then
                         print_success "Data restored successfully"
@@ -175,8 +183,13 @@ if [ "$DB_RESTORE_NEEDED" = true ]; then
                         print_warning "Data restore had issues, but continuing..."
                     fi
                 else
-                    print_error "Schema restore failed"
-                    exit 1
+                    print_error "Failed to create database schema. Showing pg_restore list:"
+                    docker exec "$POSTGRES_CONTAINER" pg_restore --list /tmp/final123.sql | head -20
+                    print_status "Attempting to extract SQL and import manually..."
+                    
+                    # Try extracting to SQL and importing
+                    docker exec "$POSTGRES_CONTAINER" pg_restore -f /tmp/backup.sql /tmp/final123.sql
+                    docker exec "$POSTGRES_CONTAINER" psql -U "$DB_USER" -d chatting_platform -f /tmp/backup.sql
                 fi
             fi
         else

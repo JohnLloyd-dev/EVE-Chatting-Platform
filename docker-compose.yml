@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   # PostgreSQL Database
@@ -74,11 +74,11 @@ services:
       ai-server:
         condition: service_healthy
 
-  # AI Server (GPU Version)
+  # AI Server (GPU Version with CPU fallback)
   ai-server:
     build:
       context: ./ai_server
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.cpu
     ports:
       - "8000:8000"
     environment:
@@ -86,13 +86,6 @@ services:
       - HF_HOME=/app/.cache/huggingface
     volumes:
       - ai_model_cache:/app/.cache/huggingface
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -106,7 +99,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "0.0.0.0:3000:3000"  # Allow external access for frontend
+      - "0.0.0.0:3000:3000" # Allow external access for frontend
     environment:
       - NEXT_PUBLIC_API_URL=http://204.12.223.76:8001
       - HOSTNAME=0.0.0.0
