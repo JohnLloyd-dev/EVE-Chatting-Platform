@@ -8,6 +8,19 @@ from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 import secrets
 import torch
 from uuid import uuid4
+import os
+from typing import Dict, List, Optional
+import json
+import logging
+
+# Check if accelerate is available
+try:
+    import accelerate
+    ACCELERATE_AVAILABLE = True
+    print("✅ Accelerate library available")
+except ImportError:
+    ACCELERATE_AVAILABLE = False
+    print("⚠️  Accelerate library not available - some strategies will be skipped")
 
 app = FastAPI()
 security = HTTPBasic()
@@ -41,45 +54,65 @@ def load_model_with_fallbacks():
             torch_dtype=torch.float32
         )
     
-    # Strategy 1: Try with auto device mapping and no quantization first
+    # Strategy 1: Simple GPU loading without device_map (no accelerate required)
     try:
-        print("🔄 Strategy 1: Loading with auto device mapping (no quantization)...")
+        print("🔄 Strategy 1: Loading directly to GPU (no device_map)...")
         model = AutoModelForCausalLM.from_pretrained(
             model_name,
-            device_map="auto",
             torch_dtype=torch.float16,
-            low_cpu_mem_usage=True,
-            max_memory={0: "7.5GB", "cpu": "4GB"}
+            low_cpu_mem_usage=True
         )
-        print("✅ Strategy 1 successful: Auto device mapping")
+        model = model.to("cuda:0")
+        print("✅ Strategy 1 successful: Direct GPU loading")
         return model
     except Exception as e:
         print(f"❌ Strategy 1 failed: {e}")
     
-    # Strategy 2: 8-bit quantization (more stable than 4-bit)
-    try:
-        print("🔄 Strategy 2: Loading with 8-bit quantization...")
-        bnb_config_8bit = BitsAndBytesConfig(
-            load_in_8bit=True,
-            llm_int8_threshold=6.0
-        )
-        
-        model = AutoModelForCausalLM.from_pretrained(
-            model_name,
-            device_map="auto",
-            quantization_config=bnb_config_8bit,
-            torch_dtype=torch.float16,
-            low_cpu_mem_usage=True,
-            max_memory={0: "7.5GB", "cpu": "4GB"}
-        )
-        print("✅ Strategy 2 successful: 8-bit quantization")
-        return model
-    except Exception as e:
-        print(f"❌ Strategy 2 failed: {e}")
+    # Strategy 2: Try with auto device mapping and no quantization (only if accelerate available)
+    if ACCELERATE_AVAILABLE:
+        try:
+            print("🔄 Strategy 2: Loading with auto device mapping (no quantization)...")
+            model = AutoModelForCausalLM.from_pretrained(
+                model_name,
+                device_map="auto",
+                torch_dtype=torch.float16,
+                low_cpu_mem_usage=True,
+                max_memory={0: "7.5GB", "cpu": "4GB"}
+            )
+            print("✅ Strategy 2 successful: Auto device mapping")
+            return model
+        except Exception as e:
+            print(f"❌ Strategy 2 failed: {e}")
+    else:
+        print("⏭️  Strategy 2 skipped: accelerate not available")
     
-    # Strategy 3: 4-bit quantization with conservative settings
+    # Strategy 3: 8-bit quantization (more stable than 4-bit) - only if accelerate available
+    if ACCELERATE_AVAILABLE:
+        try:
+            print("🔄 Strategy 3: Loading with 8-bit quantization...")
+            bnb_config_8bit = BitsAndBytesConfig(
+                load_in_8bit=True,
+                llm_int8_threshold=6.0
+            )
+            
+            model = AutoModelForCausalLM.from_pretrained(
+                model_name,
+                device_map="auto",
+                quantization_config=bnb_config_8bit,
+                torch_dtype=torch.float16,
+                low_cpu_mem_usage=True,
+                max_memory={0: "7.5GB", "cpu": "4GB"}
+            )
+            print("✅ Strategy 3 successful: 8-bit quantization")
+            return model
+        except Exception as e:
+            print(f"❌ Strategy 3 failed: {e}")
+    else:
+        print("⏭️  Strategy 3 skipped: accelerate not available")
+    
+    # Strategy 4: 4-bit quantization with conservative settings
     try:
-        print("🔄 Strategy 3: Loading with 4-bit quantization (conservative)...")
+        print("🔄 Strategy 4: Loading with 4-bit quantization (conservative)...")
         bnb_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_compute_dtype=torch.float16,
@@ -89,50 +122,53 @@ def load_model_with_fallbacks():
         
         model = AutoModelForCausalLM.from_pretrained(
             model_name,
-            device_map="auto",
+            device_map="cpu",
             quantization_config=bnb_config,
             torch_dtype=torch.float16,
-            low_cpu_mem_usage=True,
-            max_memory={0: "7.5GB", "cpu": "4GB"}
+            low_cpu_mem_usage=True
         )
-        print("✅ Strategy 3 successful: 4-bit quantization")
-        return model
-    except Exception as e:
-        print(f"❌ Strategy 3 failed: {e}")
-    
-    # Strategy 4: Manual device mapping with mixed precision
-    try:
-        print("🔄 Strategy 4: Loading with manual device mapping...")
-        device_map = {
-            "model.embed_tokens": "cuda:0",
-            "model.norm": "cuda:0",
-            "lm_head": "cuda:0"
-        }
-        # Add layers with GPU allocation
-        for i in range(32):
-            device_map[f"model.layers.{i}"] = "cuda:0"
-        
-        model = AutoModelForCausalLM.from_pretrained(
-            model_name,
-            device_map=device_map,
-            torch_dtype=torch.float16,
-            low_cpu_mem_usage=True,
-            max_memory={0: "7.5GB", "cpu": "4GB"}
-        )
-        print("✅ Strategy 4 successful: Manual device mapping")
+        model = model.to("cuda:0")
+        print("✅ Strategy 4 successful: 4-bit quantization")
         return model
     except Exception as e:
         print(f"❌ Strategy 4 failed: {e}")
     
-    # Strategy 5: CPU fallback
-    print("🔄 Strategy 5: Falling back to CPU...")
+    # Strategy 5: Manual device mapping with mixed precision (only if accelerate available)
+    if ACCELERATE_AVAILABLE:
+        try:
+            print("🔄 Strategy 5: Loading with manual device mapping...")
+            device_map = {
+                "model.embed_tokens": "cuda:0",
+                "model.norm": "cuda:0",
+                "lm_head": "cuda:0"
+            }
+            # Add layers with GPU allocation
+            for i in range(32):
+                device_map[f"model.layers.{i}"] = "cuda:0"
+            
+            model = AutoModelForCausalLM.from_pretrained(
+                model_name,
+                device_map=device_map,
+                torch_dtype=torch.float16,
+                low_cpu_mem_usage=True,
+                max_memory={0: "7.5GB", "cpu": "4GB"}
+            )
+            print("✅ Strategy 5 successful: Manual device mapping")
+            return model
+        except Exception as e:
+            print(f"❌ Strategy 5 failed: {e}")
+    else:
+        print("⏭️  Strategy 5 skipped: accelerate not available")
+    
+    # Strategy 6: CPU fallback
+    print("🔄 Strategy 6: Falling back to CPU...")
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
         device_map="cpu",
         torch_dtype=torch.float32,
         low_cpu_mem_usage=True
     )
-    print("✅ Strategy 5 successful: CPU fallback")
+    print("✅ Strategy 6 successful: CPU fallback")
     return model
 
 # Load the model using the fallback strategy

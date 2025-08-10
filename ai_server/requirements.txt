@@ -3,9 +3,9 @@ uvicorn[standard]==0.24.0
 pydantic==2.5.0
 torch>=2.1.0
 transformers>=4.36.0
-accelerate==0.25.0
-bitsandbytes==0.41.3
+accelerate>=0.25.0
+bitsandbytes>=0.41.3
 sentencepiece>=0.1.99
 protobuf==3.20.3
-scipy==1.11.4
-numpy==1.24.3 
+scipy>=1.11.4
+numpy>=1.24.3 
