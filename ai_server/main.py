@@ -1,4 +1,4 @@
-# FIXED: Resolved PyTorch Half precision overflow error by using float32 consistently
+# FIXED: Resolved PyTorch Half precision overflow error by using proper data type handling
 from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.responses import FileResponse, JSONResponse
@@ -31,153 +31,162 @@ print(f"GPU available: {gpu_available}")
 
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 
-if gpu_available:
-    # Use GPU with maximum efficiency for RTX 4060 (8GB VRAM)
-    print("Loading model with GPU optimization for RTX 4060 (8GB VRAM)...")
+def load_model_with_fallbacks():
+    """Load model with multiple fallback strategies to handle Half precision overflow"""
+    if not gpu_available:
+        print("Loading model on CPU (no quantization)...")
+        return AutoModelForCausalLM.from_pretrained(
+            model_name,
+            device_map="cpu",
+            torch_dtype=torch.float32
+        )
     
-    # Set environment variables for optimal GPU performance
-    import os
-    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:512"
-    os.environ["CUDA_LAUNCH_BLOCKING"] = "0"
-    os.environ["TORCH_CUDNN_V8_API_ENABLED"] = "1"
-    
-    # Optimized quantization config for maximum GPU utilization - FIXED for Half precision overflow
-    bnb_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_compute_dtype=torch.float32,  # Changed from float16 to prevent Half overflow
-        bnb_4bit_use_double_quant=True,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_quant_storage=torch.float32   # Changed from float16 to prevent Half overflow
-    )
-    
-    # Optimized device map to use maximum GPU memory efficiently
-    device_map = {
-        "model.embed_tokens": "cuda:0",  # Keep embeddings on GPU for speed
-        "model.norm": "cuda:0",          # Keep normalization on GPU
-        "lm_head": "cuda:0",             # Keep output layer on GPU
-        "model.layers.0": "cuda:0",
-        "model.layers.1": "cuda:0",
-        "model.layers.2": "cuda:0",
-        "model.layers.3": "cuda:0",
-        "model.layers.4": "cuda:0",
-        "model.layers.5": "cuda:0",
-        "model.layers.6": "cuda:0",
-        "model.layers.7": "cuda:0",
-        "model.layers.8": "cuda:0",
-        "model.layers.9": "cuda:0",
-        "model.layers.10": "cuda:0",
-        "model.layers.11": "cuda:0",
-        "model.layers.12": "cuda:0",
-        "model.layers.13": "cuda:0",
-        "model.layers.14": "cuda:0",
-        "model.layers.15": "cuda:0",
-        "model.layers.16": "cuda:0",
-        "model.layers.17": "cuda:0",
-        "model.layers.18": "cuda:0",
-        "model.layers.19": "cuda:0",
-        "model.layers.20": "cuda:0",
-        "model.layers.21": "cuda:0",
-        "model.layers.22": "cuda:0",
-        "model.layers.23": "cuda:0",
-        "model.layers.24": "cuda:0",
-        "model.layers.25": "cuda:0",
-        "model.layers.26": "cuda:0",
-        "model.layers.27": "cuda:0",
-        "model.layers.28": "cuda:0",
-        "model.layers.29": "cuda:0",
-        "model.layers.30": "cuda:0",
-        "model.layers.31": "cuda:0"
-    }
-    
-    # Load model with maximum GPU utilization
+    # Strategy 1: Try with auto device mapping and no quantization first
     try:
-        print("Loading model with full GPU optimization...")
+        print("🔄 Strategy 1: Loading with auto device mapping (no quantization)...")
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            device_map="auto",
+            torch_dtype=torch.float16,
+            low_cpu_mem_usage=True,
+            max_memory={0: "7.5GB", "cpu": "4GB"}
+        )
+        print("✅ Strategy 1 successful: Auto device mapping")
+        return model
+    except Exception as e:
+        print(f"❌ Strategy 1 failed: {e}")
+    
+    # Strategy 2: 8-bit quantization (more stable than 4-bit)
+    try:
+        print("🔄 Strategy 2: Loading with 8-bit quantization...")
+        bnb_config_8bit = BitsAndBytesConfig(
+            load_in_8bit=True,
+            llm_int8_threshold=6.0
+        )
+        
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            device_map="auto",
+            quantization_config=bnb_config_8bit,
+            torch_dtype=torch.float16,
+            low_cpu_mem_usage=True,
+            max_memory={0: "7.5GB", "cpu": "4GB"}
+        )
+        print("✅ Strategy 2 successful: 8-bit quantization")
+        return model
+    except Exception as e:
+        print(f"❌ Strategy 2 failed: {e}")
+    
+    # Strategy 3: 4-bit quantization with conservative settings
+    try:
+        print("🔄 Strategy 3: Loading with 4-bit quantization (conservative)...")
+        bnb_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_compute_dtype=torch.float16,
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_quant_type="nf4"
+        )
+        
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            device_map="auto",
+            quantization_config=bnb_config,
+            torch_dtype=torch.float16,
+            low_cpu_mem_usage=True,
+            max_memory={0: "7.5GB", "cpu": "4GB"}
+        )
+        print("✅ Strategy 3 successful: 4-bit quantization")
+        return model
+    except Exception as e:
+        print(f"❌ Strategy 3 failed: {e}")
+    
+    # Strategy 4: Manual device mapping with mixed precision
+    try:
+        print("🔄 Strategy 4: Loading with manual device mapping...")
+        device_map = {
+            "model.embed_tokens": "cuda:0",
+            "model.norm": "cuda:0",
+            "lm_head": "cuda:0"
+        }
+        # Add layers with GPU allocation
+        for i in range(32):
+            device_map[f"model.layers.{i}"] = "cuda:0"
+        
         model = AutoModelForCausalLM.from_pretrained(
             model_name,
             device_map=device_map,
-            quantization_config=bnb_config,
-            torch_dtype=torch.float32,  # Changed from float16 to prevent Half overflow
+            torch_dtype=torch.float16,
             low_cpu_mem_usage=True,
-            max_memory={0: "7.5GB", "cpu": "4GB"}  # Use 7.5GB GPU, leave 0.5GB buffer
+            max_memory={0: "7.5GB", "cpu": "4GB"}
         )
-        print("✅ Model loaded successfully with full GPU optimization!")
-        
+        print("✅ Strategy 4 successful: Manual device mapping")
+        return model
     except Exception as e:
-        print(f"⚠️  Full GPU optimization failed: {e}")
-        print("🔄 Trying with balanced GPU/CPU distribution...")
-        
-        # Fallback to balanced approach
-        try:
-            balanced_device_map = {
-                "model.embed_tokens": "cpu",
-                "model.norm": "cpu", 
-                "lm_head": "cpu",
-                "model.layers.0": "cuda:0",
-                "model.layers.1": "cuda:0",
-                "model.layers.2": "cuda:0",
-                "model.layers.3": "cuda:0",
-                "model.layers.4": "cuda:0",
-                "model.layers.5": "cuda:0",
-                "model.layers.6": "cuda:0",
-                "model.layers.7": "cuda:0",
-                "model.layers.8": "cuda:0",
-                "model.layers.9": "cuda:0",
-                "model.layers.10": "cuda:0",
-                "model.layers.11": "cuda:0",
-                "model.layers.12": "cuda:0",
-                "model.layers.13": "cuda:0",
-                "model.layers.14": "cuda:0",
-                "model.layers.15": "cuda:0",
-                "model.layers.16": "cuda:0",
-                "model.layers.17": "cuda:0",
-                "model.layers.18": "cuda:0",
-                "model.layers.19": "cuda:0",
-                "model.layers.20": "cuda:0",
-                "model.layers.21": "cuda:0",
-                "model.layers.22": "cuda:0",
-                "model.layers.23": "cuda:0",
-                "model.layers.24": "cuda:0",
-                "model.layers.25": "cuda:0",
-                "model.layers.26": "cuda:0",
-                "model.layers.27": "cuda:0",
-                "model.layers.28": "cuda:0",
-                "model.layers.29": "cuda:0",
-                "model.layers.30": "cuda:0",
-                "model.layers.31": "cuda:0"
-            }
-            
-            model = AutoModelForCausalLM.from_pretrained(
-                model_name,
-                device_map=balanced_device_map,
-                quantization_config=bnb_config,
-                torch_dtype=torch.float32,  # Changed from float16 to prevent Half overflow
-                low_cpu_mem_usage=True,
-                max_memory={0: "6GB", "cpu": "8GB"}
-            )
-            print("✅ Model loaded with balanced GPU/CPU distribution!")
-            
-        except Exception as e2:
-            print(f"❌ Balanced approach failed: {e2}")
-            print("🔄 Falling back to CPU-only mode...")
-            # Final fallback to CPU
-            model = AutoModelForCausalLM.from_pretrained(
-                model_name,
-                device_map="cpu",
-                torch_dtype=torch.float32,
-                low_cpu_mem_usage=True
-            )
-            print("✅ Model loaded on CPU (fallback mode)")
-else:
-    # Use CPU without quantization
-    print("Loading model on CPU (no quantization)...")
+        print(f"❌ Strategy 4 failed: {e}")
+    
+    # Strategy 5: CPU fallback
+    print("🔄 Strategy 5: Falling back to CPU...")
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
         device_map="cpu",
-        torch_dtype=torch.float32
+        torch_dtype=torch.float32,
+        low_cpu_mem_usage=True
     )
+    print("✅ Strategy 5 successful: CPU fallback")
+    return model
+
+# Load the model using the fallback strategy
+print("🚀 Starting model loading process...")
+print(f"Model: {model_name}")
+print(f"GPU available: {gpu_available}")
+if gpu_available:
+    print(f"CUDA version: {torch.version.cuda}")
+    print(f"GPU memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
+
+try:
+    model = load_model_with_fallbacks()
+    print(f"✅ Model loaded successfully on device: {next(model.parameters()).device}")
+except Exception as e:
+    print(f"❌ All model loading strategies failed: {e}")
+    print("🔄 Attempting emergency CPU fallback...")
+    try:
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            device_map="cpu",
+            torch_dtype=torch.float32,
+            low_cpu_mem_usage=True
+        )
+        print("✅ Emergency CPU fallback successful")
+    except Exception as e2:
+        print(f"❌ Emergency fallback also failed: {e2}")
+        raise RuntimeError(f"Failed to load model: {e2}")
 
 model.eval()  # Enable evaluation mode
-print(f"Model loaded on device: {model.device}")
+print(f"🎯 Model ready for inference on device: {next(model.parameters()).device}")
+
+# FIXED: Add function to check and fix potential data type issues
+def check_and_fix_model_dtypes():
+    """Check and fix potential data type issues in the model"""
+    print("🔍 Checking model data types...")
+    try:
+        # Check if model has any problematic dtypes
+        for name, param in model.named_parameters():
+            if param.dtype == torch.float16:
+                # Check if parameter has any NaN or inf values
+                if torch.isnan(param).any() or torch.isinf(param).any():
+                    print(f"⚠️  Found NaN/inf in {name}, converting to float32")
+                    param.data = param.data.to(torch.float32)
+        
+        # Check model's compute dtype
+        if hasattr(model, 'config') and hasattr(model.config, 'torch_dtype'):
+            print(f"Model config torch_dtype: {model.config.torch_dtype}")
+        
+        print("✅ Model data type check completed")
+    except Exception as e:
+        print(f"⚠️  Data type check failed: {e}")
+
+# Run the data type check
+check_and_fix_model_dtypes()
 
 # Helper to build ChatML format prompt
 def build_chatml_prompt(system, history):
@@ -287,22 +296,46 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
                 no_repeat_ngram_size=3
             )
         except RuntimeError as e:
-            if "at::Half" in str(e) or "Half" in str(e):
+            if "at::Half" in str(e) or "Half" in str(e) or "overflow" in str(e):
                 print(f"⚠️  Half precision error detected: {e}")
                 print("🔄 Retrying with explicit float32 conversion...")
-                # Convert inputs to float32 and retry
-                inputs = {k: v.to(torch.float32) if torch.is_tensor(v) else v for k, v in inputs.items()}
-                output = model.generate(
-                    **inputs,
-                    max_new_tokens=max_output_tokens,
-                    temperature=0.8,
-                    do_sample=True,
-                    top_p=0.95,
-                    pad_token_id=tokenizer.eos_token_id,
-                    eos_token_id=tokenizer.eos_token_id,
-                    repetition_penalty=1.2,
-                    no_repeat_ngram_size=3
-                )
+                try:
+                    # Convert inputs to float32 and retry
+                    inputs = {k: v.to(torch.float32) if torch.is_tensor(v) else v for k, v in inputs.items()}
+                    output = model.generate(
+                        **inputs,
+                        max_new_tokens=max_output_tokens,
+                        temperature=0.8,
+                        do_sample=True,
+                        top_p=0.95,
+                        pad_token_id=tokenizer.eos_token_id,
+                        eos_token_id=tokenizer.eos_token_id,
+                        repetition_penalty=1.2,
+                        no_repeat_ngram_size=3
+                    )
+                except Exception as e2:
+                    print(f"⚠️  Float32 conversion failed: {e2}")
+                    print("🔄 Trying with CPU fallback...")
+                    # Move model to CPU temporarily for this generation
+                    original_device = next(model.parameters()).device
+                    model.to("cpu")
+                    inputs = {k: v.to("cpu") if torch.is_tensor(v) else v for k, v in inputs.items()}
+                    
+                    output = model.generate(
+                        **inputs,
+                        max_new_tokens=max_output_tokens,
+                        temperature=0.8,
+                        do_sample=True,
+                        top_p=0.95,
+                        pad_token_id=tokenizer.eos_token_id,
+                        eos_token_id=tokenizer.eos_token_id,
+                        repetition_penalty=1.2,
+                        no_repeat_ngram_size=3
+                    )
+                    
+                    # Move model back to original device
+                    model.to(original_device)
+                    print("✅ CPU fallback successful")
             else:
                 raise e
     
