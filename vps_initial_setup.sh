@@ -182,8 +182,8 @@ cat > .env.prod << 'EOF'
 DB_HOST=$VPS_IP
 DB_PORT=5432
 DB_NAME=chatting_platform
-DB_USER=adam@2025@man
-DB_PASSWORD=eve@postgres@3241
+DB_USER=adam2025man
+DB_PASSWORD=adam2025
 
 # Admin Configuration
 ADMIN_USERNAME=admin

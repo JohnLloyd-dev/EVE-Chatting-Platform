@@ -3,8 +3,10 @@
 echo "🔧 Fixing Missing Database Tables"
 echo "================================="
 
-# Database credentials
-DB_USER="adam@2025@man"
+# Database connection details
+DB_USER="adam2025man"
+DB_PASSWORD="adam2025"
+DB_NAME="chatting_platform"
 
 # Add missing tables
 echo "[INFO] Adding missing active_ai_tasks table..."

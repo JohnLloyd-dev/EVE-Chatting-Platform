@@ -63,7 +63,7 @@ echo ""
 print_status "Testing database connectivity..."
 if docker ps --format "{{.Names}}" | grep -q "postgres"; then
     POSTGRES_CONTAINER=$(docker ps --format "{{.Names}}" | grep "postgres" | head -1)
-    if docker exec "$POSTGRES_CONTAINER" pg_isready -U "adam@2025@man" &> /dev/null; then
+    if docker exec "$POSTGRES_CONTAINER" pg_isready -U "adam2025man" &> /dev/null; then
         print_success "Database: Connected successfully"
     else
         print_error "Database: Connection failed"

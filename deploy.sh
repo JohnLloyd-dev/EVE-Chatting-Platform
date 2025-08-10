@@ -29,8 +29,11 @@ print_error() {
 # Configuration
 VPS_IP="204.12.233.105"
 COMPOSE_FILE="docker-compose.yml"
-DB_USER="adam@2025@man"
-DB_PASSWORD="eve@postgres@3241"
+
+# Database configuration
+DB_USER="adam2025man"
+DB_PASSWORD="adam2025"
+DB_NAME="chatting_platform"
 
 # Function to get the correct PostgreSQL container name
 get_postgres_container() {

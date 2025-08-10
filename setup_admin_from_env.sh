@@ -6,8 +6,10 @@ echo "==================================="
 # Configuration
 VPS_IP="204.12.233.105"
 
-# Database credentials
-DB_USER="adam@2025@man"
+# Database connection details
+DB_USER="adam2025man"
+DB_PASSWORD="adam2025"
+DB_NAME="chatting_platform"
 
 # Check for .env.prod file
 if [ -f ".env.prod" ]; then

@@ -131,7 +131,7 @@ print_status "Waiting for services to be ready..."
 # Wait for PostgreSQL
 sleep 20
 for i in {1..5}; do
-    if docker exec eve-chatting-platform_postgres_1 pg_isready -U "adam@2025@man" &> /dev/null; then
+    if docker exec eve-chatting-platform_postgres_1 pg_isready -U "adam2025man" &> /dev/null; then
         print_success "PostgreSQL is ready"
         break
     else

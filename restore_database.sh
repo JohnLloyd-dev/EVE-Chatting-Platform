@@ -3,10 +3,11 @@
 echo "🗄️ Database Restore Script"
 echo "=========================="
 
-# Configuration
-VPS_IP="204.12.233.105"
-DB_USER="adam@2025@man"
-DB_PASSWORD="eve@postgres@3241"
+# Database connection details
+DB_HOST="localhost"
+DB_USER="adam2025man"
+DB_PASSWORD="adam2025"
+DB_NAME="chatting_platform"
 
 # Step 1: Check if backup file exists
 echo "[INFO] Step 1: Checking backup file..."
