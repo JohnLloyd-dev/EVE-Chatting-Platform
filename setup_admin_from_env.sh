@@ -3,6 +3,9 @@
 echo "👤 Admin User Setup from Environment"
 echo "==================================="
 
+# Configuration
+VPS_IP="204.12.233.105"
+
 # Database credentials
 DB_USER="adam@2025@man"
 
@@ -80,7 +83,7 @@ if [ "$ADMIN_COUNT" = "1" ]; then
     echo "  Password: $ADMIN_PASSWORD"
     echo "  Email: $ADMIN_EMAIL"
     echo ""
-    echo "🌐 Admin Dashboard: http://localhost:3000/admin"
+    echo "🌐 Admin Dashboard: http://$VPS_IP:3000/admin"
 else
     echo "[ERROR] Failed to create admin user"
     exit 1

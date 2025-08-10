@@ -1,72 +1,151 @@
 #!/bin/bash
 
-echo "👤 Admin User Setup"
-echo "=================="
+echo "👑 Setting up Admin User for EVE Chat Platform"
+echo "=============================================="
 
-# Database credentials
-DB_USER="adam@2025@man"
+# Configuration
+VPS_IP="204.12.233.105"
 
-# Admin configuration (you can modify these)
-ADMIN_USERNAME="admin"
-ADMIN_PASSWORD="YourSecureAdminPassword789!"
-ADMIN_EMAIL="admin@eve-platform.com"
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
 
-echo "[INFO] Setting up admin user with credentials:"
-echo "  Username: $ADMIN_USERNAME"
-echo "  Email: $ADMIN_EMAIL"
-echo "  Password: [HIDDEN]"
+print_status() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
 
-# First, let's check if admin_users table exists and create it if needed
-echo "[INFO] Ensuring admin_users table exists..."
-docker exec eve-chatting-platform_postgres_1 psql -U "$DB_USER" -d chatting_platform -c "
-CREATE TABLE IF NOT EXISTS admin_users (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    username VARCHAR(255) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
-    email VARCHAR(255),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    is_active BOOLEAN DEFAULT TRUE
-);
-"
+print_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
 
-# Remove any existing admin users (clean slate)
-echo "[INFO] Removing existing admin users..."
-docker exec eve-chatting-platform_postgres_1 psql -U "$DB_USER" -d chatting_platform -c "
-DELETE FROM admin_users;
-"
+print_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
 
-# Create password hash using Python (bcrypt)
-echo "[INFO] Creating password hash..."
-PASSWORD_HASH=$(docker exec eve-chatting-platform_backend_1 python3 -c "
-import bcrypt
-password = '$ADMIN_PASSWORD'.encode('utf-8')
-hashed = bcrypt.hashpw(password, bcrypt.gensalt())
-print(hashed.decode('utf-8'))
-")
+print_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
 
-# Insert new admin user
-echo "[INFO] Creating new admin user..."
-docker exec eve-chatting-platform_postgres_1 psql -U "$DB_USER" -d chatting_platform -c "
-INSERT INTO admin_users (username, password_hash, email, is_active) 
-VALUES ('$ADMIN_USERNAME', '$PASSWORD_HASH', '$ADMIN_EMAIL', true);
-"
-
-# Verify admin user was created
-echo "[INFO] Verifying admin user creation..."
-ADMIN_COUNT=$(docker exec eve-chatting-platform_postgres_1 psql -U "$DB_USER" -d chatting_platform -t -c "SELECT COUNT(*) FROM admin_users WHERE username = '$ADMIN_USERNAME';" | tr -d ' ')
-
-if [ "$ADMIN_COUNT" = "1" ]; then
-    echo "[SUCCESS] Admin user created successfully!"
-    echo ""
-    echo "🔐 Admin Login Credentials:"
-    echo "  Username: $ADMIN_USERNAME"
-    echo "  Password: $ADMIN_PASSWORD"
-    echo "  Email: $ADMIN_EMAIL"
-    echo ""
-    echo "🌐 Admin Dashboard: http://localhost:3000/admin"
-else
-    echo "[ERROR] Failed to create admin user"
+# Check if backend is running
+print_status "Checking if backend is running..."
+if ! docker ps | grep -q "backend"; then
+    print_error "Backend container not found. Please start the services first."
+    echo "Run: docker-compose up -d"
     exit 1
 fi
 
-echo "[SUCCESS] Admin setup completed!"
+print_success "Backend container found"
+
+# Get backend container name
+BACKEND_CONTAINER=$(docker ps --format "{{.Names}}" | grep "backend" | head -1)
+print_status "Using backend container: $BACKEND_CONTAINER"
+
+# Check if admin user already exists
+print_status "Checking if admin user already exists..."
+ADMIN_EXISTS=$(docker exec "$BACKEND_CONTAINER" python3 -c "
+from database import engine
+from sqlalchemy import text
+
+try:
+    with engine.connect() as conn:
+        result = conn.execute(text('SELECT COUNT(*) FROM users WHERE username = \\'admin\\''))
+        count = result.scalar()
+        print(count)
+except Exception as e:
+    print('Error:', e)
+    print(0)
+" 2>/dev/null)
+
+if [ "$ADMIN_EXISTS" = "1" ]; then
+    print_warning "Admin user already exists"
+    read -p "Do you want to update the admin password? (y/n): " update_password
+    if [ "$update_password" != "y" ]; then
+        print_status "Admin setup skipped"
+        exit 0
+    fi
+fi
+
+# Get admin credentials
+echo ""
+print_status "Enter admin credentials:"
+read -p "Admin username (default: admin): " ADMIN_USERNAME
+ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+
+read -s -p "Admin password: " ADMIN_PASSWORD
+echo ""
+read -s -p "Confirm admin password: " ADMIN_PASSWORD_CONFIRM
+echo ""
+
+if [ "$ADMIN_PASSWORD" != "$ADMIN_PASSWORD_CONFIRM" ]; then
+    print_error "Passwords do not match"
+    exit 1
+fi
+
+if [ -z "$ADMIN_PASSWORD" ]; then
+    print_error "Password cannot be empty"
+    exit 1
+fi
+
+# Create or update admin user
+print_status "Setting up admin user..."
+docker exec "$BACKEND_CONTAINER" python3 -c "
+from database import engine
+from sqlalchemy import text
+import hashlib
+import os
+
+def hash_password(password):
+    salt = os.urandom(32)
+    key = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, 100000)
+    return salt.hex() + key.hex()
+
+try:
+    with engine.connect() as conn:
+        # Check if admin user exists
+        result = conn.execute(text('SELECT COUNT(*) FROM users WHERE username = \\'$ADMIN_USERNAME\\''))
+        count = result.scalar()
+        
+        if count > 0:
+            # Update existing admin user
+            hashed_password = hash_password('$ADMIN_PASSWORD')
+            conn.execute(text('''
+                UPDATE users 
+                SET password_hash = :password_hash, 
+                    is_admin = true,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE username = :username
+            '''), {'password_hash': hashed_password, 'username': '$ADMIN_USERNAME'})
+            print('Admin user updated successfully')
+        else:
+            # Create new admin user
+            hashed_password = hash_password('$ADMIN_PASSWORD')
+            conn.execute(text('''
+                INSERT INTO users (username, password_hash, is_admin, created_at, updated_at)
+                VALUES (:username, :password_hash, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            '''), {'username': '$ADMIN_USERNAME', 'password_hash': hashed_password})
+            print('Admin user created successfully')
+        
+        conn.commit()
+        print('Admin setup completed!')
+        
+except Exception as e:
+    print('Error setting up admin user:', e)
+    exit(1)
+"
+
+if [ $? -eq 0 ]; then
+    print_success "Admin user setup completed!"
+    echo ""
+    print_status "Admin Dashboard Access:"
+    echo "  URL: http://$VPS_IP:3000/admin"
+    echo "  Username: $ADMIN_USERNAME"
+    echo "  Password: [the password you entered]"
+    echo ""
+    print_status "You can now log in to the admin dashboard!"
+else
+    print_error "Failed to set up admin user"
+    exit 1
+fi

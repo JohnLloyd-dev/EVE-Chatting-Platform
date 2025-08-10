@@ -26,6 +26,9 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+# Configuration
+VPS_IP="204.12.233.105"
+
 # Step 1: Pull latest changes
 print_status "Step 1: Pulling latest changes..."
 git pull origin main
@@ -44,28 +47,28 @@ sleep 15
 
 # Step 5: Test backend health
 print_status "Step 5: Testing backend health..."
-curl -s -o /dev/null -w "%{http_code}" http://localhost:8001/health
+curl -s -o /dev/null -w "%{http_code}" http://$VPS_IP:8001/health
 echo " - Local health check"
 
 # Step 6: Test external access
 print_status "Step 6: Testing external access..."
-curl -s -o /dev/null -w "%{http_code}" http://204.12.223.76:8001/health
+curl -s -o /dev/null -w "%{http_code}" http://$VPS_IP:8001/health
 echo " - External health check"
 
 # Step 7: Test admin login endpoint
 print_status "Step 7: Testing admin login endpoint..."
-curl -X POST http://localhost:8001/admin/login \
+curl -X POST http://$VPS_IP:8001/admin/login \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"admin123"}' \
   -w "\nHTTP Status: %{http_code}\n"
 
 # Step 8: Test CORS preflight
 print_status "Step 8: Testing CORS preflight..."
-curl -H "Origin: http://204.12.223.76:3000" \
+curl -H "Origin: http://$VPS_IP:3000" \
      -H "Access-Control-Request-Method: POST" \
      -H "Access-Control-Request-Headers: Content-Type" \
      -X OPTIONS \
-     http://localhost:8001/admin/login
+     http://$VPS_IP:8001/admin/login
 
 # Step 9: Check container status
 print_status "Step 9: Checking container status..."

@@ -30,7 +30,7 @@ AI_MODEL_URL=http://your-vps-ip:port/v1/chat/completions
 Edit `frontend/.env.local` and verify:
 
 ```env
-NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_API_URL=http://204.12.233.105:8001
 ```
 
 ### Step 3: Start the Services
@@ -71,12 +71,12 @@ You should see all 5 services running:
 
 #### 🌐 Frontend (User Interface)
 
-- **URL**: http://localhost:3000
+- **URL**: http://204.12.233.105:3000
 - **Description**: Main chat interface where users interact
 
 #### 👨‍💼 Admin Dashboard
 
-- **URL**: http://localhost:3000/admin
+- **URL**: http://204.12.233.105:3000/admin
 - **Credentials**:
   - Username: `admin`
   - Password: `admin123`
@@ -84,16 +84,16 @@ You should see all 5 services running:
 
 #### 🔧 Backend API
 
-- **URL**: http://localhost:8000
-- **Docs**: http://localhost:8000/docs (Swagger UI)
-- **Health Check**: http://localhost:8000/health
+- **URL**: http://204.12.233.105:8001
+- **Docs**: http://204.12.233.105:8001/docs (Swagger UI)
+- **Health Check**: http://204.12.233.105:8001/health
 
 ## 🧪 Testing the Setup
 
 ### Test 1: Backend Health
 
 ```bash
-curl http://localhost:8000/health
+curl http://204.12.233.105:8001/health
 ```
 
 Expected: `{"status": "healthy"}`
@@ -101,18 +101,18 @@ Expected: `{"status": "healthy"}`
 ### Test 2: Tally Webhook (Simulate User Registration)
 
 ```bash
-curl -X POST http://localhost:8000/webhook/tally \
+curl -X POST http://204.12.233.105:8001/webhook/tally \
   -H "Content-Type: application/json" \
   -d @tally_form.json
 ```
 
 ### Test 3: Frontend Access
 
-Open browser and navigate to http://localhost:3000
+Open browser and navigate to http://204.12.233.105:3000
 
 ### Test 4: Admin Login
 
-1. Go to http://localhost:3000/admin
+1. Go to http://204.12.233.105:3000/admin
 2. Login with admin/admin123
 3. Check dashboard statistics
 
@@ -179,7 +179,7 @@ ADMIN_PASSWORD=admin123
 #### Frontend (.env.local)
 
 ```env
-NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_API_URL=http://204.12.233.105:8001
 ```
 
 ### Default Ports

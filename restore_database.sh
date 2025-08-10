@@ -1,9 +1,10 @@
 #!/bin/bash
 
-echo "🔧 Database Restore with Foreign Key Handling"
-echo "============================================"
+echo "🗄️ Database Restore Script"
+echo "=========================="
 
 # Configuration
+VPS_IP="204.12.233.105"
 DB_USER="adam@2025@man"
 DB_PASSWORD="eve@postgres@3241"
 
@@ -117,7 +118,7 @@ docker-compose up -d celery-worker
 # Step 10: Test backend
 echo "[INFO] Step 10: Testing backend..."
 sleep 10
-BACKEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8001/health 2>/dev/null || echo "000")
+BACKEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://$VPS_IP:8001/health 2>/dev/null || echo "000")
 if [ "$BACKEND_STATUS" = "200" ]; then
     echo "[SUCCESS] Backend is healthy and database is accessible"
 else

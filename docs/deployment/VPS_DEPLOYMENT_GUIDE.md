@@ -33,14 +33,14 @@ nano .env
 
 ```env
 # Replace with your VPS IP or domain
-NEXT_PUBLIC_API_URL=http://YOUR_VPS_IP:8001
+NEXT_PUBLIC_API_URL=http://204.12.233.105:8001
 
 # Database settings (keep as is or customize)
 DATABASE_URL=postgresql://postgres:postgres123@postgres:5432/chatting_platform
 REDIS_URL=redis://redis:6379/0
 
 # AI Model settings (already configured)
-AI_MODEL_URL=http://204.12.223.76:8000
+AI_MODEL_URL=http://204.12.233.105:8000
 AI_MODEL_AUTH_USERNAME=adam
 AI_MODEL_AUTH_PASSWORD=eve2025
 ```
@@ -58,7 +58,7 @@ nano docker-compose.yml
 frontend:
   # ... other settings ...
   environment:
-    - NEXT_PUBLIC_API_URL=http://YOUR_VPS_IP:8001 # Replace with your VPS IP
+    - NEXT_PUBLIC_API_URL=http://204.12.233.105:8001 # Replace with your VPS IP
 ```
 
 ### 4. Deploy with Docker

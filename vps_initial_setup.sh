@@ -117,48 +117,36 @@ print_success "Firewall configured"
 
 # Step 7: Configure Nginx
 print_status "Step 7: Configuring Nginx..."
-cat > /etc/nginx/sites-available/eve-platform << 'EOF'
+cat > /etc/nginx/sites-available/eve-chatting-platform << EOF
 server {
     listen 80;
     server_name _;
-    
+
     # Frontend
     location / {
-        proxy_pass http://localhost:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
+        proxy_pass http://$VPS_IP:3000;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
     }
-    
+
     # Backend API
     location /api/ {
-        proxy_pass http://localhost:8001/;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
+        proxy_pass http://$VPS_IP:8001/;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
     }
-    
+
     # AI Server
     location /ai/ {
-        proxy_pass http://localhost:8000/;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
+        proxy_pass http://$VPS_IP:8000/;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
     }
 }
 EOF
@@ -191,7 +179,7 @@ cd EVE-Chatting-Platform
 # Create .env.prod file
 cat > .env.prod << 'EOF'
 # Database Configuration
-DB_HOST=localhost
+DB_HOST=$VPS_IP
 DB_PORT=5432
 DB_NAME=chatting_platform
 DB_USER=adam@2025@man
@@ -208,17 +196,17 @@ ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 
 # Redis Configuration
-REDIS_HOST=localhost
+REDIS_HOST=$VPS_IP
 REDIS_PORT=6379
 REDIS_DB=0
 
 # AI Model Configuration
-AI_MODEL_URL=http://localhost:8000
+AI_MODEL_URL=http://$VPS_IP:8000
 AI_MODEL_AUTH_USERNAME=adam
 AI_MODEL_AUTH_PASSWORD=eve2025
 
 # Frontend Configuration
-NEXT_PUBLIC_API_URL=http://localhost:8001
+NEXT_PUBLIC_API_URL=http://$VPS_IP:8001
 
 # Security Settings
 ENCRYPTION_KEY=your-32-character-encryption-key-here

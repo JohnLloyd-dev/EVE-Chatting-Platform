@@ -5,7 +5,11 @@
 
 set -e
 
-echo "🚀 Starting Custom AI Server Deployment..."
+echo "🤖 Deploying Custom AI Server"
+echo "============================="
+
+# Configuration
+VPS_IP="204.12.233.105"
 
 # Check if Docker is installed
 if ! command -v docker &> /dev/null; then
@@ -45,10 +49,15 @@ ADMIN_PASSWORD=admin123
 JWT_SECRET_KEY=$(openssl rand -base64 32)
 
 # Frontend
-NEXT_PUBLIC_API_URL=http://localhost:8001
+NEXT_PUBLIC_API_URL=http://$VPS_IP:8001
 EOF
     echo "✅ Created .env.prod file"
 fi
+
+# Create environment file for frontend
+cat > frontend/.env.local << EOF
+NEXT_PUBLIC_API_URL=http://$VPS_IP:8001
+EOF
 
 # Build and start the custom AI server
 echo "🔨 Building Custom AI Server..."
@@ -57,27 +66,19 @@ docker-compose -f docker-compose.prod.yml build custom-ai-server
 echo "🚀 Starting Custom AI Server..."
 docker-compose -f docker-compose.prod.yml up -d custom-ai-server
 
-# Wait for the server to be ready
-echo "⏳ Waiting for Custom AI Server to be ready..."
-timeout=300
-counter=0
-while ! curl -s http://localhost:8002/ > /dev/null; do
-    if [ $counter -ge $timeout ]; then
-        echo "❌ Timeout waiting for Custom AI Server to start"
-        docker-compose -f docker-compose.prod.yml logs custom-ai-server
-        exit 1
-    fi
-    echo "   Waiting... ($counter/$timeout seconds)"
+# Wait for AI server to be ready
+echo "⏳ Waiting for AI server to be ready..."
+while ! curl -s http://$VPS_IP:8002/ > /dev/null; do
+    echo "   Waiting for AI server..."
     sleep 5
-    counter=$((counter + 5))
 done
 
-echo "✅ Custom AI Server is running!"
+echo "✅ Custom AI deployment completed!"
 echo ""
-echo "🌐 Access points:"
-echo "   - Custom AI Server: http://localhost:8002"
-echo "   - Chat Interface: http://localhost:8002/"
-echo "   - Test Interface: http://localhost:8002/test-bot"
+echo "🌐 Access URLs:"
+echo "   - Custom AI Server: http://$VPS_IP:8002"
+echo "   - Chat Interface: http://$VPS_IP:8002/"
+echo "   - Test Interface: http://$VPS_IP:8002/test-bot"
 echo ""
 echo "📊 To check logs:"
 echo "   docker-compose -f docker-compose.prod.yml logs -f custom-ai-server"

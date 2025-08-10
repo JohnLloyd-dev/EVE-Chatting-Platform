@@ -3,6 +3,9 @@
 echo "🚀 Deploying Device-Based Session Updates to VPS..."
 echo "=================================================="
 
+# Configuration
+VPS_IP="204.12.233.105"
+
 # Stop existing containers
 echo "🛑 Stopping existing containers..."
 docker stop eve-backend-1 eve-celery-worker-1 eve-frontend-1 2>/dev/null || true
@@ -65,13 +68,13 @@ sleep 15
 
 # Test the deployment
 echo "🧪 Testing deployment..."
-echo "Frontend: http://204.12.223.76:3000"
-echo "Backend: http://204.12.223.76:8001"
-echo "Test Generator: http://204.12.223.76:3000/test-generator"
+echo "Frontend: http://$VPS_IP:3000"
+echo "Backend: http://$VPS_IP:8001"
+echo "Test Generator: http://$VPS_IP:3000/test-generator"
 
 # Test device session endpoint
 echo "🔍 Testing device session endpoint..."
-curl -X POST http://204.12.223.76:8001/user/device-session \
+curl -X POST http://$VPS_IP:8001/user/device-session \
   -H "Content-Type: application/json" \
   -d '{
     "device_id": "deployment_test_device",
@@ -83,7 +86,7 @@ curl -X POST http://204.12.223.76:8001/user/device-session \
 echo ""
 echo "🎉 Deployment complete!"
 echo "📋 Next steps:"
-echo "   1. Visit http://204.12.223.76:3000/test-generator"
+echo "   1. Visit http://$VPS_IP:3000/test-generator"
 echo "   2. Generate a test link with your custom prompt"
 echo "   3. Test the seamless chat experience"
 echo ""

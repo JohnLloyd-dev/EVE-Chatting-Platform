@@ -27,6 +27,8 @@ print_error() {
 }
 
 # Configuration
+VPS_IP="204.12.233.105"
+COMPOSE_FILE="docker-compose.yml"
 DB_USER="adam@2025@man"
 DB_PASSWORD="eve@postgres@3241"
 
@@ -65,11 +67,11 @@ fi
 
 # Step 2: Stop existing containers
 print_status "Step 2: Stopping existing containers..."
-docker-compose down
+docker-compose -f $COMPOSE_FILE down
 
 # Step 3: Build all services
 print_status "Step 3: Building all services..."
-docker-compose build --no-cache
+docker-compose -f $COMPOSE_FILE build --no-cache
 
 if [ $? -ne 0 ]; then
     print_error "Build failed"
@@ -78,7 +80,7 @@ fi
 
 # Step 4: Start PostgreSQL and Redis first
 print_status "Step 4: Starting PostgreSQL and Redis..."
-docker-compose up -d postgres redis
+docker-compose -f $COMPOSE_FILE up -d postgres redis
 
 # Wait for PostgreSQL to be ready
 print_status "Waiting for PostgreSQL to be ready..."
@@ -108,7 +110,7 @@ if [ "$DB_RESTORE_NEEDED" = true ]; then
     print_status "Step 5: Starting PostgreSQL and restoring database..."
     
     # Start PostgreSQL only
-    docker-compose up -d postgres
+    docker-compose -f $COMPOSE_FILE up -d postgres
     
     # Wait for PostgreSQL to be ready
     print_status "Waiting for PostgreSQL to be ready..."
@@ -213,33 +215,33 @@ if [ "$DB_RESTORE_NEEDED" = true ]; then
     fi
 else
     print_status "Step 5: Starting PostgreSQL..."
-    docker-compose up -d postgres
+    docker-compose -f $COMPOSE_FILE up -d postgres
     sleep 15
 fi
 
 # Step 6: Start AI Server
 print_status "Step 6: Starting AI Server..."
-docker-compose up -d ai-server
+docker-compose -f $COMPOSE_FILE up -d ai-server
 
 # Wait for AI server to be ready (it takes time to load the model)
 print_status "Waiting for AI Server to load model (this may take several minutes)..."
 for i in {1..20}; do
     # Check if container is running first
-    if ! docker ps --format "table {{.Names}}" | grep -q "eve-chatting-platform-ai-server-1\|eve-chatting-platform_ai-server_1"; then
+    if ! docker ps --format "table {{.Names}}" | grep -q "eve-chatting-platform-ai-server-1\|eve-chatting-platform_ai_server_1"; then
         print_warning "AI Server container not running, attempt $i/20"
         sleep 30
         continue
     fi
     
     # Check if the model is still loading by looking at logs
-    if docker-compose logs ai-server --tail 5 | grep -q "Loading model\|Downloading\|Installing"; then
+    if docker-compose -f $COMPOSE_FILE logs ai-server --tail 5 | grep -q "Loading model\|Downloading\|Installing"; then
         print_warning "AI Server still loading model, attempt $i/20"
         sleep 30
         continue
     fi
     
     # Try health check
-    AI_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health 2>/dev/null || echo "000")
+    AI_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://$VPS_IP:8000/health 2>/dev/null || echo "000")
     if [ "$AI_STATUS" = "200" ]; then
         print_success "AI Server is ready"
         break
@@ -249,7 +251,7 @@ for i in {1..20}; do
         # Show logs every 5 attempts
         if [ $((i % 5)) -eq 0 ]; then
             print_status "AI Server logs (last 10 lines):"
-            docker-compose logs ai-server --tail 10
+            docker-compose -f $COMPOSE_FILE logs ai-server --tail 10
         fi
         
         sleep 30
@@ -259,12 +261,12 @@ done
 # If AI server still not ready after 20 attempts, show logs and continue
 if [ "$AI_STATUS" != "200" ]; then
     print_warning "AI Server not ready after 20 attempts, showing logs and continuing..."
-    docker-compose logs ai-server --tail 20
+    docker-compose -f $COMPOSE_FILE logs ai-server --tail 20
 fi
 
 # Step 7: Start Backend and Celery
 print_status "Step 7: Starting Backend and Celery..."
-docker-compose up -d backend celery-worker
+docker-compose -f $COMPOSE_FILE up -d backend celery-worker
 
 # Wait for backend to be ready
 print_status "Waiting for Backend to be ready..."
@@ -273,7 +275,7 @@ sleep 15
 # Check backend health with database connection verification
 print_status "Checking backend health and database connection..."
 for i in {1..5}; do
-    BACKEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8001/health 2>/dev/null || echo "000")
+    BACKEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://$VPS_IP:8001/health 2>/dev/null || echo "000")
     if [ "$BACKEND_STATUS" = "200" ]; then
         print_success "Backend is healthy and database connection successful"
         break
@@ -283,7 +285,7 @@ for i in {1..5}; do
         # Check backend logs for database connection issues
         if [ $i -eq 3 ]; then
             print_status "Checking backend logs for database connection issues..."
-            docker-compose logs backend --tail 5
+            docker-compose -f $COMPOSE_FILE logs backend --tail 5
         fi
         
         sleep 10
@@ -293,24 +295,24 @@ done
 # If backend still not healthy, try restarting with database fix
 if [ "$BACKEND_STATUS" != "200" ]; then
     print_warning "Backend not healthy, attempting database connection fix..."
-    docker-compose stop backend
+    docker-compose -f $COMPOSE_FILE stop backend
     sleep 5
-    docker-compose up -d backend
+    docker-compose -f $COMPOSE_FILE up -d backend
     sleep 15
     
     # Check again
-    BACKEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8001/health 2>/dev/null || echo "000")
+    BACKEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://$VPS_IP:8001/health 2>/dev/null || echo "000")
     if [ "$BACKEND_STATUS" = "200" ]; then
         print_success "Backend is now healthy after database fix"
     else
         print_error "Backend still not healthy after database fix (Status: $BACKEND_STATUS)"
-        print_status "Check backend logs: docker-compose logs backend"
+        print_status "Check backend logs: docker-compose -f $COMPOSE_FILE logs backend"
     fi
 fi
 
 # Step 8: Start Frontend
 print_status "Step 8: Starting Frontend..."
-docker-compose up -d frontend
+docker-compose -f $COMPOSE_FILE up -d frontend
 
 # Wait for frontend to be ready
 print_status "Waiting for Frontend to be ready..."
@@ -327,25 +329,25 @@ echo ""
 print_status "Testing service connectivity..."
 
 # Test backend
-BACKEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8001/health 2>/dev/null || echo "000")
+BACKEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://$VPS_IP:8001/health 2>/dev/null || echo "000")
 if [ "$BACKEND_STATUS" = "200" ]; then
-    print_success "Backend: OK (http://localhost:8001)"
+    print_success "Backend: OK (http://$VPS_IP:8001)"
 else
     print_error "Backend: FAILED (Status: $BACKEND_STATUS)"
 fi
 
 # Test AI server
-AI_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health 2>/dev/null || echo "000")
+AI_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://$VPS_IP:8000/health 2>/dev/null || echo "000")
 if [ "$AI_STATUS" = "200" ]; then
-    print_success "AI Server: OK (http://localhost:8000)"
+    print_success "AI Server: OK (http://$VPS_IP:8000)"
 else
     print_warning "AI Server: FAILED (Status: $AI_STATUS)"
 fi
 
 # Test frontend
-FRONTEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000 2>/dev/null || echo "000")
+FRONTEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://$VPS_IP:3000 2>/dev/null || echo "000")
 if [ "$FRONTEND_STATUS" = "200" ]; then
-    print_success "Frontend: OK (http://localhost:3000)"
+    print_success "Frontend: OK (http://$VPS_IP:3000)"
 else
     print_warning "Frontend: FAILED (Status: $FRONTEND_STATUS)"
 fi
@@ -354,8 +356,8 @@ echo ""
 print_success "🚀 Deployment completed!"
 echo ""
 print_status "Access URLs:"
-echo "  Frontend: http://localhost:3000"
-echo "  Backend API: http://localhost:8001"
-echo "  AI Server: http://localhost:8000"
+echo "  Frontend: http://$VPS_IP:3000"
+echo "  Backend API: http://$VPS_IP:8001"
+echo "  AI Server: http://$VPS_IP:8000"
 echo ""
 print_status "For troubleshooting, run: ./troubleshoot.sh" 

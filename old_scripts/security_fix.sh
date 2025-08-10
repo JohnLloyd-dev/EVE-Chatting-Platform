@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Configuration
+VPS_IP="204.12.233.105"
+
 # Security Fix Script
 # Generates secure passwords and updates configurations
 
@@ -46,7 +49,7 @@ DATABASE_URL=postgresql://$DB_USERNAME:$DB_PASSWORD@postgres:5432/chatting_platf
 REDIS_URL=redis://redis:6379/0
 
 # AI Model Configuration
-AI_MODEL_URL=http://204.12.223.76:8000
+AI_MODEL_URL=http://$VPS_IP:8000
 AI_MODEL_AUTH_USERNAME=adam
 AI_MODEL_AUTH_PASSWORD=$AI_PASSWORD
 
@@ -65,7 +68,7 @@ TALLY_WEBHOOK_SECRET=$TALLY_SECRET
 # Security Settings
 ENVIRONMENT=production
 DEBUG=false
-NEXT_PUBLIC_API_URL=http://localhost:8001
+NEXT_PUBLIC_API_URL=http://$VPS_IP:8001
 EOF
 
 echo "✅ Created secure .env file"

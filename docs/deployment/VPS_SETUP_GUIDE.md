@@ -100,13 +100,13 @@ Create a `.env.prod` file for production settings:
 # Create production environment file
 cat > .env.prod << EOF
 POSTGRES_PASSWORD=your-secure-password
-AI_MODEL_URL=http://your-ai-vps-ip:8000
+AI_MODEL_URL=http://204.12.233.105:8000
 AI_MODEL_AUTH_USERNAME=adam
 AI_MODEL_AUTH_PASSWORD=eve2025
 JWT_SECRET_KEY=your-very-long-and-random-secret-key
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=admin123
-NEXT_PUBLIC_API_URL=http://your-vps-ip:8001
+NEXT_PUBLIC_API_URL=http://204.12.233.105:8001
 EOF
 ```
 
@@ -122,10 +122,10 @@ docker ps
 docker-compose -f docker-compose.prod.yml logs
 
 # Test backend health
-curl http://localhost:8001/health
+curl http://204.12.233.105:8001/health
 
 # Test frontend
-curl -I http://localhost:3000
+curl -I http://204.12.233.105:3000
 ```
 
 ### Check Database
@@ -139,10 +139,10 @@ docker exec eve-postgres-1 psql -U postgres -d chatting_platform -c "SELECT COUN
 
 Once deployed, your application will be available at:
 
-- **Frontend**: `http://your-vps-ip:3000`
-- **Backend API**: `http://your-vps-ip:8001`
-- **Admin Dashboard**: `http://your-vps-ip:3000/admin`
-- **API Documentation**: `http://your-vps-ip:8001/docs`
+- **Frontend**: `http://204.12.233.105:3000`
+- **Backend API**: `http://204.12.233.105:8001`
+- **Admin Dashboard**: `http://204.12.233.105:3000/admin`
+- **API Documentation**: `http://204.12.233.105:8001/docs`
 
 ## 🔐 Admin Access
 

@@ -40,9 +40,9 @@ That's it! The script will handle everything automatically.
 
 After deployment, you can access:
 
-- **Frontend**: http://204.12.223.76:3000
-- **Backend API**: http://204.12.223.76:8001
-- **Admin Dashboard**: http://204.12.223.76:3000/admin
+- **Frontend**: http://204.12.233.105:3000
+- **Backend API**: http://204.12.233.105:8001
+- **Admin Dashboard**: http://204.12.233.105:3000/admin
 
 ## Admin Credentials
 

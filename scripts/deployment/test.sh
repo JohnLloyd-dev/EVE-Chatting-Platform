@@ -1,62 +1,85 @@
 #!/bin/bash
 
-echo "🧪 Testing Chatting Platform Setup"
-echo "=================================="
+echo "🧪 Testing EVE Chat Platform Deployment"
+echo "======================================"
+
+# Configuration
+VPS_IP="204.12.233.105"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+print_status() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+print_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
 
 # Function to test URL
 test_url() {
     local url=$1
-    local name=$2
-    local expected_code=${3:-200}
+    local description=$2
     
-    echo -n "Testing $name... "
+    print_status "Testing $description: $url"
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$url" 2>/dev/null || echo "000")
     
-    if response=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 10 "$url" 2>/dev/null); then
-        if [ "$response" = "$expected_code" ]; then
-            echo "✅ OK ($response)"
-            return 0
-        else
-            echo "❌ FAIL (got $response, expected $expected_code)"
-            return 1
-        fi
+    if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "302" ]; then
+        print_success "$description: OK (HTTP $HTTP_CODE)"
+        return 0
     else
-        echo "❌ FAIL (connection error)"
+        print_error "$description: FAILED (HTTP $HTTP_CODE)"
         return 1
     fi
 }
 
-# Check if services are running
-echo "📊 Checking Docker services..."
-if ! docker-compose ps | grep -q "Up"; then
-    echo "❌ No services appear to be running. Please run: ./start.sh"
-    exit 1
+print_status "Starting tests for VPS: $VPS_IP"
+echo ""
+
+# Test all services
+print_status "Testing service endpoints..."
+
+test_url "http://$VPS_IP:8001/health" "Backend Health"
+test_url "http://$VPS_IP:8001/docs" "Backend API Docs"
+test_url "http://$VPS_IP:3000" "Frontend"
+test_url "http://$VPS_IP:3000/admin" "Admin Page"
+
+echo ""
+
+# Test database connectivity
+print_status "Testing database connectivity..."
+if docker ps --format "{{.Names}}" | grep -q "postgres"; then
+    POSTGRES_CONTAINER=$(docker ps --format "{{.Names}}" | grep "postgres" | head -1)
+    if docker exec "$POSTGRES_CONTAINER" pg_isready -U "adam@2025@man" &> /dev/null; then
+        print_success "Database: Connected successfully"
+    else
+        print_error "Database: Connection failed"
+    fi
+else
+    print_warning "Database: PostgreSQL container not found"
 fi
 
-echo "✅ Docker services are running"
 echo ""
 
-# Test backend health
-test_url "http://localhost:8000/health" "Backend Health"
-
-# Test backend API docs
-test_url "http://localhost:8000/docs" "Backend API Docs"
-
-# Test frontend
-test_url "http://localhost:3000" "Frontend"
-
-# Test admin page
-test_url "http://localhost:3000/admin" "Admin Page"
+# Manual testing instructions
+print_status "Manual Testing Instructions:"
+echo "1. Open http://$VPS_IP:3000 in your browser"
+echo "2. Try admin login at http://$VPS_IP:3000/admin (admin/adam@and@eve@3241)"
+echo "3. Test webhook endpoint:"
+echo "   curl -X POST http://$VPS_IP:8001/webhook/tally -H 'Content-Type: application/json' -d @tally_form.json"
 
 echo ""
-echo "🔍 Service Status:"
-docker-compose ps
-
-echo ""
-echo "📝 Quick Tests:"
-echo "1. Open http://localhost:3000 in your browser"
-echo "2. Try admin login at http://localhost:3000/admin (admin/admin123)"
-echo "3. Test Tally webhook:"
-echo "   curl -X POST http://localhost:8000/webhook/tally -H 'Content-Type: application/json' -d @tally_form.json"
-
-echo ""
-echo "🎉 Setup test completed!"
+print_status "Testing complete!"

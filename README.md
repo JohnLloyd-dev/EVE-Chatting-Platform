@@ -46,9 +46,9 @@ The platform includes a custom AI server running the OpenHermes-2.5-Mistral-7B m
 
 ## 🌐 Access URLs
 
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:8001
-- **AI Server**: http://localhost:8000
+- **Frontend**: http://204.12.233.105:3000
+- **Backend API**: http://204.12.233.105:8001
+- **AI Server**: http://204.12.233.105:8000
 
 ## 🔐 Authentication
 

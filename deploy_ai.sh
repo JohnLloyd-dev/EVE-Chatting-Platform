@@ -26,6 +26,9 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+# Configuration
+VPS_IP="204.12.233.105"
+
 # Check if NVIDIA GPU is available
 check_gpu() {
     if command -v nvidia-smi &> /dev/null; then
@@ -107,7 +110,7 @@ print_status "Using compose file: $COMPOSE_FILE"
 
 # Stop existing containers
 print_status "Stopping existing containers..."
-docker-compose down
+docker-compose -f $COMPOSE_FILE down
 
 # Build and start services
 print_status "Building and starting services..."
@@ -140,7 +143,7 @@ done
 # Wait for AI server (takes longer to load model)
 print_status "Waiting for AI Server to load model (this may take several minutes)..."
 for i in {1..30}; do
-    AI_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health 2>/dev/null || echo "000")
+    AI_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://$VPS_IP:8000/health 2>/dev/null || echo "000")
     if [ "$AI_STATUS" = "200" ]; then
         print_success "AI Server is ready"
         break
@@ -155,25 +158,25 @@ echo ""
 print_status "Running final health checks..."
 
 # Test backend
-BACKEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8001/health 2>/dev/null || echo "000")
+BACKEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://$VPS_IP:8001/health 2>/dev/null || echo "000")
 if [ "$BACKEND_STATUS" = "200" ]; then
-    print_success "Backend: OK (http://localhost:8001)"
+    print_success "Backend: OK (http://$VPS_IP:8001)"
 else
     print_error "Backend: FAILED (Status: $BACKEND_STATUS)"
 fi
 
 # Test AI server
-AI_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health 2>/dev/null || echo "000")
+AI_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://$VPS_IP:8000/health 2>/dev/null || echo "000")
 if [ "$AI_STATUS" = "200" ]; then
-    print_success "AI Server: OK (http://localhost:8000)"
+    print_success "AI Server: OK (http://$VPS_IP:8000)"
 else
     print_warning "AI Server: FAILED (Status: $AI_STATUS)"
 fi
 
 # Test frontend
-FRONTEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000 2>/dev/null || echo "000")
+FRONTEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://$VPS_IP:3000 2>/dev/null || echo "000")
 if [ "$FRONTEND_STATUS" = "200" ]; then
-    print_success "Frontend: OK (http://localhost:3000)"
+    print_success "Frontend: OK (http://$VPS_IP:3000)"
 else
     print_warning "Frontend: FAILED (Status: $FRONTEND_STATUS)"
 fi
@@ -182,9 +185,9 @@ echo ""
 print_success "🚀 AI Server deployment completed!"
 echo ""
 print_status "Access URLs:"
-echo "  Frontend: http://localhost:3000"
-echo "  Backend API: http://localhost:8001"
-echo "  AI Server: http://localhost:8000"
+echo "  Frontend: http://$VPS_IP:3000"
+echo "  Backend API: http://$VPS_IP:8001"
+echo "  AI Server: http://$VPS_IP:8000"
 echo ""
 print_status "AI Server Type: $([ "$choice" = "2" ] && echo "GPU-accelerated" || echo "CPU-only")"
 echo ""

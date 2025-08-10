@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Configuration
+VPS_IP="204.12.233.105"
+
 # Create network
 docker network create eve-network 2>/dev/null || true
 
@@ -64,12 +67,12 @@ cd ..
 echo "Starting frontend..."
 docker run -d --name frontend --network eve-network \
   -p 3000:3000 \
-  -e NEXT_PUBLIC_API_URL=http://localhost:8001 \
+  -e NEXT_PUBLIC_API_URL=http://$VPS_IP:8001 \
   -v $(pwd)/frontend:/app \
   -v /app/node_modules \
   eve-frontend npm run dev
 
 echo "All services started!"
-echo "Frontend: http://localhost:3000"
-echo "Backend: http://localhost:8001"
-echo "Admin: http://localhost:3000/admin"
+echo "Frontend: http://$VPS_IP:3000"
+echo "Backend: http://$VPS_IP:8001"
+echo "Admin: http://$VPS_IP:3000/admin"

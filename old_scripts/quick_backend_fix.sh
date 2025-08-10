@@ -1,7 +1,10 @@
 #!/bin/bash
 
 echo "🔧 Quick Backend Fix"
-echo "==================="
+echo "===================="
+
+# Configuration
+VPS_IP="204.12.233.105"
 
 # Colors for output
 RED='\033[0;31m'
@@ -48,7 +51,7 @@ docker port eve-chatting-platform_backend_1
 
 # Step 6: Test internal backend access
 print_status "Step 6: Testing internal backend access..."
-docker exec eve-chatting-platform_backend_1 curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health
+docker exec eve-chatting-platform_backend_1 curl -s -o /dev/null -w "%{http_code}" http://$VPS_IP:8000/health
 echo " - Internal health check"
 
 # Step 7: Check environment variables
@@ -68,7 +71,7 @@ fi
 # Step 9: Test again after restart
 print_status "Step 9: Testing after restart..."
 sleep 5
-curl -s -o /dev/null -w "%{http_code}" http://localhost:8001/health
+curl -s -o /dev/null -w "%{http_code}" http://$VPS_IP:8001/health
 echo " - Local health check"
 
 # Step 10: Show final status
@@ -81,7 +84,7 @@ echo "🔗 Port Mapping:"
 docker port eve-chatting-platform_backend_1
 echo ""
 echo "🌐 Access URLs:"
-echo "   Local: http://localhost:8001"
+echo "   Local: http://$VPS_IP:8001"
 echo "   External: http://204.12.223.76:8001"
 echo ""
 

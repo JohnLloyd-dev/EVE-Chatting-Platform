@@ -1,7 +1,7 @@
 #!/bin/bash
 
-echo "🔧 EVE Chat Platform - Troubleshooting"
-echo "======================================"
+echo "🔧 EVE Chat Platform - Troubleshooting Script"
+echo "============================================="
 
 # Colors for output
 RED='\033[0;31m'
@@ -26,70 +26,86 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# Check container status
+# Configuration
+VPS_IP="204.12.233.105"
+
+print_status "Starting troubleshooting for VPS: $VPS_IP"
+echo ""
+
+# Check Docker status
+print_status "Checking Docker status..."
+if docker info > /dev/null 2>&1; then
+    print_success "Docker is running"
+else
+    print_error "Docker is not running"
+    exit 1
+fi
+
+# Check if containers are running
 print_status "Checking container status..."
-docker ps
+docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 
 echo ""
+
+# Check service health
 print_status "Testing service connectivity..."
 
 # Test backend
-BACKEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8001/health 2>/dev/null || echo "000")
+BACKEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://$VPS_IP:8001/health 2>/dev/null || echo "000")
 if [ "$BACKEND_STATUS" = "200" ]; then
-    print_success "Backend: OK (http://localhost:8001)"
+    print_success "Backend: OK (http://$VPS_IP:8001)"
 else
     print_error "Backend: FAILED (Status: $BACKEND_STATUS)"
 fi
 
 # Test AI server
-AI_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health 2>/dev/null || echo "000")
+AI_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://$VPS_IP:8000/health 2>/dev/null || echo "000")
 if [ "$AI_STATUS" = "200" ]; then
-    print_success "AI Server: OK (http://localhost:8000)"
+    print_success "AI Server: OK (http://$VPS_IP:8000)"
 else
     print_warning "AI Server: FAILED (Status: $AI_STATUS)"
 fi
 
 # Test frontend
-FRONTEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000 2>/dev/null || echo "000")
+FRONTEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://$VPS_IP:3000 2>/dev/null || echo "000")
 if [ "$FRONTEND_STATUS" = "200" ]; then
-    print_success "Frontend: OK (http://localhost:3000)"
+    print_success "Frontend: OK (http://$VPS_IP:3000)"
 else
     print_warning "Frontend: FAILED (Status: $FRONTEND_STATUS)"
 fi
 
 echo ""
-print_status "Quick fixes:"
 
-# Check if containers are running
-if ! docker ps | grep -q "eve-chatting-platform_backend_1"; then
-    print_warning "Backend container not running"
-    echo "  Fix: docker-compose up -d backend"
-fi
-
-if ! docker ps | grep -q "eve-chatting-platform_ai-server_1"; then
-    print_warning "AI Server container not running"
-    echo "  Fix: docker-compose up -d ai-server"
-fi
-
-if ! docker ps | grep -q "eve-chatting-platform_frontend_1"; then
-    print_warning "Frontend container not running"
-    echo "  Fix: docker-compose up -d frontend"
-fi
-
-if ! docker ps | grep -q "eve-chatting-platform_postgres_1"; then
-    print_warning "PostgreSQL container not running"
-    echo "  Fix: docker-compose up -d postgres"
-fi
-
-if ! docker ps | grep -q "eve-chatting-platform_redis_1"; then
-    print_warning "Redis container not running"
-    echo "  Fix: docker-compose up -d redis"
+# Check environment variables
+print_status "Checking frontend environment variables..."
+if docker ps --format "{{.Names}}" | grep -q "frontend"; then
+    FRONTEND_CONTAINER=$(docker ps --format "{{.Names}}" | grep "frontend" | head -1)
+    print_status "Frontend container: $FRONTEND_CONTAINER"
+    
+    NEXT_PUBLIC_API_URL=$(docker exec "$FRONTEND_CONTAINER" env | grep NEXT_PUBLIC_API_URL | cut -d'=' -f2)
+    if [ "$NEXT_PUBLIC_API_URL" = "http://$VPS_IP:8001" ]; then
+        print_success "NEXT_PUBLIC_API_URL is correct: $NEXT_PUBLIC_API_URL"
+    else
+        print_error "NEXT_PUBLIC_API_URL is wrong: $NEXT_PUBLIC_API_URL (should be http://$VPS_IP:8001)"
+    fi
+else
+    print_warning "Frontend container not found"
 fi
 
 echo ""
-print_status "Useful commands:"
-echo "  View logs: docker-compose logs [service_name]"
-echo "  Restart service: docker-compose restart [service_name]"
-echo "  Rebuild service: docker-compose build [service_name]"
-echo "  Full restart: docker-compose down && docker-compose up -d"
-echo "  Check AI model loading: docker-compose logs ai-server" 
+
+# Check logs
+print_status "Recent logs from services..."
+echo "Backend logs (last 5 lines):"
+docker-compose logs backend --tail 5 2>/dev/null || echo "No backend logs found"
+
+echo ""
+echo "Frontend logs (last 5 lines):"
+docker-compose logs frontend --tail 5 2>/dev/null || echo "No frontend logs found"
+
+echo ""
+print_status "Troubleshooting complete!"
+print_status "Access URLs:"
+echo "  Frontend: http://$VPS_IP:3000"
+echo "  Backend API: http://$VPS_IP:8001"
+echo "  AI Server: http://$VPS_IP:8000" 

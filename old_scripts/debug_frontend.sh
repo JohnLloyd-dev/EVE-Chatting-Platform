@@ -1,8 +1,11 @@
 #!/bin/bash
 
 # Debug Frontend Access Script
-echo "🔍 Debugging Frontend Access Issues"
-echo "==================================="
+echo "🔍 Frontend Debug Script"
+echo "========================"
+
+# Configuration
+VPS_IP="204.12.233.105"
 
 # Colors for output
 RED='\033[0;31m'
@@ -53,11 +56,11 @@ netstat -tlnp | grep 3000
 
 # Step 7: Test connection from inside container
 print_status "Step 7: Testing connection from inside container..."
-docker exec eve-chatting-platform_frontend_1 curl -s -o /dev/null -w "%{http_code}" http://localhost:3000
+docker exec eve-chatting-platform_frontend_1 curl -s -o /dev/null -w "%{http_code}" http://$VPS_IP:3000
 
 # Step 8: Test connection from host to container
 print_status "Step 8: Testing connection from host to container..."
-curl -s -o /dev/null -w "%{http_code}" http://localhost:3000
+curl -s -o /dev/null -w "%{http_code}" http://$VPS_IP:3000
 
 # Step 9: Check Docker network
 print_status "Step 9: Checking Docker network..."
@@ -72,19 +75,19 @@ sudo ufw status
 print_status "Step 11: Testing with different methods..."
 
 echo "Testing with curl (verbose):"
-curl -v http://localhost:3000 2>&1 | head -20
+curl -v http://$VPS_IP:3000 2>&1 | head -20
 
 echo "Testing with wget:"
-wget -qO- http://localhost:3000 2>&1 | head -10
+wget -qO- http://$VPS_IP:3000 2>&1 | head -10
 
 echo "Testing with telnet:"
-timeout 5 telnet localhost 3000 2>&1 | head -5
+timeout 5 telnet $VPS_IP 3000 2>&1 | head -5
 
 # Step 12: Check if it's a timing issue
 print_status "Step 12: Checking if it's a timing issue..."
 echo "Waiting 10 seconds and testing again..."
 sleep 10
-curl -s -o /dev/null -w "%{http_code}" http://localhost:3000
+curl -s -o /dev/null -w "%{http_code}" http://$VPS_IP:3000
 
 # Step 13: Check container health
 print_status "Step 13: Checking container health..."
