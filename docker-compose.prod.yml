@@ -36,7 +36,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-postgres123}@postgres:5432/chatting_platform
       - REDIS_URL=redis://redis:6379/0
-      - AI_MODEL_URL=${AI_MODEL_URL:-http://204.12.223.76:8000}
+      - AI_MODEL_URL=${AI_MODEL_URL:-http://ai-server:8000}
       - AI_MODEL_AUTH_USERNAME=${AI_MODEL_AUTH_USERNAME:-adam}
       - AI_MODEL_AUTH_PASSWORD=${AI_MODEL_AUTH_PASSWORD:-eve2025}
       - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
@@ -64,7 +64,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-postgres123}@postgres:5432/chatting_platform
       - REDIS_URL=redis://redis:6379/0
-      - AI_MODEL_URL=${AI_MODEL_URL:-http://204.12.223.76:8000}
+      - AI_MODEL_URL=${AI_MODEL_URL:-http://ai-server:8000}
       - AI_MODEL_AUTH_USERNAME=${AI_MODEL_AUTH_USERNAME:-adam}
       - AI_MODEL_AUTH_PASSWORD=${AI_MODEL_AUTH_PASSWORD:-eve2025}
     depends_on:
@@ -85,7 +85,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8001}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://backend:8000}
     restart: unless-stopped
     depends_on:
       - backend

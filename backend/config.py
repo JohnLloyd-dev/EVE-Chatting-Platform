@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     
     # AI Model
-    ai_model_url: str = "http://204.12.223.76:8000"
+    ai_model_url: str = "http://ai-server:8000"
     ai_model_auth_username: str = "adam"
     ai_model_auth_password: str = "eve2025"
     

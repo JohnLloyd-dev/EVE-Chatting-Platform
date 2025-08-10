@@ -101,7 +101,7 @@ services:
     ports:
       - "0.0.0.0:3000:3000" # Allow external access for frontend
     environment:
-      - NEXT_PUBLIC_API_URL=http://204.12.223.76:8001
+      - NEXT_PUBLIC_API_URL=http://backend:8000
       - HOSTNAME=0.0.0.0
       - PORT=3000
     volumes:
