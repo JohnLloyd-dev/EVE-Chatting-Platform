@@ -31,27 +31,29 @@ print(f"GPU available: {gpu_available}")
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 
 if gpu_available:
-    # Use GPU with quantization and CPU offloading
-    print("Loading model with GPU, 4-bit quantization, and CPU offloading...")
+    # Use GPU with maximum efficiency for RTX 4060 (8GB VRAM)
+    print("Loading model with GPU optimization for RTX 4060 (8GB VRAM)...")
     
-    # Set environment variables for better memory management
+    # Set environment variables for optimal GPU performance
     import os
-    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
-    os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:512"
+    os.environ["CUDA_LAUNCH_BLOCKING"] = "0"
+    os.environ["TORCH_CUDNN_V8_API_ENABLED"] = "1"
     
+    # Optimized quantization config for maximum GPU utilization
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_compute_dtype=torch.float16,
-        llm_int8_enable_fp32_cpu_offload=True,
         bnb_4bit_use_double_quant=True,
-        bnb_4bit_quant_type="nf4"
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_quant_storage=torch.float16
     )
     
-    # Create a more aggressive device map for memory-constrained GPUs
+    # Optimized device map to use maximum GPU memory efficiently
     device_map = {
-        "model.embed_tokens": "cpu",
-        "model.norm": "cpu",
-        "lm_head": "cpu",
+        "model.embed_tokens": "cuda:0",  # Keep embeddings on GPU for speed
+        "model.norm": "cuda:0",          # Keep normalization on GPU
+        "lm_head": "cuda:0",             # Keep output layer on GPU
         "model.layers.0": "cuda:0",
         "model.layers.1": "cuda:0",
         "model.layers.2": "cuda:0",
@@ -86,26 +88,84 @@ if gpu_available:
         "model.layers.31": "cuda:0"
     }
     
-    # Try loading with aggressive memory settings
+    # Load model with maximum GPU utilization
     try:
+        print("Loading model with full GPU optimization...")
         model = AutoModelForCausalLM.from_pretrained(
             model_name,
             device_map=device_map,
             quantization_config=bnb_config,
             torch_dtype=torch.float16,
             low_cpu_mem_usage=True,
-            max_memory={0: "6GB", "cpu": "8GB"}
+            max_memory={0: "7.5GB", "cpu": "4GB"}  # Use 7.5GB GPU, leave 0.5GB buffer
         )
+        print("✅ Model loaded successfully with full GPU optimization!")
+        
     except Exception as e:
-        print(f"GPU loading failed: {e}")
-        print("Falling back to CPU-only mode...")
-        # Fallback to CPU if GPU loading fails
-        model = AutoModelForCausalLM.from_pretrained(
-            model_name,
-            device_map="cpu",
-            torch_dtype=torch.float32,
-            low_cpu_mem_usage=True
-        )
+        print(f"⚠️  Full GPU optimization failed: {e}")
+        print("🔄 Trying with balanced GPU/CPU distribution...")
+        
+        # Fallback to balanced approach
+        try:
+            balanced_device_map = {
+                "model.embed_tokens": "cpu",
+                "model.norm": "cpu", 
+                "lm_head": "cpu",
+                "model.layers.0": "cuda:0",
+                "model.layers.1": "cuda:0",
+                "model.layers.2": "cuda:0",
+                "model.layers.3": "cuda:0",
+                "model.layers.4": "cuda:0",
+                "model.layers.5": "cuda:0",
+                "model.layers.6": "cuda:0",
+                "model.layers.7": "cuda:0",
+                "model.layers.8": "cuda:0",
+                "model.layers.9": "cuda:0",
+                "model.layers.10": "cuda:0",
+                "model.layers.11": "cuda:0",
+                "model.layers.12": "cuda:0",
+                "model.layers.13": "cuda:0",
+                "model.layers.14": "cuda:0",
+                "model.layers.15": "cuda:0",
+                "model.layers.16": "cuda:0",
+                "model.layers.17": "cuda:0",
+                "model.layers.18": "cuda:0",
+                "model.layers.19": "cuda:0",
+                "model.layers.20": "cuda:0",
+                "model.layers.21": "cuda:0",
+                "model.layers.22": "cuda:0",
+                "model.layers.23": "cuda:0",
+                "model.layers.24": "cuda:0",
+                "model.layers.25": "cuda:0",
+                "model.layers.26": "cuda:0",
+                "model.layers.27": "cuda:0",
+                "model.layers.28": "cuda:0",
+                "model.layers.29": "cuda:0",
+                "model.layers.30": "cuda:0",
+                "model.layers.31": "cuda:0"
+            }
+            
+            model = AutoModelForCausalLM.from_pretrained(
+                model_name,
+                device_map=balanced_device_map,
+                quantization_config=bnb_config,
+                torch_dtype=torch.float16,
+                low_cpu_mem_usage=True,
+                max_memory={0: "6GB", "cpu": "8GB"}
+            )
+            print("✅ Model loaded with balanced GPU/CPU distribution!")
+            
+        except Exception as e2:
+            print(f"❌ Balanced approach failed: {e2}")
+            print("🔄 Falling back to CPU-only mode...")
+            # Final fallback to CPU
+            model = AutoModelForCausalLM.from_pretrained(
+                model_name,
+                device_map="cpu",
+                torch_dtype=torch.float32,
+                low_cpu_mem_usage=True
+            )
+            print("✅ Model loaded on CPU (fallback mode)")
 else:
     # Use CPU without quantization
     print("Loading model on CPU (no quantization)...")
