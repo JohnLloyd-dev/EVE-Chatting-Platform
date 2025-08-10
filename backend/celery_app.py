@@ -25,6 +25,8 @@ celery_app.conf.update(
     result_serializer="json",
     timezone="UTC",
     enable_utc=True,
+    # Fix deprecation warning
+    broker_connection_retry_on_startup=True,
 )
 
 @celery_app.task(bind=True, max_retries=3)
@@ -51,12 +53,14 @@ def process_ai_response(self, session_id: str, user_message: str, max_tokens: in
         # Check if user is blocked
         if chat_session.user.is_blocked:
             logger.info(f"User {chat_session.user.user_code} is blocked, cancelling AI response")
-            raise Exception("User is blocked")
+            db.close()
+            return {"success": False, "error": "User is blocked"}
         
         # Check if AI responses are enabled for this user
         if not chat_session.user.ai_responses_enabled:
             logger.info(f"AI responses disabled for user {chat_session.user.user_code}, cancelling AI response")
-            raise Exception("AI responses are disabled for this user")
+            db.close()
+            return {"success": False, "error": "AI responses are disabled for this user"}
         
         # Get conversation history (excluding admin interventions)
         messages = db.query(Message).filter(
@@ -121,8 +125,19 @@ def process_ai_response(self, session_id: str, user_message: str, max_tokens: in
         db.rollback()
         db.close()
         
-        # Retry logic
+        # Don't retry for specific errors that won't be resolved by retrying
+        if any(error_msg in str(exc).lower() for error_msg in [
+            "ai responses are disabled", 
+            "user is blocked", 
+            "task was cancelled",
+            "chat session not found"
+        ]):
+            logger.info(f"Not retrying task due to permanent error: {exc}")
+            return {"success": False, "error": str(exc)}
+        
+        # Retry logic only for recoverable errors
         if self.request.retries < self.max_retries:
+            logger.info(f"Retrying task {self.request.id}, attempt {self.request.retries + 1}/{self.max_retries}")
             raise self.retry(countdown=60, exc=exc)
         
         # If all retries failed, save error message

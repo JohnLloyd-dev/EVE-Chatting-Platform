@@ -3,8 +3,8 @@ from typing import Optional
 import os
 
 class Settings(BaseSettings):
-    # Database
-    database_url: str = "postgresql://adam%402025%40man:eve%40postgres%403241@postgres:5432/chatting_platform"
+    # Database - Fixed username without special characters
+    database_url: str = "postgresql://adam2025man:eve@postgres@3241@postgres:5432/chatting_platform"
     
     # Redis
     redis_url: str = "redis://redis:6379/0"
