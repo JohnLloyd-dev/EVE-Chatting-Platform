@@ -31,17 +31,19 @@ print(f"GPU available: {gpu_available}")
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 
 if gpu_available:
-    # Use GPU with quantization
-    print("Loading model with GPU and 4-bit quantization...")
+    # Use GPU with quantization and CPU offloading
+    print("Loading model with GPU, 4-bit quantization, and CPU offloading...")
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
-        bnb_4bit_compute_dtype=torch.float16
+        bnb_4bit_compute_dtype=torch.float16,
+        load_in_8bit_fp32_cpu_offload=True
     )
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
         device_map="auto",
         quantization_config=bnb_config,
-        torch_dtype=torch.float16
+        torch_dtype=torch.float16,
+        low_cpu_mem_usage=True
     )
 else:
     # Use CPU without quantization
