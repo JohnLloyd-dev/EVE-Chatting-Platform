@@ -1,11 +1,5 @@
 #!/bin/bash
 
-echo "👑 Setting up Admin User for EVE Chat Platform"
-echo "=============================================="
-
-# Configuration
-VPS_IP="204.12.233.105"
-
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -13,6 +7,10 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Configuration
+VPS_IP="204.12.233.105"
+
+# Print functions
 print_status() {
     echo -e "${BLUE}[INFO]${NC} $1"
 }
@@ -29,41 +27,56 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+echo "👑 Setting up Admin User for EVE Chat Platform"
+echo "=============================================="
+
 # Check if backend is running
 print_status "Checking if backend is running..."
-if ! docker ps | grep -q "backend"; then
-    print_error "Backend container not found. Please start the services first."
-    echo "Run: docker-compose up -d"
+BACKEND_CONTAINER=$(docker ps --filter "name=backend" --format "{{.Names}}" | head -1)
+
+if [ -z "$BACKEND_CONTAINER" ]; then
+    print_error "Backend container not found. Please start the platform first."
+    echo "Run: ./deploy_gpu.sh or ./deploy.sh"
     exit 1
 fi
 
 print_success "Backend container found"
-
-# Get backend container name
-BACKEND_CONTAINER=$(docker ps --format "{{.Names}}" | grep "backend" | head -1)
 print_status "Using backend container: $BACKEND_CONTAINER"
 
 # Check if admin user already exists
 print_status "Checking if admin user already exists..."
-ADMIN_EXISTS=$(docker exec "$BACKEND_CONTAINER" python3 -c "
-from database import engine
-from sqlalchemy import text
+
+ADMIN_EXISTS=$(docker exec $BACKEND_CONTAINER python3 -c "
+import psycopg2
+import os
 
 try:
-    with engine.connect() as conn:
-        result = conn.execute(text('SELECT COUNT(*) FROM users WHERE username = \\'admin\\''))
-        count = result.scalar()
-        print(count)
+    conn = psycopg2.connect(os.environ['DATABASE_URL'])
+    cur = conn.cursor()
+    cur.execute('SELECT COUNT(*) FROM admin_users WHERE username = %s', ('admin',))
+    count = cur.fetchone()[0]
+    cur.close()
+    conn.close()
+    print(count)
 except Exception as e:
-    print('Error:', e)
-    print(0)
-" 2>/dev/null)
+    print('ERROR:', str(e))
+    exit(1)
+")
 
-if [ "$ADMIN_EXISTS" = "1" ]; then
-    print_warning "Admin user already exists"
-    read -p "Do you want to update the admin password? (y/n): " update_password
-    if [ "$update_password" != "y" ]; then
-        print_status "Admin setup skipped"
+if [ "$ADMIN_EXISTS" = "ERROR:"* ]; then
+    print_error "Database error: $ADMIN_EXISTS"
+    exit 1
+fi
+
+if [ "$ADMIN_EXISTS" -gt 0 ]; then
+    print_warning "Admin user 'admin' already exists"
+    read -p "Do you want to update the password? (y/N): " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        print_status "Password update cancelled"
+        echo ""
+        echo "🌐 Admin Dashboard: http://$VPS_IP:3000/admin"
+        echo "   Current credentials: admin / [existing password]"
         exit 0
     fi
 fi
@@ -75,9 +88,9 @@ read -p "Admin username (default: admin): " ADMIN_USERNAME
 ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
 
 read -s -p "Admin password: " ADMIN_PASSWORD
-echo ""
+echo
 read -s -p "Confirm admin password: " ADMIN_PASSWORD_CONFIRM
-echo ""
+echo
 
 if [ "$ADMIN_PASSWORD" != "$ADMIN_PASSWORD_CONFIRM" ]; then
     print_error "Passwords do not match"
@@ -89,63 +102,51 @@ if [ -z "$ADMIN_PASSWORD" ]; then
     exit 1
 fi
 
-# Create or update admin user
+# Set up admin user
 print_status "Setting up admin user..."
-docker exec "$BACKEND_CONTAINER" python3 -c "
-from database import engine
-from sqlalchemy import text
-import hashlib
-import os
 
-def hash_password(password):
-    salt = os.urandom(32)
-    key = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, 100000)
-    return salt.hex() + key.hex()
+ADMIN_RESULT=$(docker exec $BACKEND_CONTAINER python3 -c "
+import psycopg2
+import os
+import bcrypt
 
 try:
-    with engine.connect() as conn:
-        # Check if admin user exists
-        result = conn.execute(text('SELECT COUNT(*) FROM users WHERE username = \\'$ADMIN_USERNAME\\''))
-        count = result.scalar()
-        
-        if count > 0:
-            # Update existing admin user
-            hashed_password = hash_password('$ADMIN_PASSWORD')
-            conn.execute(text('''
-                UPDATE users 
-                SET password_hash = :password_hash, 
-                    is_admin = true,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE username = :username
-            '''), {'password_hash': hashed_password, 'username': '$ADMIN_USERNAME'})
-            print('Admin user updated successfully')
-        else:
-            # Create new admin user
-            hashed_password = hash_password('$ADMIN_PASSWORD')
-            conn.execute(text('''
-                INSERT INTO users (username, password_hash, is_admin, created_at, updated_at)
-                VALUES (:username, :password_hash, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-            '''), {'username': '$ADMIN_USERNAME', 'password_hash': hashed_password})
-            print('Admin user created successfully')
-        
-        conn.commit()
-        print('Admin setup completed!')
-        
+    # Hash the password
+    password_bytes = '$ADMIN_PASSWORD'.encode('utf-8')
+    salt = bcrypt.gensalt()
+    password_hash = bcrypt.hashpw(password_bytes, salt).decode('utf-8')
+    
+    conn = psycopg2.connect(os.environ['DATABASE_URL'])
+    cur = conn.cursor()
+    
+    if $ADMIN_EXISTS > 0:
+        # Update existing admin user
+        cur.execute('UPDATE admin_users SET password_hash = %s WHERE username = %s', (password_hash, '$ADMIN_USERNAME'))
+        print('UPDATED')
+    else:
+        # Create new admin user
+        cur.execute('INSERT INTO admin_users (username, password_hash, email) VALUES (%s, %s, %s)', 
+                   ('$ADMIN_USERNAME', password_hash, 'admin@chatplatform.com'))
+        print('CREATED')
+    
+    conn.commit()
+    cur.close()
+    conn.close()
+    
 except Exception as e:
-    print('Error setting up admin user:', e)
+    print('ERROR:', str(e))
     exit(1)
-"
+")
 
-if [ $? -eq 0 ]; then
-    print_success "Admin user setup completed!"
-    echo ""
-    print_status "Admin Dashboard Access:"
-    echo "  URL: http://$VPS_IP:3000/admin"
-    echo "  Username: $ADMIN_USERNAME"
-    echo "  Password: [the password you entered]"
-    echo ""
-    print_status "You can now log in to the admin dashboard!"
-else
-    print_error "Failed to set up admin user"
+if [ "$ADMIN_RESULT" = "ERROR:"* ]; then
+    print_error "Failed to set up admin user: $ADMIN_RESULT"
     exit 1
 fi
+
+print_success "Admin user $ADMIN_RESULT successfully"
+echo ""
+echo "🌐 Admin Dashboard: http://$VPS_IP:3000/admin"
+echo "   Username: $ADMIN_USERNAME"
+echo "   Password: [the password you entered]"
+echo ""
+echo "✅ Admin user setup complete!"
