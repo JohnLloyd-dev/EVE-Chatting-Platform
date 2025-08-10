@@ -52,7 +52,7 @@ echo ""
 print_status "Step 4: Creating new database user..."
 docker exec -i eve-chatting-platform-postgres-1 psql -U postgres -d postgres << 'EOF'
 -- Create new user without special characters
-CREATE USER adam2025man WITH PASSWORD 'eve@postgres@3241';
+CREATE USER adam2025man WITH PASSWORD 'adam2025';
 
 -- Grant necessary privileges
 GRANT CONNECT ON DATABASE chatting_platform TO adam2025man;

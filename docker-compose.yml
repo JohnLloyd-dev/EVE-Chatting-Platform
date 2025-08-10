@@ -5,15 +5,15 @@ services:
   postgres:
     image: postgres:17
     environment:
-      POSTGRES_USER: adam@2025@man
-      POSTGRES_PASSWORD: eve@postgres@3241
+      POSTGRES_USER: adam2025man
+      POSTGRES_PASSWORD: adam2025
       POSTGRES_DB: chatting_platform
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U adam@2025@man"]
+      test: ["CMD-SHELL", "pg_isready -U adam2025man"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -37,7 +37,7 @@ services:
     ports:
       - "8001:8000"
     environment:
-      - DATABASE_URL=postgresql://adam%402025%40man:eve%40postgres%403241@postgres:5432/chatting_platform
+      - DATABASE_URL=postgresql://adam2025man:adam2025@postgres:5432/chatting_platform
       - REDIS_URL=redis://redis:6379/0
       - AI_MODEL_URL=http://ai-server:8000
       - AI_MODEL_AUTH_USERNAME=adam
@@ -58,7 +58,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     environment:
-      - DATABASE_URL=postgresql://adam%402025%40man:eve%40postgres%403241@postgres:5432/chatting_platform
+      - DATABASE_URL=postgresql://adam2025man:adam2025@postgres:5432/chatting_platform
       - REDIS_URL=redis://redis:6379/0
       - AI_MODEL_URL=http://ai-server:8000
       - AI_MODEL_AUTH_USERNAME=adam

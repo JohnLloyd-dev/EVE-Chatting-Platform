@@ -4,7 +4,7 @@ services:
     image: postgres:17
     environment:
       POSTGRES_USER: adam2025man
-      POSTGRES_PASSWORD: eve@postgres@3241
+      POSTGRES_PASSWORD: adam2025
       POSTGRES_DB: chatting_platform
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -37,7 +37,7 @@ services:
     ports:
       - "8001:8000"
     environment:
-      - DATABASE_URL=postgresql://adam2025man:eve@postgres@3241@postgres:5432/chatting_platform
+      - DATABASE_URL=postgresql://adam2025man:adam2025@postgres:5432/chatting_platform
       - REDIS_URL=redis://redis:6379/0
       - AI_MODEL_URL=http://ai-server:8000
       - AI_MODEL_AUTH_USERNAME=adam
@@ -66,7 +66,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     environment:
-      - DATABASE_URL=postgresql://adam2025man:eve@postgres@3241@postgres:5432/chatting_platform
+      - DATABASE_URL=postgresql://adam2025man:adam2025@postgres:5432/chatting_platform
       - REDIS_URL=redis://redis:6379/0
       - AI_MODEL_URL=http://ai-server:8000
       - AI_MODEL_AUTH_USERNAME=adam
