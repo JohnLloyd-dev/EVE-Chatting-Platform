@@ -5,13 +5,15 @@ services:
     environment:
       POSTGRES_DB: chatting_platform
       POSTGRES_USER: adam@2025@man
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres123}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-eve@postgres@3241}
+    ports:
+      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./scripts/data/init.sql:/docker-entrypoint-initdb.d/init.sql
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U adam@2025@man"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -34,7 +36,7 @@ services:
     ports:
       - "8001:8000"
     environment:
-      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-postgres123}@postgres:5432/chatting_platform
+      - DATABASE_URL=postgresql://adam%402025%40man:${POSTGRES_PASSWORD:-eve%40postgres%403241}@postgres:5432/chatting_platform
       - REDIS_URL=redis://redis:6379/0
       - AI_MODEL_URL=${AI_MODEL_URL:-http://ai-server:8000}
       - AI_MODEL_AUTH_USERNAME=${AI_MODEL_AUTH_USERNAME:-adam}
@@ -62,7 +64,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     environment:
-      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-postgres123}@postgres:5432/chatting_platform
+      - DATABASE_URL=postgresql://adam%402025%40man:${POSTGRES_PASSWORD:-eve%40postgres%403241}@postgres:5432/chatting_platform
       - REDIS_URL=redis://redis:6379/0
       - AI_MODEL_URL=${AI_MODEL_URL:-http://ai-server:8000}
       - AI_MODEL_AUTH_USERNAME=${AI_MODEL_AUTH_USERNAME:-adam}
