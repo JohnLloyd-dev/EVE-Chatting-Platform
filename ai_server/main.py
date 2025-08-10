@@ -33,13 +33,21 @@ tokenizer = AutoTokenizer.from_pretrained(model_name)
 if gpu_available:
     # Use GPU with quantization and CPU offloading
     print("Loading model with GPU, 4-bit quantization, and CPU offloading...")
+    
+    # Set environment variables for better memory management
+    import os
+    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
+    os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+    
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_compute_dtype=torch.float16,
-        llm_int8_enable_fp32_cpu_offload=True
+        llm_int8_enable_fp32_cpu_offload=True,
+        bnb_4bit_use_double_quant=True,
+        bnb_4bit_quant_type="nf4"
     )
     
-    # Create a custom device map to handle memory constraints
+    # Create a more aggressive device map for memory-constrained GPUs
     device_map = {
         "model.embed_tokens": "cpu",
         "model.norm": "cpu",
@@ -78,13 +86,26 @@ if gpu_available:
         "model.layers.31": "cuda:0"
     }
     
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        device_map=device_map,
-        quantization_config=bnb_config,
-        torch_dtype=torch.float16,
-        low_cpu_mem_usage=True
-    )
+    # Try loading with aggressive memory settings
+    try:
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            device_map=device_map,
+            quantization_config=bnb_config,
+            torch_dtype=torch.float16,
+            low_cpu_mem_usage=True,
+            max_memory={0: "6GB", "cpu": "8GB"}
+        )
+    except Exception as e:
+        print(f"GPU loading failed: {e}")
+        print("Falling back to CPU-only mode...")
+        # Fallback to CPU if GPU loading fails
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            device_map="cpu",
+            torch_dtype=torch.float32,
+            low_cpu_mem_usage=True
+        )
 else:
     # Use CPU without quantization
     print("Loading model on CPU (no quantization)...")
