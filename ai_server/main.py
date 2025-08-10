@@ -38,9 +38,49 @@ if gpu_available:
         bnb_4bit_compute_dtype=torch.float16,
         load_in_8bit_fp32_cpu_offload=True
     )
+    
+    # Create a custom device map to handle memory constraints
+    device_map = {
+        "model.embed_tokens": "cpu",
+        "model.norm": "cpu",
+        "lm_head": "cpu",
+        "model.layers.0": "cuda:0",
+        "model.layers.1": "cuda:0",
+        "model.layers.2": "cuda:0",
+        "model.layers.3": "cuda:0",
+        "model.layers.4": "cuda:0",
+        "model.layers.5": "cuda:0",
+        "model.layers.6": "cuda:0",
+        "model.layers.7": "cuda:0",
+        "model.layers.8": "cuda:0",
+        "model.layers.9": "cuda:0",
+        "model.layers.10": "cuda:0",
+        "model.layers.11": "cuda:0",
+        "model.layers.12": "cuda:0",
+        "model.layers.13": "cuda:0",
+        "model.layers.14": "cuda:0",
+        "model.layers.15": "cuda:0",
+        "model.layers.16": "cuda:0",
+        "model.layers.17": "cuda:0",
+        "model.layers.18": "cuda:0",
+        "model.layers.19": "cuda:0",
+        "model.layers.20": "cuda:0",
+        "model.layers.21": "cuda:0",
+        "model.layers.22": "cuda:0",
+        "model.layers.23": "cuda:0",
+        "model.layers.24": "cuda:0",
+        "model.layers.25": "cuda:0",
+        "model.layers.26": "cuda:0",
+        "model.layers.27": "cuda:0",
+        "model.layers.28": "cuda:0",
+        "model.layers.29": "cuda:0",
+        "model.layers.30": "cuda:0",
+        "model.layers.31": "cuda:0"
+    }
+    
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
-        device_map="auto",
+        device_map=device_map,
         quantization_config=bnb_config,
         torch_dtype=torch.float16,
         low_cpu_mem_usage=True
