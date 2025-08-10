@@ -36,7 +36,7 @@ if gpu_available:
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_compute_dtype=torch.float16,
-        load_in_8bit_fp32_cpu_offload=True
+        llm_int8_enable_fp32_cpu_offload=True
     )
     
     # Create a custom device map to handle memory constraints
