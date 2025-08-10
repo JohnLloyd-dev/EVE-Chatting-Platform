@@ -5,7 +5,7 @@ services:
     environment:
       POSTGRES_DB: chatting_platform
       POSTGRES_USER: adam@2025@man
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-eve@postgres@3241}
+      POSTGRES_PASSWORD: eve@postgres@3241
     ports:
       - "5432:5432"
     volumes:
@@ -28,6 +28,26 @@ services:
       timeout: 5s
       retries: 5
 
+  # AI Server (GPU Version with CPU fallback)
+  ai-server:
+    build:
+      context: ./ai_server
+      dockerfile: Dockerfile.cpu
+    ports:
+      - "8000:8000"
+    environment:
+      - TRANSFORMERS_CACHE=/app/.cache/huggingface
+      - HF_HOME=/app/.cache/huggingface
+    volumes:
+      - ai_model_cache:/app/.cache/huggingface
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
   # FastAPI Backend
   backend:
     build:
@@ -36,18 +56,20 @@ services:
     ports:
       - "8001:8000"
     environment:
-      - DATABASE_URL=postgresql://adam%402025%40man:${POSTGRES_PASSWORD:-eve%40postgres%403241}@postgres:5432/chatting_platform
+      - DATABASE_URL=postgresql://adam%402025%40man:eve%40postgres%403241@postgres:5432/chatting_platform
       - REDIS_URL=redis://redis:6379/0
-      - AI_MODEL_URL=${AI_MODEL_URL:-http://ai-server:8000}
-      - AI_MODEL_AUTH_USERNAME=${AI_MODEL_AUTH_USERNAME:-adam}
-      - AI_MODEL_AUTH_PASSWORD=${AI_MODEL_AUTH_PASSWORD:-eve2025}
-      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-your-secret-key-change-this}
+      - AI_MODEL_URL=http://ai-server:8000
+      - AI_MODEL_AUTH_USERNAME=adam
+      - AI_MODEL_AUTH_PASSWORD=eve2025
+      - ADMIN_USERNAME=admin
+      - ADMIN_PASSWORD=adam@and@eve@3241
+      - JWT_SECRET_KEY=eve-super-secure-jwt-secret-key-2025-production
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      ai-server:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
@@ -64,17 +86,19 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     environment:
-      - DATABASE_URL=postgresql://adam%402025%40man:${POSTGRES_PASSWORD:-eve%40postgres%403241}@postgres:5432/chatting_platform
+      - DATABASE_URL=postgresql://adam%402025%40man:eve%40postgres%403241@postgres:5432/chatting_platform
       - REDIS_URL=redis://redis:6379/0
-      - AI_MODEL_URL=${AI_MODEL_URL:-http://ai-server:8000}
-      - AI_MODEL_AUTH_USERNAME=${AI_MODEL_AUTH_USERNAME:-adam}
-      - AI_MODEL_AUTH_PASSWORD=${AI_MODEL_AUTH_PASSWORD:-eve2025}
+      - AI_MODEL_URL=http://ai-server:8000
+      - AI_MODEL_AUTH_USERNAME=adam
+      - AI_MODEL_AUTH_PASSWORD=eve2025
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
       backend:
+        condition: service_healthy
+      ai-server:
         condition: service_healthy
     restart: unless-stopped
     command: celery -A celery_app worker --loglevel=info
@@ -87,7 +111,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://204.12.233.105:8001}
+      - NEXT_PUBLIC_API_URL=http://204.12.233.105:8001
     restart: unless-stopped
     depends_on:
       - backend
@@ -108,3 +132,4 @@ services:
 
 volumes:
   postgres_data:
+  ai_model_cache:

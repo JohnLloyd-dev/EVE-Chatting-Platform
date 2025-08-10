@@ -38,10 +38,13 @@ services:
       - "8001:8000"
     environment:
       - DATABASE_URL=postgresql://adam%402025%40man:eve%40postgres%403241@postgres:5432/chatting_platform
-      - REDIS_URL=redis://localhost:6379/0
-      - AI_MODEL_URL=http://localhost:8000
+      - REDIS_URL=redis://redis:6379/0
+      - AI_MODEL_URL=http://ai-server:8000
       - AI_MODEL_AUTH_USERNAME=adam
       - AI_MODEL_AUTH_PASSWORD=eve2025
+      - ADMIN_USERNAME=admin
+      - ADMIN_PASSWORD=adam@and@eve@3241
+      - JWT_SECRET_KEY=eve-super-secure-jwt-secret-key-2025-production
     volumes:
       - ./backend:/app
     depends_on:
@@ -59,8 +62,8 @@ services:
       dockerfile: Dockerfile
     environment:
       - DATABASE_URL=postgresql://adam%402025%40man:eve%40postgres%403241@postgres:5432/chatting_platform
-      - REDIS_URL=redis://localhost:6379/0
-      - AI_MODEL_URL=http://localhost:8000
+      - REDIS_URL=redis://redis:6379/0
+      - AI_MODEL_URL=http://ai-server:8000
       - AI_MODEL_AUTH_USERNAME=adam
       - AI_MODEL_AUTH_PASSWORD=eve2025
     volumes:
@@ -109,9 +112,9 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "0.0.0.0:3000:3000" # Allow external access for frontend
+      - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_API_URL=http://204.12.233.105:8001
       - HOSTNAME=0.0.0.0
       - PORT=3000
     volumes:

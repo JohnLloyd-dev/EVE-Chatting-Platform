@@ -7,12 +7,12 @@ services:
     environment:
       POSTGRES_DB: chatting_platform
       POSTGRES_USER: adam@2025@man
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: eve@postgres@3241
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./scripts/data/init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
-      - "127.0.0.1:5432:5432"  # Only accessible from localhost
+      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U adam@2025@man"]
       interval: 10s
@@ -25,12 +25,34 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "127.0.0.1:6379:6379"  # Only accessible from localhost
+      - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - internal_network
+
+  # AI Server (GPU Version with CPU fallback)
+  ai-server:
+    build:
+      context: ./ai_server
+      dockerfile: Dockerfile.cpu
+    ports:
+      - "8000:8000"
+    environment:
+      - TRANSFORMERS_CACHE=/app/.cache/huggingface
+      - HF_HOME=/app/.cache/huggingface
+    volumes:
+      - ai_model_cache:/app/.cache/huggingface
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
     networks:
       - internal_network
 
@@ -42,23 +64,22 @@ services:
     ports:
       - "8001:8000"
     environment:
-      - DATABASE_URL=${DATABASE_URL}
-      - REDIS_URL=${REDIS_URL}
-      - AI_MODEL_URL=${AI_MODEL_URL}
-      - AI_MODEL_AUTH_USERNAME=${AI_MODEL_AUTH_USERNAME}
-      - AI_MODEL_AUTH_PASSWORD=${AI_MODEL_AUTH_PASSWORD}
-      - SECRET_KEY=${SECRET_KEY}
-      - ALGORITHM=${ALGORITHM}
-      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES}
-      - ADMIN_USERNAME=${ADMIN_USERNAME}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
-      - TALLY_WEBHOOK_SECRET=${TALLY_WEBHOOK_SECRET}
-      - ENVIRONMENT=${ENVIRONMENT}
-      - DEBUG=${DEBUG}
+      - DATABASE_URL=postgresql://adam%402025%40man:eve%40postgres%403241@postgres:5432/chatting_platform
+      - REDIS_URL=redis://redis:6379/0
+      - AI_MODEL_URL=http://ai-server:8000
+      - AI_MODEL_AUTH_USERNAME=adam
+      - AI_MODEL_AUTH_PASSWORD=eve2025
+      - ADMIN_USERNAME=admin
+      - ADMIN_PASSWORD=adam@and@eve@3241
+      - JWT_SECRET_KEY=eve-super-secure-jwt-secret-key-2025-production
+      - ENVIRONMENT=production
+      - DEBUG=false
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      ai-server:
         condition: service_healthy
     volumes:
       - ./backend:/app
@@ -72,23 +93,19 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     environment:
-      - DATABASE_URL=${DATABASE_URL}
-      - REDIS_URL=${REDIS_URL}
-      - AI_MODEL_URL=${AI_MODEL_URL}
-      - AI_MODEL_AUTH_USERNAME=${AI_MODEL_AUTH_USERNAME}
-      - AI_MODEL_AUTH_PASSWORD=${AI_MODEL_AUTH_PASSWORD}
-      - SECRET_KEY=${SECRET_KEY}
-      - ALGORITHM=${ALGORITHM}
-      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES}
-      - ADMIN_USERNAME=${ADMIN_USERNAME}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
-      - TALLY_WEBHOOK_SECRET=${TALLY_WEBHOOK_SECRET}
-      - ENVIRONMENT=${ENVIRONMENT}
-      - DEBUG=${DEBUG}
+      - DATABASE_URL=postgresql://adam%402025%40man:eve%40postgres%403241@postgres:5432/chatting_platform
+      - REDIS_URL=redis://redis:6379/0
+      - AI_MODEL_URL=http://ai-server:8000
+      - AI_MODEL_AUTH_USERNAME=adam
+      - AI_MODEL_AUTH_PASSWORD=eve2025
+      - ENVIRONMENT=production
+      - DEBUG=false
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      ai-server:
         condition: service_healthy
     volumes:
       - ./backend:/app
@@ -102,9 +119,9 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "0.0.0.0:3000:3000"  # Allow external access for frontend
+      - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8001}
+      - NEXT_PUBLIC_API_URL=http://204.12.233.105:8001
       - HOSTNAME=0.0.0.0
       - PORT=3000
     volumes:
@@ -116,8 +133,9 @@ services:
 
 volumes:
   postgres_data:
+  ai_model_cache:
 
 networks:
   internal_network:
     driver: bridge
-    internal: false  # Allow external access for frontend 
+    internal: false # Allow external access for frontend
