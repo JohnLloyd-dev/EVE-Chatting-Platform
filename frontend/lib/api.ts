@@ -7,7 +7,7 @@ import {
   SystemPrompt,
 } from "../types";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://204.12.233.105:8001";
 
 const api = axios.create({
   baseURL: API_BASE_URL,
