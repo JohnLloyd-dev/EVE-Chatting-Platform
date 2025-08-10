@@ -1,3 +1,4 @@
+# FIXED: Resolved PyTorch Half precision overflow error by using float32 consistently
 from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.responses import FileResponse, JSONResponse
@@ -40,13 +41,13 @@ if gpu_available:
     os.environ["CUDA_LAUNCH_BLOCKING"] = "0"
     os.environ["TORCH_CUDNN_V8_API_ENABLED"] = "1"
     
-    # Optimized quantization config for maximum GPU utilization
+    # Optimized quantization config for maximum GPU utilization - FIXED for Half precision overflow
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
-        bnb_4bit_compute_dtype=torch.float16,
+        bnb_4bit_compute_dtype=torch.float32,  # Changed from float16 to prevent Half overflow
         bnb_4bit_use_double_quant=True,
         bnb_4bit_quant_type="nf4",
-        bnb_4bit_quant_storage=torch.float16
+        bnb_4bit_quant_storage=torch.float32   # Changed from float16 to prevent Half overflow
     )
     
     # Optimized device map to use maximum GPU memory efficiently
@@ -95,7 +96,7 @@ if gpu_available:
             model_name,
             device_map=device_map,
             quantization_config=bnb_config,
-            torch_dtype=torch.float16,
+            torch_dtype=torch.float32,  # Changed from float16 to prevent Half overflow
             low_cpu_mem_usage=True,
             max_memory={0: "7.5GB", "cpu": "4GB"}  # Use 7.5GB GPU, leave 0.5GB buffer
         )
@@ -149,7 +150,7 @@ if gpu_available:
                 model_name,
                 device_map=balanced_device_map,
                 quantization_config=bnb_config,
-                torch_dtype=torch.float16,
+                torch_dtype=torch.float32,  # Changed from float16 to prevent Half overflow
                 low_cpu_mem_usage=True,
                 max_memory={0: "6GB", "cpu": "8GB"}
             )
@@ -271,19 +272,39 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
     if max_output_tokens <= 0:
         raise HTTPException(400, "Input too long for response generation")
     
-    # Generate response
+    # Generate response - FIXED with error handling for Half precision overflow
     with torch.no_grad():
-        output = model.generate(
-            **inputs,
-            max_new_tokens=max_output_tokens,
-            temperature=0.8,
-            do_sample=True,
-            top_p=0.95,
-            pad_token_id=tokenizer.eos_token_id,
-            eos_token_id=tokenizer.eos_token_id,
-            repetition_penalty=1.2,
-            no_repeat_ngram_size=3
-        )
+        try:
+            output = model.generate(
+                **inputs,
+                max_new_tokens=max_output_tokens,
+                temperature=0.8,
+                do_sample=True,
+                top_p=0.95,
+                pad_token_id=tokenizer.eos_token_id,
+                eos_token_id=tokenizer.eos_token_id,
+                repetition_penalty=1.2,
+                no_repeat_ngram_size=3
+            )
+        except RuntimeError as e:
+            if "at::Half" in str(e) or "Half" in str(e):
+                print(f"⚠️  Half precision error detected: {e}")
+                print("🔄 Retrying with explicit float32 conversion...")
+                # Convert inputs to float32 and retry
+                inputs = {k: v.to(torch.float32) if torch.is_tensor(v) else v for k, v in inputs.items()}
+                output = model.generate(
+                    **inputs,
+                    max_new_tokens=max_output_tokens,
+                    temperature=0.8,
+                    do_sample=True,
+                    top_p=0.95,
+                    pad_token_id=tokenizer.eos_token_id,
+                    eos_token_id=tokenizer.eos_token_id,
+                    repetition_penalty=1.2,
+                    no_repeat_ngram_size=3
+                )
+            else:
+                raise e
     
     # Extract only new tokens
     response_tokens = output[0][inputs.input_ids.shape[1]:]
