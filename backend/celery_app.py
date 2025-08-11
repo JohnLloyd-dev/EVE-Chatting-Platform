@@ -92,8 +92,14 @@ def process_ai_response(self, session_id: str, user_message: str, max_tokens: in
             logger.info(f"Session scenario prompt length: {len(combined_prompt)} characters")
             logger.info(f"Session scenario preview: {combined_prompt[:300]}...")
             
-            # Call AI model API
-            ai_response = call_ai_model(combined_prompt, history, max_tokens)
+            # Call AI model API with existing session ID if available
+            ai_session_id = getattr(chat_session, 'ai_session_id', None)
+            ai_response, new_ai_session_id = call_ai_model(combined_prompt, history, max_tokens, ai_session_id)
+            
+            # Update the AI session ID if we got a new one
+            if ai_session_id != new_ai_session_id:
+                chat_session.ai_session_id = new_ai_session_id
+                logger.info(f"Updated AI session ID from {ai_session_id} to {new_ai_session_id}")
         
         # Save AI response to database
         ai_message = Message(
@@ -161,9 +167,10 @@ def process_ai_response(self, session_id: str, user_message: str, max_tokens: in
             "error": str(exc)
         }
 
-def call_ai_model(system_prompt: str, history: list, max_tokens: int = 150) -> str:
+def call_ai_model(system_prompt: str, history: list, max_tokens: int = 150, ai_session_id: str = None) -> tuple[str, str]:
     """
     Call the AI model API (your VPS deployment)
+    Returns: (ai_response, ai_session_id)
     """
     try:
         # Log the system prompt being sent for debugging
@@ -171,20 +178,26 @@ def call_ai_model(system_prompt: str, history: list, max_tokens: int = 150) -> s
         
         # Prepare the request similar to your main.py structure
         with httpx.Client(timeout=30.0) as client:
-            # First set the scenario
-            scenario_response = client.post(
-                f"{settings.ai_model_url}/scenario",
-                json={"scenario": system_prompt},
-                auth=(settings.ai_model_auth_username, settings.ai_model_auth_password)
-            )
-            
-            if scenario_response.status_code != 200:
-                raise Exception(f"Failed to set scenario: {scenario_response.text}")
-            
-            # Get session cookie
-            session_cookie = scenario_response.cookies.get("session_id")
-            if not session_cookie:
-                raise Exception("No session ID received from AI model")
+            # Only set scenario if we don't have an existing AI session
+            if not ai_session_id:
+                logger.info("Creating new AI session...")
+                # First set the scenario
+                scenario_response = client.post(
+                    f"{settings.ai_model_url}/scenario",
+                    json={"scenario": system_prompt},
+                    auth=(settings.ai_model_auth_username, settings.ai_model_auth_password)
+                )
+                
+                if scenario_response.status_code != 200:
+                    raise Exception(f"Failed to set scenario: {scenario_response.text}")
+                
+                # Get session cookie
+                ai_session_id = scenario_response.cookies.get("session_id")
+                if not ai_session_id:
+                    raise Exception("No session ID received from AI model")
+                logger.info(f"Created new AI session: {ai_session_id}")
+            else:
+                logger.info(f"Reusing existing AI session: {ai_session_id}")
             
             # Get the last user message
             last_user_message = None
@@ -196,14 +209,14 @@ def call_ai_model(system_prompt: str, history: list, max_tokens: int = 150) -> s
             if not last_user_message:
                 raise Exception("No user message found in history")
             
-            # Send chat request
+            # Send chat request using existing session
             chat_response = client.post(
                 f"{settings.ai_model_url}/chat",
                 json={
                     "message": last_user_message,
                     "max_tokens": max_tokens
                 },
-                cookies={"session_id": session_cookie},
+                cookies={"session_id": ai_session_id},
                 auth=(settings.ai_model_auth_username, settings.ai_model_auth_password)
             )
             
@@ -218,7 +231,7 @@ def call_ai_model(system_prompt: str, history: list, max_tokens: int = 150) -> s
             logger.info(f"Raw AI response: {raw_response[:200]}...")
             logger.info(f"Cleaned AI response: {cleaned_response[:200]}...")
             
-            return cleaned_response
+            return cleaned_response, ai_session_id
             
     except Exception as e:
         raise Exception(f"AI model call failed: {str(e)}")
