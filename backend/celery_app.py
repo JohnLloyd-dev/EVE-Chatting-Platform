@@ -85,21 +85,14 @@ def process_ai_response(self, session_id: str, user_message: str, max_tokens: in
             # Add current user message
             history.append(f"User: {user_message}")
             
-            # Use the session's scenario_prompt which already contains the complete combined prompt
-            # This was built in main.py using: head_prompt + tally_prompt + rule_prompt
+            # Call AI model API with full conversation history
             combined_prompt = chat_session.scenario_prompt
             logger.info(f"Using session scenario prompt (already contains head + tally + rule)")
             logger.info(f"Session scenario prompt length: {len(combined_prompt)} characters")
             logger.info(f"Session scenario preview: {combined_prompt[:300]}...")
             
-            # Call AI model API with existing session ID if available
-            ai_session_id = getattr(chat_session, 'ai_session_id', None)
-            ai_response, new_ai_session_id = call_ai_model(combined_prompt, history, max_tokens, ai_session_id)
-            
-            # Update the AI session ID if we got a new one
-            if ai_session_id != new_ai_session_id:
-                chat_session.ai_session_id = new_ai_session_id
-                logger.info(f"Updated AI session ID from {ai_session_id} to {new_ai_session_id}")
+            # Call AI model API - will create new session with full context
+            ai_response = call_ai_model(combined_prompt, history, max_tokens)
         
         # Save AI response to database
         ai_message = Message(
@@ -167,56 +160,85 @@ def process_ai_response(self, session_id: str, user_message: str, max_tokens: in
             "error": str(exc)
         }
 
-def call_ai_model(system_prompt: str, history: list, max_tokens: int = 150, ai_session_id: str = None) -> tuple[str, str]:
+def call_ai_model(system_prompt: str, history: list, max_tokens: int = 150) -> str:
     """
     Call the AI model API (your VPS deployment)
-    Returns: (ai_response, ai_session_id)
+    Always creates new AI session with full conversation history for context
     """
     try:
         # Log the system prompt being sent for debugging
         logger.info(f"Sending system prompt to AI model: {system_prompt[:200]}...")
+        logger.info(f"Building context with {len(history)} messages from database")
         
         # Prepare the request similar to your main.py structure
         with httpx.Client(timeout=30.0) as client:
-            # Only set scenario if we don't have an existing AI session
-            if not ai_session_id:
-                logger.info("Creating new AI session...")
-                # First set the scenario
-                scenario_response = client.post(
-                    f"{settings.ai_model_url}/scenario",
-                    json={"scenario": system_prompt},
-                    auth=(settings.ai_model_auth_username, settings.ai_model_auth_password)
-                )
-                
-                if scenario_response.status_code != 200:
-                    raise Exception(f"Failed to set scenario: {scenario_response.text}")
-                
-                # Get session cookie
-                ai_session_id = scenario_response.cookies.get("session_id")
-                if not ai_session_id:
-                    raise Exception("No session ID received from AI model")
-                logger.info(f"Created new AI session: {ai_session_id}")
-            else:
-                logger.info(f"Reusing existing AI session: {ai_session_id}")
+            # Always create new AI session (simpler and more reliable)
+            logger.info("Creating new AI session with full conversation context...")
+            scenario_response = client.post(
+                f"{settings.ai_model_url}/scenario",
+                json={"scenario": system_prompt},
+                auth=(settings.ai_model_auth_username, settings.ai_model_auth_password)
+            )
             
-            # Get the last user message
-            last_user_message = None
+            if scenario_response.status_code != 200:
+                raise Exception(f"Failed to set scenario: {scenario_response.text}")
+            
+            # Get session cookie
+            session_cookie = scenario_response.cookies.get("session_id")
+            if not session_cookie:
+                raise Exception("No session ID received from AI model")
+            
+            logger.info(f"Created AI session: {session_cookie}")
+            
+            # Build conversation context by sending all previous messages
+            # This ensures the AI has full conversation history even after restarts
+            if len(history) > 1:  # If we have more than just the current user message
+                logger.info("Building conversation context...")
+                context_messages = history[:-1]  # All messages except the current one
+                
+                for i, msg in enumerate(context_messages):
+                    try:
+                        # Send each message to build context (with minimal tokens)
+                        context_response = client.post(
+                            f"{settings.ai_model_url}/chat",
+                            json={
+                                "message": msg,
+                                "max_tokens": 5  # Just enough to process, not generate response
+                            },
+                            cookies={"session_id": session_cookie},
+                            auth=(settings.ai_model_auth_username, settings.ai_model_auth_password)
+                        )
+                        
+                        if context_response.status_code == 200:
+                            logger.info(f"Context message {i+1}/{len(context_messages)} processed")
+                        else:
+                            logger.warning(f"Context message {i+1} failed: {context_response.status_code}")
+                            
+                    except Exception as e:
+                        logger.warning(f"Failed to process context message {i+1}: {e}")
+                        # Continue with other context messages
+                        continue
+            
+            # Get the current user message (last in history)
+            current_user_message = None
             for msg in reversed(history):
                 if msg.startswith("User: "):
-                    last_user_message = msg[6:]  # Remove "User: " prefix
+                    current_user_message = msg[6:]  # Remove "User: " prefix
                     break
             
-            if not last_user_message:
-                raise Exception("No user message found in history")
+            if not current_user_message:
+                raise Exception("No current user message found in history")
             
-            # Send chat request using existing session
+            logger.info(f"Sending current user message: {current_user_message[:100]}...")
+            
+            # Send the actual user message and get AI response
             chat_response = client.post(
                 f"{settings.ai_model_url}/chat",
                 json={
-                    "message": last_user_message,
+                    "message": current_user_message,
                     "max_tokens": max_tokens
                 },
-                cookies={"session_id": ai_session_id},
+                cookies={"session_id": session_cookie},
                 auth=(settings.ai_model_auth_username, settings.ai_model_auth_password)
             )
             
@@ -231,7 +253,7 @@ def call_ai_model(system_prompt: str, history: list, max_tokens: int = 150, ai_s
             logger.info(f"Raw AI response: {raw_response[:200]}...")
             logger.info(f"Cleaned AI response: {cleaned_response[:200]}...")
             
-            return cleaned_response, ai_session_id
+            return cleaned_response
             
     except Exception as e:
         raise Exception(f"AI model call failed: {str(e)}")
