@@ -27,12 +27,24 @@ celery_app.conf.update(
     enable_utc=True,
     # Fix deprecation warning
     broker_connection_retry_on_startup=True,
+    # AI Server Integration Optimizations
+    task_acks_late=True,  # Don't acknowledge until task is complete
+    worker_prefetch_multiplier=1,  # Process one task at a time for AI server
+    task_time_limit=300,  # 5 minutes max for AI generation tasks
+    task_soft_time_limit=240,  # 4 minutes soft limit
+    worker_max_tasks_per_child=100,  # Restart worker after 100 tasks
+    # Retry and Error Handling
+    task_always_eager=False,  # Ensure async processing
+    task_eager_propagates=True,  # Propagate exceptions
+    # Monitoring and Logging
+    worker_send_task_events=True,
+    task_send_sent_event=True,
 )
 
 @celery_app.task(bind=True, max_retries=3)
 def process_ai_response(self, session_id: str, user_message: str, max_tokens: int = 150, is_ai_initiated: bool = False):
     """
-    Process AI response asynchronously
+    Process AI response asynchronously with improved AI server integration
     """
     try:
         # Get database session
@@ -134,12 +146,20 @@ def process_ai_response(self, session_id: str, user_message: str, max_tokens: in
             logger.info(f"Not retrying task due to permanent error: {exc}")
             return {"success": False, "error": str(exc)}
         
-        # Retry logic only for recoverable errors
+        # Improved retry logic for AI server communication issues
         if self.request.retries < self.max_retries:
-            logger.info(f"Retrying task {self.request.id}, attempt {self.request.retries + 1}/{self.max_retries}")
-            raise self.retry(countdown=60, exc=exc)
+            # Progressive retry delays: 5s, 15s, 30s (instead of 60s each)
+            retry_delays = [5, 15, 30]
+            current_retry = self.request.retries
+            delay = retry_delays[current_retry] if current_retry < len(retry_delays) else 30
+            
+            logger.info(f"🔄 Retrying task {self.request.id}, attempt {current_retry + 1}/{self.max_retries}, delay: {delay}s")
+            logger.info(f"📝 Error: {exc}")
+            
+            # Don't save error message to database on retries
+            raise self.retry(countdown=delay, exc=exc)
         
-        # If all retries failed, save error message
+        # If all retries failed, save error message (only on final failure)
         try:
             db = SessionLocal()
             error_message = Message(
@@ -152,8 +172,9 @@ def process_ai_response(self, session_id: str, user_message: str, max_tokens: in
             db.add(error_message)
             db.commit()
             db.close()
-        except:
-            pass
+            logger.error(f"❌ Task {self.request.id} failed after {self.max_retries} retries: {exc}")
+        except Exception as db_error:
+            logger.error(f"❌ Failed to save error message: {db_error}")
         
         return {
             "success": False,
@@ -162,7 +183,7 @@ def process_ai_response(self, session_id: str, user_message: str, max_tokens: in
 
 def call_ai_model(system_prompt: str, history: list, max_tokens: int = 150) -> str:
     """
-    Call the AI model API (your VPS deployment)
+    Call the AI model API with improved timeout and health checking
     Always creates new AI session with full conversation history for context
     """
     try:
@@ -170,8 +191,24 @@ def call_ai_model(system_prompt: str, history: list, max_tokens: int = 150) -> s
         logger.info(f"Sending system prompt to AI model: {system_prompt[:200]}...")
         logger.info(f"Building context with {len(history)} messages from database")
         
-        # Prepare the request similar to your main.py structure
-        with httpx.Client(timeout=30.0) as client:
+        # Check AI server health first
+        logger.info("🏥 Checking AI server health before request...")
+        try:
+            with httpx.Client(timeout=10.0) as health_client:
+                health_response = health_client.get(
+                    f"{settings.ai_model_url}/health",
+                    auth=(settings.ai_model_auth_username, settings.ai_model_auth_password)
+                )
+                if health_response.status_code != 200:
+                    logger.warning(f"⚠️ AI server health check failed: {health_response.status_code}")
+                else:
+                    logger.info("✅ AI server health check passed")
+        except Exception as health_error:
+            logger.warning(f"⚠️ AI server health check error: {health_error}")
+        
+        # Prepare the request with extended timeout for AI generation
+        # AI generation can take 45-90 seconds for complex responses
+        with httpx.Client(timeout=90.0) as client:  # ← FIXED: Extended timeout for AI generation
             # Always create new AI session (simpler and more reliable)
             logger.info("Creating new AI session with full conversation context...")
             scenario_response = client.post(
