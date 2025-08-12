@@ -660,10 +660,10 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
             ).to(model.device)
             
             # Use cached context for generation
-            generation_params["past_key_values"] = session["kv_cache"]
             inputs = new_inputs
             full_prompt = None  # Not needed with KV cache
             prompt_time = 0  # No prompt building time
+            trim_time = 0  # No trimming time
         else:
             logger.info("🔄 Building full context (no KV cache available)")
             # Trim history with optimizations
@@ -694,16 +694,14 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
     
     session_time = time.time() - session_start
     
-    # Tokenize with optimizations
-    start_tokenize = time.time()
-    inputs = tokenizer(
-        full_prompt,
-        return_tensors="pt",
-        truncation=True,
-        max_length=4096,
-        padding=True
-    ).to(model.device)
-    tokenize_time = time.time() - start_tokenize
+    # Tokenize with optimizations (only if not using KV cache)
+    if full_prompt is not None:
+        start_tokenize = time.time()
+        # inputs already tokenized above
+        tokenize_time = time.time() - start_tokenize
+    else:
+        # Using KV cache, minimal tokenization time
+        tokenize_time = 0.001  # Minimal time for single message
     
     # Calculate available context
     input_tokens = inputs.input_ids.shape[1]
@@ -712,13 +710,19 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
     # Generation parameters
     generation_params = get_ultra_fast_generation_params(req, max_output_tokens)
     
+    # OPTIMIZATION: Add KV cache to generation params if available
+    if session.get("kv_cache") is not None:
+        generation_params["past_key_values"] = session["kv_cache"]
+    
     # Generation with performance monitoring
     generation_start = time.time()
     try:
         with model_lock, torch.no_grad():
             # OPTIMIZATION: Enable KV cache return for maximum speed
-            generation_params["return_dict_in_generate"] = True
-            generation_params["output_hidden_states"] = True
+            # Only set these if not using KV cache to avoid conflicts
+            if session.get("kv_cache") is None:
+                generation_params["return_dict_in_generate"] = True
+                generation_params["output_hidden_states"] = True
             
             output = model.generate(**inputs, **generation_params)
     except RuntimeError as e:
