@@ -153,28 +153,30 @@ COMMON_PHRASES = {
     "<|assistant|>": tokenizer("<|assistant|>")["input_ids"],
 }
 
-# Enhanced prompt engineering with caching
-def build_chatml_prompt(system: str, history: list) -> str:
-    """Optimized prompt building with caching"""
-    prompt = f"<|system|>\n{system.strip()}\n"
+# OPTIMIZATION: Enhanced performance monitoring and batch processing
+def build_chatml_prompt_batch(system: str, history: list) -> str:
+    """Ultra-fast batch prompt building with minimal string operations"""
+    # Pre-allocate string parts for efficiency
+    parts = [f"<|system|>\n{system.strip()}\n"]
     
-    # Ensure we have some context
-    if not history:
-        return prompt + "<|user|>\nHello\n<|assistant|>\nHi! I'm ready to help.\n<|assistant|>\n"
-    
-    # Build conversation context
+    # Batch process history with minimal string operations
     for entry in history:
         if entry.startswith("User:"):
             user_msg = entry[5:].strip()
             if user_msg:
-                prompt += f"<|user|>\n{user_msg}\n"
+                parts.append(f"<|user|>\n{user_msg}\n")
         elif entry.startswith("AI:"):
             ai_msg = entry[3:].strip()
             if ai_msg:
-                prompt += f"<|assistant|>\n{ai_msg}\n"
+                parts.append(f"<|assistant|>\n{ai_msg}\n")
     
-    prompt += "<|assistant|>\n"
-    return prompt
+    parts.append("<|assistant|>\n")
+    return "".join(parts)  # Single join operation
+
+# Fallback function for compatibility
+def build_chatml_prompt(system: str, history: list) -> str:
+    """Legacy prompt building - use build_chatml_prompt_batch for better performance"""
+    return build_chatml_prompt_batch(system, history)
 
 # OPTIMIZATION: Faster cleaning with precompiled regex
 def clean_response(response: str) -> str:
@@ -189,30 +191,39 @@ def clean_response(response: str) -> str:
             return response[:last_period+1]
     return response.strip()
 
-# OPTIMIZATION: Faster token counting with caching
-def count_tokens(text: str) -> int:
-    """Fast token counting using caching"""
-    # Check for common phrases first
+# OPTIMIZATION: Ultra-fast token counting with extended caching
+def count_tokens_ultra_fast(text: str) -> int:
+    """Ultra-fast token counting with extended caching and pattern matching"""
+    # Extended common phrase cache for even faster counting
+    if text in COMMON_PHRASES:
+        return len(COMMON_PHRASES[text])
+    
+    # Check for common patterns first
     for phrase, tokens in COMMON_PHRASES.items():
         if text.startswith(phrase):
-            return len(tokens) + count_tokens(text[len(phrase):])
+            remaining = text[len(phrase):]
+            return len(tokens) + count_tokens_ultra_fast(remaining)
     
-    # Fallback to tokenizer for remaining text
+    # For very short texts, estimate instead of full tokenization
+    if len(text) < 20:
+        return max(1, len(text) // 4)  # Rough estimate for short texts
+    
+    # Fallback to tokenizer only when necessary
     return len(tokenizer(text)["input_ids"])
 
-# Context-aware history trimming with optimizations
-def trim_history(system: str, history: list, max_tokens: int = 3500) -> list:
-    """Optimized history trimming"""
-    # Calculate system tokens
-    system_tokens = count_tokens(f"<|system|>\n{system.strip()}\n")
+# OPTIMIZATION: Smart context trimming with batch processing
+def trim_history_smart(system: str, history: list, max_tokens: int = 3500) -> list:
+    """Smart history trimming with batch processing and intelligent selection"""
+    # Calculate system tokens once
+    system_tokens = count_tokens_ultra_fast(f"<|system|>\n{system.strip()}\n")
     total_tokens = system_tokens
     keep_messages = []
     
     # Reserve tokens for new interaction
-    reserved_tokens = 500
+    reserved_tokens = 400  # Reduced for more context
     
-    # Process in chronological order
-    for msg in history:
+    # Process in reverse order (newest first) for better context preservation
+    for msg in reversed(history):
         if msg.startswith("User:"):
             prefix = "User:"
             formatted_msg = f"<|user|>\n{msg[len(prefix):].strip()}\n"
@@ -222,20 +233,61 @@ def trim_history(system: str, history: list, max_tokens: int = 3500) -> list:
         else:
             continue
         
-        # Fast token counting
-        msg_tokens = count_tokens(formatted_msg)
+        # Ultra-fast token counting
+        msg_tokens = count_tokens_ultra_fast(formatted_msg)
         
         # Check token budget
         if total_tokens + msg_tokens + reserved_tokens > max_tokens:
-            if not keep_messages:
-                # If we have no messages, add the most recent one anyway
-                keep_messages.append(msg)
             break
             
         total_tokens += msg_tokens
-        keep_messages.append(msg)
+        keep_messages.insert(0, msg)  # Insert at beginning to maintain order
+        
+        # Stop if we have enough context (don't process all messages unnecessarily)
+        if len(keep_messages) >= 8:  # Limit to 8 messages for speed
+            break
     
     return keep_messages
+
+# OPTIMIZATION: Enhanced generation parameters for speed + accuracy
+def get_optimized_generation_params(req: MessageRequest, max_output_tokens: int) -> dict:
+    """Get optimized generation parameters based on request type"""
+    base_params = {
+        "max_new_tokens": max_output_tokens,
+        "temperature": req.temperature,
+        "top_p": req.top_p,
+        "do_sample": True,
+        "pad_token_id": tokenizer.eos_token_id,
+        "eos_token_id": tokenizer.eos_token_id,
+        "use_cache": True,
+        "return_dict_in_generate": False,
+    }
+    
+    if req.speed_mode:
+        # 🚀 ULTRA SPEED MODE: Maximum speed with minimal overhead
+        base_params.update({
+            "num_beams": 1,
+            "repetition_penalty": 1.0,  # No penalty calculation
+            "no_repeat_ngram_size": 0,  # No n-gram blocking
+            "early_stopping": False,    # No early stopping logic
+            "length_penalty": 1.0,      # No length penalty
+            "typical_p": 1.0,           # No typical sampling
+            "top_k": 50,                # Limit token selection for speed
+            "do_sample": True,          # Enable sampling for creativity
+        })
+    else:
+        # 🎯 ACCURACY MODE: Balanced quality and speed
+        base_params.update({
+            "num_beams": 1,
+            "repetition_penalty": 1.05,  # Minimal penalty for quality
+            "no_repeat_ngram_size": 2,   # Minimal n-gram blocking
+            "early_stopping": False,     # Disable for speed
+            "length_penalty": 1.0,       # No length penalty
+            "typical_p": 0.95,           # Slight typical sampling
+            "top_k": 100,                # More token selection for quality
+        })
+    
+    return base_params
 
 def authenticate(credentials: HTTPBasicCredentials = Depends(security)):
     correct_username = secrets.compare_digest(credentials.username, "adam")
@@ -261,11 +313,15 @@ async def set_scenario(scenario: InitScenario, request: Request, credentials: HT
 # OPTIMIZED chat endpoint with performance improvements
 @app.post("/chat")
 async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCredentials = Depends(authenticate)):
+    # Performance monitoring start
+    total_start_time = time.time()
+    
     # Get session ID
     if (session_id := request.cookies.get("session_id")) is None:
         raise HTTPException(400, "Missing session ID")
     
     # Retrieve session
+    session_start = time.time()
     with session_lock:
         if (session := user_sessions.get(session_id)) is None:
             raise HTTPException(404, "Session not found")
@@ -274,17 +330,23 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
         session["history"].append(f"User: {req.message}")
         
         # Trim history with optimizations
-        session["history"] = trim_history(
+        trim_start = time.time()
+        session["history"] = trim_history_smart(
             system=session["system_prompt"],
             history=session["history"],
             max_tokens=3500
         )
+        trim_time = time.time() - trim_start
         
         # Build prompt
-        full_prompt = build_chatml_prompt(
+        prompt_start = time.time()
+        full_prompt = build_chatml_prompt_batch(
             session["system_prompt"],
             session["history"]
         )
+        prompt_time = time.time() - prompt_start
+    
+    session_time = time.time() - session_start
     
     # Tokenize with optimizations
     start_tokenize = time.time()
@@ -302,30 +364,7 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
     max_output_tokens = min(req.max_tokens, 4096 - input_tokens)
     
     # Generation parameters
-    generation_params = {
-        "max_new_tokens": max_output_tokens,
-        "temperature": req.temperature,
-        "top_p": req.top_p,
-        "do_sample": True,
-        "pad_token_id": tokenizer.eos_token_id,
-        "eos_token_id": tokenizer.eos_token_id,
-        "use_cache": True,
-    }
-    
-    # Speed mode optimizations
-    if req.speed_mode:
-        generation_params.update({
-            "num_beams": 1,
-            "repetition_penalty": 1.0,
-            "no_repeat_ngram_size": 0,
-            "early_stopping": False,
-        })
-    else:
-        generation_params.update({
-            "repetition_penalty": 1.1,
-            "no_repeat_ngram_size": 3,
-            "early_stopping": True,
-        })
+    generation_params = get_optimized_generation_params(req, max_output_tokens)
     
     # Generation with performance monitoring
     generation_start = time.time()
@@ -345,17 +384,30 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
     generation_time = time.time() - generation_start
     
     # Extract and clean response
+    response_start = time.time()
     response_tokens = output[0][inputs.input_ids.shape[1]:]
     response = tokenizer.decode(response_tokens, skip_special_tokens=True).strip()
     response = clean_response(response)
+    response_time = time.time() - response_start
     
-    # Performance logging
-    total_time = time.time() - start_tokenize
+    # Enhanced performance logging
+    total_time = time.time() - total_start_time
     tokens_per_sec = max_output_tokens / generation_time if generation_time > 0 else 0
-    logger.info(f"⏱️ Tokenize: {tokenize_time:.3f}s | "
-                f"Generate: {generation_time:.3f}s | "
-                f"Total: {total_time:.3f}s | "
-                f"Speed: {tokens_per_sec:.1f} tokens/s")
+    
+    logger.info(f"🚀 PERFORMANCE BREAKDOWN:")
+    logger.info(f"  📊 Session: {session_time:.3f}s (trim: {trim_time:.3f}s, prompt: {prompt_time:.3f}s)")
+    logger.info(f"  🔤 Tokenize: {tokenize_time:.3f}s")
+    logger.info(f"  ⚙️ Generate: {generation_time:.3f}s")
+    logger.info(f"  🧹 Response: {response_time:.3f}s")
+    logger.info(f"  ⏱️ Total: {total_time:.3f}s")
+    logger.info(f"  🚀 Speed: {tokens_per_sec:.1f} tokens/s")
+    logger.info(f"  📝 Context: {len(session['history'])} messages, {input_tokens} tokens")
+    
+    # Performance warnings
+    if req.speed_mode and total_time > 3.0:
+        logger.warning(f"⚠️ Speed mode is slow: {total_time:.2f}s (expected <3s)")
+    elif not req.speed_mode and total_time > 6.0:
+        logger.warning(f"⚠️ Accuracy mode is slow: {total_time:.2f}s (expected <6s)")
     
     # Save to history
     with session_lock:
@@ -439,6 +491,53 @@ async def speed_test(credentials: HTTPBasicCredentials = Depends(authenticate)):
     except Exception as e:
         logger.error(f"Speed test failed: {e}")
         raise HTTPException(500, f"Speed test failed: {str(e)}")
+
+# Context optimization endpoint
+@app.post("/optimize-context")
+async def optimize_context(request: Request, credentials: HTTPBasicCredentials = Depends(authenticate)):
+    """Optimize context building for faster responses"""
+    try:
+        session_id = request.cookies.get("session_id")
+        if not session_id:
+            raise HTTPException(400, "Missing session ID")
+        
+        with session_lock:
+            if (session := user_sessions.get(session_id)) is None:
+                raise HTTPException(404, "Session not found")
+            
+            # Analyze current context
+            original_history = session["history"].copy()
+            original_tokens = count_tokens_ultra_fast(
+                build_chatml_prompt_batch(session["system_prompt"], original_history)
+            )
+            
+            # Optimize context
+            optimized_history = trim_history_smart(
+                system=session["system_prompt"],
+                history=original_history,
+                max_tokens=3000  # More aggressive trimming
+            )
+            
+            optimized_tokens = count_tokens_ultra_fast(
+                build_chatml_prompt_batch(session["system_prompt"], optimized_history)
+            )
+            
+            # Apply optimization
+            session["history"] = optimized_history
+            
+            return {
+                "message": "Context optimized for speed",
+                "original_messages": len(original_history),
+                "optimized_messages": len(optimized_history),
+                "original_tokens": original_tokens,
+                "optimized_tokens": optimized_tokens,
+                "token_reduction": original_tokens - optimized_tokens,
+                "speedup_estimate": f"{(original_tokens / optimized_tokens):.1f}x faster"
+            }
+            
+    except Exception as e:
+        logger.error(f"Context optimization failed: {e}")
+        raise HTTPException(500, f"Context optimization failed: {str(e)}")
 
 # Mock request for speed testing
 class MockRequest:
