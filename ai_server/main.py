@@ -55,6 +55,7 @@ class MessageRequest(BaseModel):
     temperature: float = Field(0.7, ge=0.1, le=1.0)
     top_p: float = Field(0.9, ge=0.1, le=1.0)
     speed_mode: bool = Field(False, description="Enable speed optimization mode")
+    ultra_speed: bool = Field(False, description="Enable ultra-speed mode for maximum performance")
 
 # Load model
 model_name = "teknium/OpenHermes-2.5-Mistral-7B"
@@ -136,12 +137,110 @@ try:
     model = load_model_with_fallbacks()
     device = next(model.parameters()).device
     logger.info(f"✅ Model loaded on device: {device}")
+    
+    # Apply advanced optimizations for maximum speed
+    optimize_model_for_speed()
+    
 except Exception as e:
     logger.critical(f"❌ Model loading failed: {e}")
     raise RuntimeError(f"Failed to load model: {e}")
 
-model.eval()
 logger.info("🎯 Model ready for inference")
+
+# OPTIMIZATION: Advanced model inference optimizations
+def optimize_model_for_speed():
+    """Apply advanced optimizations for maximum speed while maintaining accuracy"""
+    global model
+    
+    # Enable memory efficient attention for faster inference
+    if hasattr(model, 'config') and hasattr(model.config, 'attention_mode'):
+        model.config.attention_mode = 'flash_attention_2'
+        logger.info("🚀 Enabled Flash Attention 2 for faster inference")
+    
+    # Enable gradient checkpointing for memory efficiency
+    if hasattr(model, 'gradient_checkpointing_enable'):
+        model.gradient_checkpointing_enable()
+        logger.info("🚀 Enabled gradient checkpointing for memory efficiency")
+    
+    # Optimize model for inference
+    model.eval()
+    
+    # Enable torch optimizations
+    torch.backends.cudnn.benchmark = True
+    torch.backends.cudnn.deterministic = False
+    
+    # Enable JIT compilation if available
+    try:
+        if hasattr(torch, 'jit') and hasattr(model, 'forward'):
+            model = torch.jit.optimize_for_inference(model)
+            logger.info("🚀 JIT compilation enabled for faster inference")
+    except Exception as e:
+        logger.info(f"JIT compilation not available: {e}")
+    
+    # Memory optimizations
+    if hasattr(torch, 'cuda') and torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        logger.info("🚀 CUDA cache cleared for optimal memory usage")
+    
+    # Enable memory efficient attention if available
+    try:
+        if hasattr(model, 'config') and hasattr(model.config, 'attn_implementation'):
+            model.config.attn_implementation = "flash_attention_2"
+            logger.info("🚀 Flash Attention 2 enabled for memory efficiency")
+    except Exception as e:
+        logger.info(f"Flash Attention 2 not available: {e}")
+    
+    logger.info("🚀 Model optimized for maximum speed")
+
+# OPTIMIZATION: Memory management and caching
+def optimize_memory_usage():
+    """Optimize memory usage for better performance"""
+    if hasattr(torch, 'cuda') and torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        torch.cuda.synchronize()
+    
+    # Force garbage collection
+    import gc
+    gc.collect()
+    
+    logger.info("🧹 Memory optimized for performance")
+
+# OPTIMIZATION: Advanced caching for common operations
+class PerformanceCache:
+    """Advanced caching for performance optimization"""
+    def __init__(self):
+        self.prompt_cache = {}
+        self.token_cache = {}
+        self.max_cache_size = 1000
+    
+    def get_cached_prompt(self, system: str, history_hash: str) -> str:
+        """Get cached prompt if available"""
+        cache_key = f"{system[:50]}_{history_hash}"
+        return self.prompt_cache.get(cache_key)
+    
+    def cache_prompt(self, system: str, history_hash: str, prompt: str):
+        """Cache prompt for future use"""
+        cache_key = f"{system[:50]}_{history_hash}"
+        if len(self.prompt_cache) >= self.max_cache_size:
+            # Remove oldest entry
+            oldest_key = next(iter(self.prompt_cache))
+            del self.prompt_cache[oldest_key]
+        self.prompt_cache[cache_key] = prompt
+    
+    def get_cached_tokens(self, text: str) -> int:
+        """Get cached token count if available"""
+        return self.token_cache.get(text)
+    
+    def cache_tokens(self, text: str, token_count: int):
+        """Cache token count for future use"""
+        if len(self.token_cache) >= self.max_cache_size:
+            # Remove oldest entry
+            oldest_key = next(iter(self.token_cache))
+            del self.token_cache[oldest_key]
+        self.token_cache[text] = token_count
+
+# Initialize performance cache
+performance_cache = PerformanceCache()
 
 # OPTIMIZATION: Cache tokenizer results for common phrases
 CLEAN_PATTERN = re.compile(r'<\|[\w]+\|>$')
@@ -152,6 +251,121 @@ COMMON_PHRASES = {
     "<|user|>": tokenizer("<|user|>")["input_ids"],
     "<|assistant|>": tokenizer("<|assistant|>")["input_ids"],
 }
+
+# OPTIMIZATION: Ultra-fast token counting with advanced caching
+def count_tokens_ultra_fast(text: str) -> int:
+    """Ultra-fast token counting with advanced caching and pattern matching"""
+    # Check advanced cache first
+    cached_count = performance_cache.get_cached_tokens(text)
+    if cached_count is not None:
+        return cached_count
+    
+    # Extended common phrase cache for even faster counting
+    if text in COMMON_PHRASES:
+        performance_cache.cache_tokens(text, len(COMMON_PHRASES[text]))
+        return len(COMMON_PHRASES[text])
+    
+    # Check for common patterns first
+    for phrase, tokens in COMMON_PHRASES.items():
+        if text.startswith(phrase):
+            remaining = text[len(phrase):]
+            total_count = len(tokens) + count_tokens_ultra_fast(remaining)
+            performance_cache.cache_tokens(text, total_count)
+            return total_count
+    
+    # For very short texts, estimate instead of full tokenization
+    if len(text) < 20:
+        estimated_count = max(1, len(text) // 4)  # Rough estimate for short texts
+        performance_cache.cache_tokens(text, estimated_count)
+        return estimated_count
+    
+    # For medium texts, use length-based estimation
+    if len(text) < 100:
+        estimated_count = max(1, len(text) // 3)  # Better estimate for medium texts
+        performance_cache.cache_tokens(text, estimated_count)
+        return estimated_count
+    
+    # Fallback to tokenizer only when necessary
+    actual_count = len(tokenizer(text)["input_ids"])
+    performance_cache.cache_tokens(text, actual_count)
+    return actual_count
+
+# OPTIMIZATION: Ultra-fast prompt building with minimal operations
+def build_chatml_prompt_ultra_fast(system: str, history: list) -> str:
+    """Ultra-fast prompt building with absolute minimal string operations"""
+    # Pre-allocate string parts for maximum efficiency
+    parts = [f"<|system|>\n{system.strip()}\n"]
+    
+    # Batch process history with minimal string operations
+    for entry in history:
+        if entry.startswith("User:"):
+            user_msg = entry[5:].strip()
+            if user_msg:
+                parts.append(f"<|user|>\n{user_msg}\n")
+        elif entry.startswith("AI:"):
+            ai_msg = entry[3:].strip()
+            if ai_msg:
+                parts.append(f"<|assistant|>\n{ai_msg}\n")
+    
+    parts.append("<|assistant|>\n")
+    return "".join(parts)  # Single join operation
+
+# OPTIMIZATION: Enhanced generation parameters for maximum speed
+def get_ultra_fast_generation_params(req: MessageRequest, max_output_tokens: int) -> dict:
+    """Get ultra-fast generation parameters for maximum speed"""
+    base_params = {
+        "max_new_tokens": max_output_tokens,
+        "temperature": req.temperature,
+        "top_p": req.top_p,
+        "do_sample": True,
+        "pad_token_id": tokenizer.eos_token_id,
+        "eos_token_id": tokenizer.eos_token_id,
+        "use_cache": True,
+        "return_dict_in_generate": False,
+    }
+    
+    if req.ultra_speed:
+        # 🚀🚀 ULTRA SPEED MODE: Maximum possible speed
+        base_params.update({
+            "num_beams": 1,
+            "repetition_penalty": 1.0,  # No penalty calculation
+            "no_repeat_ngram_size": 0,  # No n-gram blocking
+            "early_stopping": False,    # No early stopping logic
+            "length_penalty": 1.0,      # No length penalty
+            "typical_p": 1.0,           # No typical sampling
+            "top_k": 20,                # Very limited token selection for maximum speed
+            "do_sample": True,          # Enable sampling for creativity
+            "use_cache": True,          # Enable KV cache
+            "return_dict_in_generate": False,  # Skip dict conversion
+        })
+    elif req.speed_mode:
+        # 🚀 SPEED MODE: Fast generation with minimal overhead
+        base_params.update({
+            "num_beams": 1,
+            "repetition_penalty": 1.0,  # No penalty calculation
+            "no_repeat_ngram_size": 0,  # No n-gram blocking
+            "early_stopping": False,    # No early stopping logic
+            "length_penalty": 1.0,      # No length penalty
+            "typical_p": 1.0,           # No typical sampling
+            "top_k": 30,                # Limited token selection for speed
+            "do_sample": True,          # Enable sampling for creativity
+            "use_cache": True,          # Enable KV cache
+            "return_dict_in_generate": False,  # Skip dict conversion
+        })
+    else:
+        # 🎯 ACCURACY MODE: Balanced quality and speed
+        base_params.update({
+            "num_beams": 1,
+            "repetition_penalty": 1.02,  # Very minimal penalty for quality
+            "no_repeat_ngram_size": 1,   # Minimal n-gram blocking
+            "early_stopping": False,     # Disable for speed
+            "length_penalty": 1.0,       # No length penalty
+            "typical_p": 0.98,           # Very slight typical sampling
+            "top_k": 80,                 # Balanced token selection
+            "use_cache": True,           # Enable KV cache
+        })
+    
+    return base_params
 
 # OPTIMIZATION: Enhanced performance monitoring and batch processing
 def build_chatml_prompt_batch(system: str, history: list) -> str:
@@ -191,25 +405,45 @@ def clean_response(response: str) -> str:
             return response[:last_period+1]
     return response.strip()
 
-# OPTIMIZATION: Ultra-fast token counting with extended caching
-def count_tokens_ultra_fast(text: str) -> int:
-    """Ultra-fast token counting with extended caching and pattern matching"""
-    # Extended common phrase cache for even faster counting
-    if text in COMMON_PHRASES:
-        return len(COMMON_PHRASES[text])
+# OPTIMIZATION: Advanced context trimming with intelligent selection
+def trim_history_advanced(system: str, history: list, max_tokens: int = 3000) -> list:
+    """Advanced history trimming with intelligent message selection"""
+    # Calculate system tokens once
+    system_tokens = count_tokens_ultra_fast(f"<|system|>\n{system.strip()}\n")
+    total_tokens = system_tokens
+    keep_messages = []
     
-    # Check for common patterns first
-    for phrase, tokens in COMMON_PHRASES.items():
-        if text.startswith(phrase):
-            remaining = text[len(phrase):]
-            return len(tokens) + count_tokens_ultra_fast(remaining)
+    # Reserve tokens for new interaction (reduced for more context)
+    reserved_tokens = 300  # Reduced for more aggressive trimming
     
-    # For very short texts, estimate instead of full tokenization
-    if len(text) < 20:
-        return max(1, len(text) // 4)  # Rough estimate for short texts
+    # Process in reverse order (newest first) for better context preservation
+    # But limit to maximum 6 messages for speed
+    max_messages = 6
     
-    # Fallback to tokenizer only when necessary
-    return len(tokenizer(text)["input_ids"])
+    for msg in reversed(history):
+        if len(keep_messages) >= max_messages:
+            break
+            
+        if msg.startswith("User:"):
+            prefix = "User:"
+            formatted_msg = f"<|user|>\n{msg[len(prefix):].strip()}\n"
+        elif msg.startswith("AI:"):
+            prefix = "AI:"
+            formatted_msg = f"<|assistant|>\n{msg[len(prefix):].strip()}\n"
+        else:
+            continue
+        
+        # Ultra-fast token counting
+        msg_tokens = count_tokens_ultra_fast(formatted_msg)
+        
+        # Check token budget
+        if total_tokens + msg_tokens + reserved_tokens > max_tokens:
+            break
+            
+        total_tokens += msg_tokens
+        keep_messages.insert(0, msg)  # Insert at beginning to maintain order
+    
+    return keep_messages
 
 # OPTIMIZATION: Smart context trimming with batch processing
 def trim_history_smart(system: str, history: list, max_tokens: int = 3500) -> list:
@@ -248,46 +482,6 @@ def trim_history_smart(system: str, history: list, max_tokens: int = 3500) -> li
             break
     
     return keep_messages
-
-# OPTIMIZATION: Enhanced generation parameters for speed + accuracy
-def get_optimized_generation_params(req: MessageRequest, max_output_tokens: int) -> dict:
-    """Get optimized generation parameters based on request type"""
-    base_params = {
-        "max_new_tokens": max_output_tokens,
-        "temperature": req.temperature,
-        "top_p": req.top_p,
-        "do_sample": True,
-        "pad_token_id": tokenizer.eos_token_id,
-        "eos_token_id": tokenizer.eos_token_id,
-        "use_cache": True,
-        "return_dict_in_generate": False,
-    }
-    
-    if req.speed_mode:
-        # 🚀 ULTRA SPEED MODE: Maximum speed with minimal overhead
-        base_params.update({
-            "num_beams": 1,
-            "repetition_penalty": 1.0,  # No penalty calculation
-            "no_repeat_ngram_size": 0,  # No n-gram blocking
-            "early_stopping": False,    # No early stopping logic
-            "length_penalty": 1.0,      # No length penalty
-            "typical_p": 1.0,           # No typical sampling
-            "top_k": 50,                # Limit token selection for speed
-            "do_sample": True,          # Enable sampling for creativity
-        })
-    else:
-        # 🎯 ACCURACY MODE: Balanced quality and speed
-        base_params.update({
-            "num_beams": 1,
-            "repetition_penalty": 1.05,  # Minimal penalty for quality
-            "no_repeat_ngram_size": 2,   # Minimal n-gram blocking
-            "early_stopping": False,     # Disable for speed
-            "length_penalty": 1.0,       # No length penalty
-            "typical_p": 0.95,           # Slight typical sampling
-            "top_k": 100,                # More token selection for quality
-        })
-    
-    return base_params
 
 def authenticate(credentials: HTTPBasicCredentials = Depends(security)):
     correct_username = secrets.compare_digest(credentials.username, "adam")
@@ -331,16 +525,16 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
         
         # Trim history with optimizations
         trim_start = time.time()
-        session["history"] = trim_history_smart(
+        session["history"] = trim_history_advanced(
             system=session["system_prompt"],
             history=session["history"],
-            max_tokens=3500
+            max_tokens=3000
         )
         trim_time = time.time() - trim_start
         
         # Build prompt
         prompt_start = time.time()
-        full_prompt = build_chatml_prompt_batch(
+        full_prompt = build_chatml_prompt_ultra_fast(
             session["system_prompt"],
             session["history"]
         )
@@ -364,7 +558,7 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
     max_output_tokens = min(req.max_tokens, 4096 - input_tokens)
     
     # Generation parameters
-    generation_params = get_optimized_generation_params(req, max_output_tokens)
+    generation_params = get_ultra_fast_generation_params(req, max_output_tokens)
     
     # Generation with performance monitoring
     generation_start = time.time()
@@ -403,11 +597,17 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
     logger.info(f"  🚀 Speed: {tokens_per_sec:.1f} tokens/s")
     logger.info(f"  📝 Context: {len(session['history'])} messages, {input_tokens} tokens")
     
-    # Performance warnings
-    if req.speed_mode and total_time > 3.0:
+    # Performance warnings with ultra-speed mode
+    if req.ultra_speed and total_time > 2.0:
+        logger.warning(f"⚠️ Ultra-speed mode is slow: {total_time:.2f}s (expected <2s)")
+    elif req.speed_mode and total_time > 3.0:
         logger.warning(f"⚠️ Speed mode is slow: {total_time:.2f}s (expected <3s)")
     elif not req.speed_mode and total_time > 6.0:
         logger.warning(f"⚠️ Accuracy mode is slow: {total_time:.2f}s (expected <6s)")
+    
+    # Memory optimization after response
+    if total_time > 5.0:  # Only optimize if response was slow
+        optimize_memory_usage()
     
     # Save to history
     with session_lock:
@@ -515,7 +715,7 @@ async def optimize_context(request: Request, credentials: HTTPBasicCredentials =
             optimized_history = trim_history_smart(
                 system=session["system_prompt"],
                 history=original_history,
-                max_tokens=3000  # More aggressive trimming
+                max_tokens=3000
             )
             
             optimized_tokens = count_tokens_ultra_fast(
