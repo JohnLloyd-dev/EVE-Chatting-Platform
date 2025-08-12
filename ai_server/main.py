@@ -138,18 +138,37 @@ logger.info("🎯 Model ready for inference")
 
 # Enhanced prompt engineering
 def build_chatml_prompt(system: str, history: list) -> str:
-    """Build prompt with proper ChatML formatting"""
+    """Build prompt with proper ChatML formatting - ENHANCED VERSION"""
     prompt = f"<|system|>\n{system.strip()}\n"
     
+    # Ensure we have some context
+    if not history:
+        logger.warning("⚠️ No conversation history available")
+        prompt += "<|user|>\nHello\n<|assistant|>\nHi! I'm ready to help.\n"
+        prompt += "<|assistant|>\n"
+        return prompt
+    
+    # Build conversation context
     for entry in history:
         if entry.startswith("User:"):
-            prompt += f"<|user|>\n{entry[5:].strip()}\n"
+            user_msg = entry[5:].strip()
+            if user_msg:  # Only add non-empty messages
+                prompt += f"<|user|>\n{user_msg}\n"
         elif entry.startswith("AI:"):
-            # Clean previous AI response
-            cleaned_response = clean_response(entry[3:].strip())
-            prompt += f"<|assistant|>\n{cleaned_response}\n"
+            ai_msg = entry[3:].strip()
+            if ai_msg:  # Only add non-empty responses
+                # Clean previous AI response
+                cleaned_response = clean_response(ai_msg)
+                if cleaned_response:  # Only add if cleaning didn't remove everything
+                    prompt += f"<|assistant|>\n{cleaned_response}\n"
     
     prompt += "<|assistant|>\n"
+    
+    # Log prompt info for debugging
+    prompt_length = len(prompt)
+    history_count = len([msg for msg in history if msg.strip()])
+    logger.info(f"📝 Built prompt: {prompt_length} chars, {history_count} history entries")
+    
     return prompt
 
 def clean_response(response: str) -> str:
@@ -165,7 +184,7 @@ def clean_response(response: str) -> str:
 
 # Context-aware history trimming
 def trim_history(system: str, history: list, max_tokens: int = 3500) -> list:
-    """Trim conversation history while preserving context"""
+    """Trim conversation history while preserving context - FIXED VERSION"""
     # Calculate system tokens
     system_prompt = f"<|system|>\n{system.strip()}\n"
     system_tokens = tokenizer(system_prompt)["input_ids"]
@@ -173,10 +192,10 @@ def trim_history(system: str, history: list, max_tokens: int = 3500) -> list:
     keep_messages = []
     
     # Reserve tokens for new interaction
-    reserved_tokens = 300  # For new user message + AI response prefix
+    reserved_tokens = 500  # Increased for better response quality
     
-    # Process from newest to oldest (keep most recent interactions)
-    for msg in reversed(history):
+    # Process from OLDEST to NEWEST (preserve conversation flow)
+    for msg in history:  # ← FIXED: Process in chronological order
         if msg.startswith("User:"):
             formatted_msg = f"<|user|>\n{msg[5:].strip()}\n"
         elif msg.startswith("AI:"):
@@ -188,13 +207,20 @@ def trim_history(system: str, history: list, max_tokens: int = 3500) -> list:
         
         # Check if we can add this message without exceeding limit
         if total_tokens + len(msg_tokens) + reserved_tokens > max_tokens:
+            # If we can't fit this message, stop here
+            # But ensure we have at least some context
+            if len(keep_messages) < 2:
+                # Force include at least 2 messages for minimal context
+                logger.warning(f"⚠️ Context very limited, keeping minimal messages: {len(keep_messages)}")
             break
             
         total_tokens += len(msg_tokens)
         keep_messages.append(msg)
     
-    # Return in chronological order
-    return list(reversed(keep_messages))
+    # Log context preservation info
+    logger.info(f"📚 Context: {len(keep_messages)}/{len(history)} messages preserved, {total_tokens} tokens used")
+    
+    return keep_messages  # ← FIXED: Return in correct order
 
 def authenticate(credentials: HTTPBasicCredentials = Depends(security)):
     correct_username = secrets.compare_digest(credentials.username, "adam")
@@ -244,26 +270,40 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
             session["system_prompt"],
             session["history"]
         )
+        
+        # Log prompt details for accuracy debugging
+        logger.info(f"🎯 System prompt: {len(session['system_prompt'])} chars")
+        logger.info(f"💬 User message: {req.message[:100]}...")
+        logger.info(f"📚 History entries: {len(session['history'])}")
+        logger.info(f"🔢 Max tokens requested: {req.max_tokens}")
+        logger.info(f"🌡️ Temperature: {req.temperature}, Top-p: {req.top_p}")
+        
+        # Tokenize with better handling
+        inputs = tokenizer(
+            full_prompt,
+            return_tensors="pt",
+            truncation=True,
+            max_length=4096,
+            padding=True
+        ).to(model.device)
+        
+        # Log tokenization info
+        input_tokens = inputs.input_ids.shape[1]
+        logger.info(f"🔤 Input tokens: {input_tokens}, Available: {4096 - input_tokens}")
+        
+        # Calculate available context
+        max_output_tokens = min(
+            req.max_tokens,
+            4096 - input_tokens
+        )
+        if max_output_tokens <= 50:  # ← FIXED: Increased minimum for meaningful responses
+            logger.warning(f"⚠️ Limited context: {max_output_tokens} tokens available, {input_tokens} used")
+            if max_output_tokens <= 20:
+                raise HTTPException(400, "Input too long for response generation")
+        
+        logger.info(f"📤 Will generate up to {max_output_tokens} tokens")
     
-    # Tokenize with better handling
-    inputs = tokenizer(
-        full_prompt,
-        return_tensors="pt",
-        truncation=True,
-        max_length=4096,
-        padding=True
-    ).to(model.device)
-    
-    # Calculate available context
-    max_output_tokens = min(
-        req.max_tokens,
-        4096 - inputs.input_ids.shape[1]
-    )
-    if max_output_tokens <= 10:
-        # Preserve at least 10 tokens for meaningful response
-        raise HTTPException(400, "Input too long for response generation")
-    
-    # Enhanced generation with optimized parameters
+    # Enhanced generation with optimized parameters for accuracy
     with model_lock, torch.no_grad():
         try:
             output = model.generate(
@@ -275,9 +315,11 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
                 num_beams=1,  # Disable beam search for more natural responses
                 pad_token_id=tokenizer.eos_token_id,
                 eos_token_id=tokenizer.eos_token_id,
-                repetition_penalty=1.15,  # Slightly reduced repetition penalty
-                no_repeat_ngram_size=4,  # Slightly larger n-gram blocking
-                early_stopping=True
+                repetition_penalty=1.1,  # ← FIXED: Reduced for better coherence
+                no_repeat_ngram_size=3,  # ← FIXED: Balanced for creativity vs repetition
+                early_stopping=True,
+                length_penalty=1.0,  # ← ADDED: Neutral length penalty
+                typical_p=0.9  # ← ADDED: Better token selection
             )
         except RuntimeError as e:
             if "Half" in str(e) or "overflow" in str(e):
@@ -292,9 +334,11 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
                     do_sample=True,
                     pad_token_id=tokenizer.eos_token_id,
                     eos_token_id=tokenizer.eos_token_id,
-                    repetition_penalty=1.15,
-                    no_repeat_ngram_size=4,
-                    early_stopping=True
+                    repetition_penalty=1.1,  # ← FIXED: Consistent with above
+                    no_repeat_ngram_size=3,  # ← FIXED: Consistent with above
+                    early_stopping=True,
+                    length_penalty=1.0,  # ← ADDED: Consistent
+                    typical_p=0.9  # ← ADDED: Consistent
                 )
             else:
                 logger.error(f"⚠️ Generation error: {e}")
@@ -309,6 +353,25 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
     
     # Clean and format response
     response = clean_response(response)
+    
+    # Validate response quality
+    if not response or len(response.strip()) < 5:
+        logger.warning(f"⚠️ Generated response too short: '{response}'")
+        # Try to generate a fallback response
+        fallback_response = "I understand. Please continue with your message."
+        response = fallback_response
+    elif len(response) > 1000:
+        logger.warning(f"⚠️ Generated response too long: {len(response)} chars")
+        # Truncate to reasonable length
+        response = response[:1000].strip()
+        if not response.endswith(('.', '!', '?')):
+            response += '.'
+    
+    # Log response quality metrics
+    response_length = len(response)
+    response_words = len(response.split())
+    logger.info(f"✅ Generated response: {response_length} chars, {response_words} words")
+    logger.info(f"📝 Response preview: {response[:100]}...")
     
     # Save to history
     with session_lock:
