@@ -203,7 +203,9 @@ def call_ai_model(system_prompt: str, history: list, max_tokens: int = 150) -> s
                             f"{settings.ai_model_url}/chat",
                             json={
                                 "message": msg,
-                                "max_tokens": 5  # Just enough to process, not generate response
+                                "max_tokens": 50,  # ← FIXED: Meet AI server minimum requirement
+                                "temperature": 0.1,  # ← ADDED: Low temperature for context building
+                                "top_p": 0.8        # ← ADDED: Focused sampling for context
                             },
                             cookies={"session_id": session_cookie},
                             auth=(settings.ai_model_auth_username, settings.ai_model_auth_password)
@@ -232,11 +234,14 @@ def call_ai_model(system_prompt: str, history: list, max_tokens: int = 150) -> s
             logger.info(f"Sending current user message: {current_user_message[:100]}...")
             
             # Send chat request using existing session
+            # Ensure max_tokens meets AI server requirements (min 50, max 500)
+            ai_max_tokens = max(50, min(max_tokens, 500))
+            
             chat_response = client.post(
                 f"{settings.ai_model_url}/chat",
                 json={
                     "message": current_user_message,
-                    "max_tokens": max_tokens,
+                    "max_tokens": ai_max_tokens,  # ← FIXED: Ensure compatibility
                     "temperature": 0.7,  # Balanced creativity vs consistency
                     "top_p": 0.9        # Focus on most likely tokens
                 },
@@ -245,7 +250,27 @@ def call_ai_model(system_prompt: str, history: list, max_tokens: int = 150) -> s
             )
             
             if chat_response.status_code != 200:
-                raise Exception(f"AI model request failed: {chat_response.text}")
+                # Enhanced error logging for integration debugging
+                error_detail = f"AI model request failed: {chat_response.status_code}"
+                try:
+                    error_data = chat_response.json()
+                    if 'detail' in error_data:
+                        error_detail += f" - {error_data['detail']}"
+                except:
+                    error_detail += f" - {chat_response.text}"
+                
+                logger.error(f"❌ AI Server Integration Error: {error_detail}")
+                logger.error(f"📤 Request sent: message='{current_user_message[:100]}...', max_tokens={ai_max_tokens}, temperature=0.7, top_p=0.9")
+                
+                # Check for common integration issues
+                if chat_response.status_code == 422:
+                    logger.error("❌ Validation Error: AI server rejected request parameters")
+                elif chat_response.status_code == 500:
+                    logger.error("❌ AI Server Error: Internal server error")
+                elif chat_response.status_code == 404:
+                    logger.error("❌ AI Server Error: Endpoint not found")
+                
+                raise Exception(error_detail)
             
             response_data = chat_response.json()
             raw_response = response_data.get("response", "I'm sorry, I couldn't generate a response.")

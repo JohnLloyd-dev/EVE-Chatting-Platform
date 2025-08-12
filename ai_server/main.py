@@ -246,6 +246,24 @@ async def set_scenario(scenario: InitScenario, request: Request, credentials: HT
 # Enhanced chat endpoint
 @app.post("/chat")
 async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCredentials = Depends(authenticate)):
+    # Integration validation - ensure compatibility with backend
+    try:
+        # Validate request parameters for backend compatibility
+        if req.max_tokens < 50:
+            logger.warning(f"⚠️ Backend sent max_tokens={req.max_tokens}, minimum is 50")
+            req.max_tokens = 50  # Auto-correct to minimum
+        
+        if req.max_tokens > 500:
+            logger.warning(f"⚠️ Backend sent max_tokens={req.max_tokens}, maximum is 500")
+            req.max_tokens = 500  # Auto-correct to maximum
+        
+        # Log integration details for debugging
+        logger.info(f"🔗 Backend Integration: max_tokens={req.max_tokens}, temperature={req.temperature}, top_p={req.top_p}")
+        
+    except Exception as e:
+        logger.error(f"❌ Integration validation failed: {e}")
+        raise HTTPException(400, f"Integration validation failed: {e}")
+    
     # Get session ID
     if (session_id := request.cookies.get("session_id")) is None:
         raise HTTPException(400, "Missing session ID")
