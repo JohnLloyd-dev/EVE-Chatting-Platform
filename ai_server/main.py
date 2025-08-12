@@ -67,6 +67,51 @@ logger.info(f"GPU available: {gpu_available}")
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 tokenizer.pad_token = tokenizer.eos_token  # Set pad token
 
+# OPTIMIZATION: Advanced model inference optimizations
+def optimize_model_for_speed():
+    """Apply advanced optimizations for maximum speed while maintaining accuracy"""
+    global model
+    
+    # Enable memory efficient attention for faster inference
+    if hasattr(model, 'config') and hasattr(model.config, 'attention_mode'):
+        model.config.attention_mode = 'flash_attention_2'
+        logger.info("🚀 Enabled Flash Attention 2 for faster inference")
+    
+    # Enable gradient checkpointing for memory efficiency
+    if hasattr(model, 'gradient_checkpointing_enable'):
+        model.gradient_checkpointing_enable()
+        logger.info("🚀 Enabled gradient checkpointing for memory efficiency")
+    
+    # Optimize model for inference
+    model.eval()
+    
+    # Enable torch optimizations
+    torch.backends.cudnn.benchmark = True
+    torch.backends.cudnn.deterministic = False
+    
+    # Enable JIT compilation if available
+    try:
+        if hasattr(torch, 'jit') and hasattr(model, 'forward'):
+            model = torch.jit.optimize_for_inference(model)
+            logger.info("🚀 JIT compilation enabled for faster inference")
+    except Exception as e:
+        logger.info(f"JIT compilation not available: {e}")
+    
+    # Memory optimizations
+    if hasattr(torch, 'cuda') and torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        logger.info("🚀 CUDA cache cleared for optimal memory usage")
+    
+    # Enable memory efficient attention if available
+    try:
+        if hasattr(model, 'config') and hasattr(model.config, 'attn_implementation'):
+            model.config.attn_implementation = "flash_attention_2"
+            logger.info("🚀 Flash Attention 2 enabled for memory efficiency")
+    except Exception as e:
+        logger.info(f"Flash Attention 2 not available: {e}")
+    
+    logger.info("🚀 Model optimized for maximum speed")
+
 # OPTIMIZATION: Preload model with optimized settings
 def load_model_with_fallbacks():
     """Load model with performance optimizations"""
@@ -146,51 +191,6 @@ except Exception as e:
     raise RuntimeError(f"Failed to load model: {e}")
 
 logger.info("🎯 Model ready for inference")
-
-# OPTIMIZATION: Advanced model inference optimizations
-def optimize_model_for_speed():
-    """Apply advanced optimizations for maximum speed while maintaining accuracy"""
-    global model
-    
-    # Enable memory efficient attention for faster inference
-    if hasattr(model, 'config') and hasattr(model.config, 'attention_mode'):
-        model.config.attention_mode = 'flash_attention_2'
-        logger.info("🚀 Enabled Flash Attention 2 for faster inference")
-    
-    # Enable gradient checkpointing for memory efficiency
-    if hasattr(model, 'gradient_checkpointing_enable'):
-        model.gradient_checkpointing_enable()
-        logger.info("🚀 Enabled gradient checkpointing for memory efficiency")
-    
-    # Optimize model for inference
-    model.eval()
-    
-    # Enable torch optimizations
-    torch.backends.cudnn.benchmark = True
-    torch.backends.cudnn.deterministic = False
-    
-    # Enable JIT compilation if available
-    try:
-        if hasattr(torch, 'jit') and hasattr(model, 'forward'):
-            model = torch.jit.optimize_for_inference(model)
-            logger.info("🚀 JIT compilation enabled for faster inference")
-    except Exception as e:
-        logger.info(f"JIT compilation not available: {e}")
-    
-    # Memory optimizations
-    if hasattr(torch, 'cuda') and torch.cuda.is_available():
-        torch.cuda.empty_cache()
-        logger.info("🚀 CUDA cache cleared for optimal memory usage")
-    
-    # Enable memory efficient attention if available
-    try:
-        if hasattr(model, 'config') and hasattr(model.config, 'attn_implementation'):
-            model.config.attn_implementation = "flash_attention_2"
-            logger.info("🚀 Flash Attention 2 enabled for memory efficiency")
-    except Exception as e:
-        logger.info(f"Flash Attention 2 not available: {e}")
-    
-    logger.info("🚀 Model optimized for maximum speed")
 
 # OPTIMIZATION: Memory management and caching
 def optimize_memory_usage():
@@ -708,18 +708,18 @@ async def optimize_context(request: Request, credentials: HTTPBasicCredentials =
             # Analyze current context
             original_history = session["history"].copy()
             original_tokens = count_tokens_ultra_fast(
-                build_chatml_prompt_batch(session["system_prompt"], original_history)
+                build_chatml_prompt_ultra_fast(session["system_prompt"], original_history)
             )
             
             # Optimize context
-            optimized_history = trim_history_smart(
+            optimized_history = trim_history_advanced(
                 system=session["system_prompt"],
                 history=original_history,
                 max_tokens=3000
             )
             
             optimized_tokens = count_tokens_ultra_fast(
-                build_chatml_prompt_batch(session["system_prompt"], optimized_history)
+                build_chatml_prompt_ultra_fast(session["system_prompt"], optimized_history)
             )
             
             # Apply optimization
