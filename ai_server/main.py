@@ -595,10 +595,12 @@ def update_kv_cache(session: dict, inputs: dict, outputs: dict) -> None:
     try:
         if hasattr(outputs, 'past_key_values') and outputs.past_key_values is not None:
             session["kv_cache"] = outputs.past_key_values
-            session["tokenized_context"] = torch.cat(
-                [inputs.input_ids, outputs.sequences], dim=-1
-            )
-            session["token_count"] = session["tokenized_context"].shape[1]
+            # Store the full context including the new response
+            if hasattr(outputs, 'sequences'):
+                session["tokenized_context"] = outputs.sequences[0]
+            else:
+                session["tokenized_context"] = outputs[0]
+            session["token_count"] = session["tokenized_context"].shape[0]
             logger.info(f"🚀 KV Cache updated: {session['token_count']} tokens cached")
         else:
             session["kv_cache"] = None
@@ -609,6 +611,28 @@ def update_kv_cache(session: dict, inputs: dict, outputs: dict) -> None:
         session["kv_cache"] = None
         session["tokenized_context"] = None
         session["token_count"] = 0
+
+# OPTIMIZATION: Safe KV cache usage with fallback
+def use_kv_cache_safely(session: dict, req: MessageRequest) -> tuple:
+    """Safely use KV cache with fallback to full context"""
+    try:
+        if (session.get("kv_cache") is not None and 
+            session.get("tokenized_context") is not None and
+            session.get("token_count", 0) > 0):
+            
+            # Validate cache integrity
+            cache_tokens = session["token_count"]
+            if cache_tokens > 0 and cache_tokens < 4096:
+                logger.info(f"🚀 Using KV cache: {cache_tokens} tokens cached")
+                return True, session["kv_cache"]
+            else:
+                logger.warning(f"⚠️ Invalid cache size: {cache_tokens}, falling back to full context")
+                return False, None
+        else:
+            return False, None
+    except Exception as e:
+        logger.warning(f"⚠️ KV cache validation failed: {e}, falling back to full context")
+        return False, None
 
 def authenticate(credentials: HTTPBasicCredentials = Depends(security)):
     correct_username = secrets.compare_digest(credentials.username, "adam")
@@ -644,53 +668,53 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
         if (session := user_sessions.get(session_id)) is None:
             raise HTTPException(404, "Session not found")
     
-        # Add user message to history
-        session["history"].append(f"User: {req.message}")
+    # Add user message to history
+    session["history"].append(f"User: {req.message}")
+    
+    # OPTIMIZATION: Use KV cache if available for maximum speed
+    if session.get("kv_cache") is not None and session.get("tokenized_context") is not None:
+        logger.info(f"🚀 Using KV cache: {session['token_count']} tokens cached")
+        # Only tokenize the new user message
+        new_inputs = tokenizer(
+            f"<|user|>\n{req.message}\n<|assistant|>\n",
+            return_tensors="pt",
+            truncation=True,
+            max_length=4096,
+            padding=True
+        ).to(model.device)
         
-        # OPTIMIZATION: Use KV cache if available for maximum speed
-        if session.get("kv_cache") is not None and session.get("tokenized_context") is not None:
-            logger.info(f"🚀 Using KV cache: {session['token_count']} tokens cached")
-            # Only tokenize the new user message
-            new_inputs = tokenizer(
-                f"<|user|>\n{req.message}\n<|assistant|>\n",
-                return_tensors="pt",
-                truncation=True,
-                max_length=4096,
-                padding=True
-            ).to(model.device)
-            
-            # Use cached context for generation
-            inputs = new_inputs
-            full_prompt = None  # Not needed with KV cache
-            prompt_time = 0  # No prompt building time
-            trim_time = 0  # No trimming time
-        else:
-            logger.info("🔄 Building full context (no KV cache available)")
-            # Trim history with optimizations
-            trim_start = time.time()
-            session["history"] = trim_history_ultra_aggressive(
-                system=session["system_prompt"],
-                history=session["history"],
-                max_tokens=2000
-            )
-            trim_time = time.time() - trim_start
-            
-            # Build prompt
-            prompt_start = time.time()
-            full_prompt = build_chatml_prompt_ultra_fast(
-                session["system_prompt"],
-                session["history"]
-            )
-            prompt_time = time.time() - prompt_start
-            
-            # Tokenize full prompt
-            inputs = tokenizer(
-                full_prompt,
-                return_tensors="pt",
-                truncation=True,
-                max_length=4096,
-                padding=True
-            ).to(model.device)
+        # Use cached context for generation
+        inputs = new_inputs
+        full_prompt = None  # Not needed with KV cache
+        prompt_time = 0  # No prompt building time
+        trim_time = 0  # No trimming time
+    else:
+        logger.info("🔄 Building full context (no KV cache available)")
+        # Trim history with optimizations
+        trim_start = time.time()
+        session["history"] = trim_history_ultra_aggressive(
+            system=session["system_prompt"],
+            history=session["history"],
+            max_tokens=2000
+        )
+        trim_time = time.time() - trim_start
+        
+        # Build prompt
+        prompt_start = time.time()
+        full_prompt = build_chatml_prompt_ultra_fast(
+            session["system_prompt"],
+            session["history"]
+        )
+        prompt_time = time.time() - prompt_start
+        
+        # Tokenize full prompt
+        inputs = tokenizer(
+            full_prompt,
+            return_tensors="pt",
+            truncation=True,
+            max_length=4096,
+            padding=True
+        ).to(model.device)
     
     session_time = time.time() - session_start
     
@@ -711,8 +735,24 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
     generation_params = get_ultra_fast_generation_params(req, max_output_tokens)
     
     # OPTIMIZATION: Add KV cache to generation params if available
+    # Use a more robust approach to avoid cache position issues
     if session.get("kv_cache") is not None:
-        generation_params["past_key_values"] = session["kv_cache"]
+        try:
+            # Validate cache before use
+            cache_tokens = session.get("token_count", 0)
+            if 0 < cache_tokens < 4096:
+                generation_params["past_key_values"] = session["kv_cache"]
+                logger.info(f"🚀 Using validated KV cache: {cache_tokens} tokens")
+            else:
+                logger.warning(f"⚠️ Invalid cache size: {cache_tokens}, clearing cache")
+                session["kv_cache"] = None
+                session["tokenized_context"] = None
+                session["token_count"] = 0
+        except Exception as e:
+            logger.warning(f"⚠️ KV cache validation failed: {e}, clearing cache")
+            session["kv_cache"] = None
+            session["tokenized_context"] = None
+            session["token_count"] = 0
     
     # Generation with performance monitoring
     generation_start = time.time()
