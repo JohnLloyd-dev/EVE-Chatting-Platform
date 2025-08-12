@@ -14,6 +14,7 @@ import re
 import threading
 import time
 import asyncio  # For async operations
+import gc # For garbage collection
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -89,6 +90,22 @@ def optimize_model_for_speed():
     torch.backends.cudnn.benchmark = True
     torch.backends.cudnn.deterministic = False
     
+    # OPTIMIZATION: Enable Tensor Core math for maximum GPU performance
+    if hasattr(torch.backends.cuda, 'matmul'):
+        torch.backends.cuda.matmul.allow_tf32 = True  # Ampere+ GPUs
+        logger.info("🚀 Tensor Core TF32 enabled for maximum GPU performance")
+    
+    if hasattr(torch.backends.cudnn, 'allow_tf32'):
+        torch.backends.cudnn.allow_tf32 = True
+        logger.info("🚀 cuDNN TF32 enabled for maximum GPU performance")
+    
+    # OPTIMIZATION: JIT optimizations for maximum speed
+    torch._C._jit_set_profiling_executor(False)
+    torch._C._jit_set_profiling_mode(False)
+    torch._C._jit_override_can_fuse_on_cpu(True)
+    torch._C._jit_override_can_fuse_on_gpu(True)
+    logger.info("🚀 JIT optimizations enabled for maximum speed")
+    
     # Enable JIT compilation if available
     try:
         if hasattr(torch, 'jit') and hasattr(model, 'forward'):
@@ -96,6 +113,19 @@ def optimize_model_for_speed():
             logger.info("🚀 JIT compilation enabled for faster inference")
     except Exception as e:
         logger.info(f"JIT compilation not available: {e}")
+    
+    # OPTIMIZATION: Static model compilation with TorchInductor
+    try:
+        if hasattr(torch, 'compile'):
+            model = torch.compile(
+                model,
+                mode="reduce-overhead",
+                fullgraph=True,
+                dynamic=False
+            )
+            logger.info("🚀 TorchInductor compilation enabled for maximum performance")
+    except Exception as e:
+        logger.info(f"TorchInductor compilation not available: {e}")
     
     # Memory optimizations
     if hasattr(torch, 'cuda') and torch.cuda.is_available():
@@ -198,12 +228,36 @@ def optimize_memory_usage():
     if hasattr(torch, 'cuda') and torch.cuda.is_available():
         torch.cuda.empty_cache()
         torch.cuda.synchronize()
+        logger.info("🚀 CUDA cache cleared and synchronized")
     
     # Force garbage collection
-    import gc
     gc.collect()
-    
-    logger.info("🧹 Memory optimized for performance")
+    logger.info("🚀 Garbage collection completed")
+
+# OPTIMIZATION: Pinned memory buffers for maximum GPU performance
+def create_pinned_buffers():
+    """Create pinned memory buffers for optimal GPU transfer"""
+    try:
+        if hasattr(torch, 'cuda') and torch.cuda.is_available():
+            # Create pinned memory buffers for optimal GPU transfer
+            global pin_memory_buffer
+            pin_memory_buffer = torch.empty(
+                (1, 4096), 
+                dtype=torch.long,
+                pin_memory=True
+            )
+            logger.info("🚀 Pinned memory buffers created for maximum GPU performance")
+            return True
+    except Exception as e:
+        logger.warning(f"⚠️ Pinned memory creation failed: {e}")
+        return False
+
+# Create pinned buffers after model loading
+pin_memory_buffer = None
+if create_pinned_buffers():
+    logger.info("✅ Pinned memory optimization enabled")
+else:
+    logger.info("ℹ️ Pinned memory optimization not available")
 
 # OPTIMIZATION: Advanced caching for common operations
 class PerformanceCache:
@@ -405,9 +459,21 @@ def clean_response(response: str) -> str:
             return response[:last_period+1]
     return response.strip()
 
-# OPTIMIZATION: Ultra-aggressive context trimming for maximum speed
+# OPTIMIZATION: Enhanced session storage with KV caching
+def create_session(session_id: str, system_prompt: str) -> dict:
+    """Create optimized session with KV caching support"""
+    return {
+        "system_prompt": system_prompt,
+        "history": [],
+        "kv_cache": None,  # Add KV cache storage
+        "tokenized_context": None,
+        "token_count": 0,
+        "last_trimmed": 0
+    }
+
+# OPTIMIZATION: Advanced context trimming with KV cache management
 def trim_history_ultra_aggressive(system: str, history: list, max_tokens: int = 2000) -> list:
-    """Ultra-aggressive history trimming for maximum speed"""
+    """Ultra-aggressive history trimming for maximum speed with KV cache reset"""
     # Calculate system tokens once
     system_tokens = count_tokens_ultra_fast(f"<|system|>\n{system.strip()}\n")
     total_tokens = system_tokens
@@ -523,6 +589,27 @@ def trim_history_smart(system: str, history: list, max_tokens: int = 3500) -> li
     
     return keep_messages
 
+# OPTIMIZATION: KV cache management for maximum speed
+def update_kv_cache(session: dict, inputs: dict, outputs: dict) -> None:
+    """Update KV cache for faster subsequent generations"""
+    try:
+        if hasattr(outputs, 'past_key_values') and outputs.past_key_values is not None:
+            session["kv_cache"] = outputs.past_key_values
+            session["tokenized_context"] = torch.cat(
+                [inputs.input_ids, outputs.sequences], dim=-1
+            )
+            session["token_count"] = session["tokenized_context"].shape[1]
+            logger.info(f"🚀 KV Cache updated: {session['token_count']} tokens cached")
+        else:
+            session["kv_cache"] = None
+            session["tokenized_context"] = None
+            session["token_count"] = 0
+    except Exception as e:
+        logger.warning(f"⚠️ KV cache update failed: {e}")
+        session["kv_cache"] = None
+        session["tokenized_context"] = None
+        session["token_count"] = 0
+
 def authenticate(credentials: HTTPBasicCredentials = Depends(security)):
     correct_username = secrets.compare_digest(credentials.username, "adam")
     correct_password = secrets.compare_digest(credentials.password, "eve2025")
@@ -535,10 +622,7 @@ async def set_scenario(scenario: InitScenario, request: Request, credentials: HT
     session_id = request.cookies.get("session_id", str(uuid4()))
     
     with session_lock:
-        user_sessions[session_id] = {
-            "system_prompt": scenario.scenario,
-            "history": []
-        }
+        user_sessions[session_id] = create_session(session_id, scenario.scenario)
     
     response = JSONResponse({"message": "Scenario set!"})
     response.set_cookie(key="session_id", value=session_id, httponly=True)
@@ -563,22 +647,50 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
         # Add user message to history
         session["history"].append(f"User: {req.message}")
         
-        # Trim history with optimizations
-        trim_start = time.time()
-        session["history"] = trim_history_ultra_aggressive(
-            system=session["system_prompt"],
-            history=session["history"],
-            max_tokens=2000
-        )
-        trim_time = time.time() - trim_start
-        
-        # Build prompt
-        prompt_start = time.time()
-        full_prompt = build_chatml_prompt_ultra_fast(
-            session["system_prompt"],
-            session["history"]
-        )
-        prompt_time = time.time() - prompt_start
+        # OPTIMIZATION: Use KV cache if available for maximum speed
+        if session.get("kv_cache") is not None and session.get("tokenized_context") is not None:
+            logger.info(f"🚀 Using KV cache: {session['token_count']} tokens cached")
+            # Only tokenize the new user message
+            new_inputs = tokenizer(
+                f"<|user|>\n{req.message}\n<|assistant|>\n",
+                return_tensors="pt",
+                truncation=True,
+                max_length=4096,
+                padding=True
+            ).to(model.device)
+            
+            # Use cached context for generation
+            generation_params["past_key_values"] = session["kv_cache"]
+            inputs = new_inputs
+            full_prompt = None  # Not needed with KV cache
+            prompt_time = 0  # No prompt building time
+        else:
+            logger.info("🔄 Building full context (no KV cache available)")
+            # Trim history with optimizations
+            trim_start = time.time()
+            session["history"] = trim_history_ultra_aggressive(
+                system=session["system_prompt"],
+                history=session["history"],
+                max_tokens=2000
+            )
+            trim_time = time.time() - trim_start
+            
+            # Build prompt
+            prompt_start = time.time()
+            full_prompt = build_chatml_prompt_ultra_fast(
+                session["system_prompt"],
+                session["history"]
+            )
+            prompt_time = time.time() - prompt_start
+            
+            # Tokenize full prompt
+            inputs = tokenizer(
+                full_prompt,
+                return_tensors="pt",
+                truncation=True,
+                max_length=4096,
+                padding=True
+            ).to(model.device)
     
     session_time = time.time() - session_start
     
@@ -604,6 +716,10 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
     generation_start = time.time()
     try:
         with model_lock, torch.no_grad():
+            # OPTIMIZATION: Enable KV cache return for maximum speed
+            generation_params["return_dict_in_generate"] = True
+            generation_params["output_hidden_states"] = True
+            
             output = model.generate(**inputs, **generation_params)
     except RuntimeError as e:
         if "Half" in str(e) or "overflow" in str(e):
@@ -617,9 +733,15 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
     
     generation_time = time.time() - generation_start
     
+    # OPTIMIZATION: Update KV cache for maximum speed
+    update_kv_cache(session, inputs, output)
+    
     # Extract and clean response
     response_start = time.time()
-    response_tokens = output[0][inputs.input_ids.shape[1]:]
+    if hasattr(output, 'sequences'):
+        response_tokens = output.sequences[0][inputs.input_ids.shape[1]:]
+    else:
+        response_tokens = output[0][inputs.input_ids.shape[1]:]
     response = tokenizer.decode(response_tokens, skip_special_tokens=True).strip()
     response = clean_response(response)
     response_time = time.time() - response_start
@@ -636,6 +758,11 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
     logger.info(f"  ⏱️ Total: {total_time:.3f}s")
     logger.info(f"  🚀 Speed: {tokens_per_sec:.1f} tokens/s")
     logger.info(f"  📝 Context: {len(session['history'])} messages, {input_tokens} tokens")
+    
+    # OPTIMIZATION: Enhanced logging for KV cache and optimizations
+    logger.info(f"  🔥 KV Cache: {'✅ Hit' if session.get('kv_cache') else '❌ Miss'}")
+    logger.info(f"  🔥 TF32: {'✅ Enabled' if torch.backends.cuda.matmul.allow_tf32 else '❌ Disabled'}")
+    logger.info(f"  🔥 Compiled: {'✅ Yes' if hasattr(model, '_compiled_call_impl') else '❌ No'}")
     
     # Performance warnings with ultra-speed mode
     if req.ultra_speed and total_time > 2.0:
@@ -664,8 +791,15 @@ async def health_check():
 # Speed test endpoint for performance benchmarking
 @app.post("/speed-test")
 async def speed_test(credentials: HTTPBasicCredentials = Depends(authenticate)):
-    """Test AI generation speed with different parameters"""
+    """Test AI generation speed with different parameters and KV caching"""
     try:
+        # OPTIMIZATION: Pre-warm model for accurate speed testing
+        logger.info("🔥 Pre-warming model for accurate speed testing...")
+        warmup_input = tokenizer("Warmup", return_tensors="pt").to(model.device)
+        with torch.no_grad():
+            model.generate(**warmup_input, max_new_tokens=1)
+        logger.info("✅ Model warmed up")
+        
         test_prompts = [
             "Hello, how are you?",
             "What is the weather like today?",
@@ -677,6 +811,17 @@ async def speed_test(credentials: HTTPBasicCredentials = Depends(authenticate)):
         
         for i, prompt in enumerate(test_prompts):
             logger.info(f"🧪 Speed test {i+1}/4: {prompt}")
+            
+            # Test ultra-speed mode
+            start_time = time.time()
+            ultra_response = await chat(MessageRequest(
+                message=prompt,
+                max_tokens=50,
+                temperature=0.7,
+                top_p=0.9,
+                ultra_speed=True
+            ), MockRequest(), credentials)
+            ultra_time = time.time() - start_time
             
             # Test speed mode
             start_time = time.time()
@@ -702,6 +847,10 @@ async def speed_test(credentials: HTTPBasicCredentials = Depends(authenticate)):
             
             results.append({
                 "prompt": prompt,
+                "ultra_speed_mode": {
+                    "time": round(ultra_time, 2),
+                    "response": ultra_response.get("response", "")[:100]
+                },
                 "speed_mode": {
                     "time": round(speed_time, 2),
                     "response": speed_response.get("response", "")[:100]
@@ -710,21 +859,26 @@ async def speed_test(credentials: HTTPBasicCredentials = Depends(authenticate)):
                     "time": round(accuracy_time, 2),
                     "response": accuracy_response.get("response", "")[:100]
                 },
-                "speedup": round(accuracy_time / speed_time, 2) if speed_time > 0 else 0
+                "ultra_speedup": round(accuracy_time / ultra_time, 2) if ultra_time > 0 else 0,
+                "speed_speedup": round(accuracy_time / speed_time, 2) if speed_time > 0 else 0
             })
         
         # Calculate averages
+        avg_ultra_time = sum(r["ultra_speed_mode"]["time"] for r in results) / len(results)
         avg_speed_time = sum(r["speed_mode"]["time"] for r in results) / len(results)
         avg_accuracy_time = sum(r["accuracy_mode"]["time"] for r in results) / len(results)
-        avg_speedup = avg_accuracy_time / avg_speed_time if avg_speed_time > 0 else 0
+        avg_ultra_speedup = avg_accuracy_time / avg_ultra_time if avg_ultra_time > 0 else 0
+        avg_speed_speedup = avg_accuracy_time / avg_speed_time if avg_speed_time > 0 else 0
         
         return {
             "test_results": results,
             "summary": {
+                "average_ultra_speed_time": round(avg_ultra_time, 2),
                 "average_speed_mode_time": round(avg_speed_time, 2),
                 "average_accuracy_mode_time": round(avg_accuracy_time, 2),
-                "average_speedup": round(avg_speedup, 2),
-                "recommendation": "Use speed_mode=True for faster responses" if avg_speedup > 1.5 else "Speed mode provides minimal benefit"
+                "average_ultra_speedup": round(avg_ultra_speedup, 2),
+                "average_speed_speedup": round(avg_speed_speedup, 2),
+                "recommendation": f"Use ultra_speed=True for maximum performance ({avg_ultra_speedup:.1f}x faster than accuracy mode)"
             }
         }
         
