@@ -725,7 +725,13 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
         tokenize_time = 0.001  # Minimal time for single message
     
     # Calculate available context
-    input_tokens = inputs.input_ids.shape[1]
+    if isinstance(inputs, dict):
+        # New context concatenation approach
+        input_tokens = inputs["input_ids"].shape[1]
+    else:
+        # Original tensor approach
+        input_tokens = inputs.input_ids.shape[1]
+    
     max_output_tokens = min(req.max_tokens, 4096 - input_tokens)
     
     # Generation parameters
@@ -763,9 +769,16 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
     # Extract and clean response
     response_start = time.time()
     if hasattr(output, 'sequences'):
-        response_tokens = output.sequences[0][inputs.input_ids.shape[1]:]
+        if isinstance(inputs, dict):
+            response_tokens = output.sequences[0][inputs["input_ids"].shape[1]:]
+        else:
+            response_tokens = output.sequences[0][inputs.input_ids.shape[1]:]
     else:
-        response_tokens = output[0][inputs.input_ids.shape[1]:]
+        if isinstance(inputs, dict):
+            response_tokens = output[0][inputs["input_ids"].shape[1]:]
+        else:
+            response_tokens = output[0][inputs.input_ids.shape[1]:]
+    
     response = tokenizer.decode(response_tokens, skip_special_tokens=True).strip()
     response = clean_response(response)
     response_time = time.time() - response_start
