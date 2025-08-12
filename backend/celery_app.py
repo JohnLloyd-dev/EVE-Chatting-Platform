@@ -231,12 +231,14 @@ def call_ai_model(system_prompt: str, history: list, max_tokens: int = 150) -> s
             
             logger.info(f"Sending current user message: {current_user_message[:100]}...")
             
-            # Send the actual user message and get AI response
+            # Send chat request using existing session
             chat_response = client.post(
                 f"{settings.ai_model_url}/chat",
                 json={
                     "message": current_user_message,
-                    "max_tokens": max_tokens
+                    "max_tokens": max_tokens,
+                    "temperature": 0.7,  # Balanced creativity vs consistency
+                    "top_p": 0.9        # Focus on most likely tokens
                 },
                 cookies={"session_id": session_cookie},
                 auth=(settings.ai_model_auth_username, settings.ai_model_auth_password)
