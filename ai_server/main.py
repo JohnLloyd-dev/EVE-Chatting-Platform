@@ -333,7 +333,7 @@ def get_ultra_fast_generation_params(req: MessageRequest, max_output_tokens: int
             "early_stopping": False,    # No early stopping logic
             "length_penalty": 1.0,      # No length penalty
             "typical_p": 1.0,           # No typical sampling
-            "top_k": 20,                # Very limited token selection for maximum speed
+            "top_k": 15,                # Very limited token selection for maximum speed
             "do_sample": True,          # Enable sampling for creativity
             "use_cache": True,          # Enable KV cache
             "return_dict_in_generate": False,  # Skip dict conversion
@@ -347,7 +347,7 @@ def get_ultra_fast_generation_params(req: MessageRequest, max_output_tokens: int
             "early_stopping": False,    # No early stopping logic
             "length_penalty": 1.0,      # No length penalty
             "typical_p": 1.0,           # No typical sampling
-            "top_k": 30,                # Limited token selection for speed
+            "top_k": 25,                # Limited token selection for speed
             "do_sample": True,          # Enable sampling for creativity
             "use_cache": True,          # Enable KV cache
             "return_dict_in_generate": False,  # Skip dict conversion
@@ -361,7 +361,7 @@ def get_ultra_fast_generation_params(req: MessageRequest, max_output_tokens: int
             "early_stopping": False,     # Disable for speed
             "length_penalty": 1.0,       # No length penalty
             "typical_p": 0.98,           # Very slight typical sampling
-            "top_k": 80,                 # Balanced token selection
+            "top_k": 60,                 # Balanced token selection
             "use_cache": True,           # Enable KV cache
         })
     
@@ -404,6 +404,46 @@ def clean_response(response: str) -> str:
         if last_period != -1:
             return response[:last_period+1]
     return response.strip()
+
+# OPTIMIZATION: Ultra-aggressive context trimming for maximum speed
+def trim_history_ultra_aggressive(system: str, history: list, max_tokens: int = 2000) -> list:
+    """Ultra-aggressive history trimming for maximum speed"""
+    # Calculate system tokens once
+    system_tokens = count_tokens_ultra_fast(f"<|system|>\n{system.strip()}\n")
+    total_tokens = system_tokens
+    keep_messages = []
+    
+    # Reserve tokens for new interaction (very aggressive)
+    reserved_tokens = 200  # Reduced from 300 for maximum speed
+    
+    # Process in reverse order (newest first) for better context preservation
+    # But limit to maximum 4 messages for ultra-speed
+    max_messages = 4  # Reduced from 6 for maximum speed
+    
+    for msg in reversed(history):
+        if len(keep_messages) >= max_messages:
+            break
+            
+        if msg.startswith("User:"):
+            prefix = "User:"
+            formatted_msg = f"<|user|>\n{msg[len(prefix):].strip()}\n"
+        elif msg.startswith("AI:"):
+            prefix = "AI:"
+            formatted_msg = f"<|assistant|>\n{msg[len(prefix):].strip()}\n"
+        else:
+            continue
+        
+        # Ultra-fast token counting
+        msg_tokens = count_tokens_ultra_fast(formatted_msg)
+        
+        # Check token budget
+        if total_tokens + msg_tokens + reserved_tokens > max_tokens:
+            break
+            
+        total_tokens += msg_tokens
+        keep_messages.insert(0, msg)  # Insert at beginning to maintain order
+    
+    return keep_messages
 
 # OPTIMIZATION: Advanced context trimming with intelligent selection
 def trim_history_advanced(system: str, history: list, max_tokens: int = 3000) -> list:
@@ -519,16 +559,16 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
     with session_lock:
         if (session := user_sessions.get(session_id)) is None:
             raise HTTPException(404, "Session not found")
-        
+    
         # Add user message to history
         session["history"].append(f"User: {req.message}")
         
         # Trim history with optimizations
         trim_start = time.time()
-        session["history"] = trim_history_advanced(
+        session["history"] = trim_history_ultra_aggressive(
             system=session["system_prompt"],
             history=session["history"],
-            max_tokens=3000
+            max_tokens=2000
         )
         trim_time = time.time() - trim_start
         

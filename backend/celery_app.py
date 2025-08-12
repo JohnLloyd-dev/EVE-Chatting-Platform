@@ -234,7 +234,7 @@ def call_ai_model(system_prompt: str, history: list, max_tokens: int = 150) -> s
                 context_messages = history[:-1]  # All messages except the current one
                 
                 # OPTIMIZATION: Limit context messages for speed
-                max_context_messages = 6  # Limit to 6 messages for faster processing
+                max_context_messages = 4  # Reduced from 6 to 4 for maximum speed
                 if len(context_messages) > max_context_messages:
                     logger.info(f"Limiting context to {max_context_messages} messages for speed (from {len(context_messages)})")
                     context_messages = context_messages[-max_context_messages:]  # Take most recent
@@ -246,7 +246,7 @@ def call_ai_model(system_prompt: str, history: list, max_tokens: int = 150) -> s
                             f"{settings.ai_model_url}/chat",
                             json={
                                 "message": msg,
-                                "max_tokens": 30,  # ← OPTIMIZED: Reduced for speed
+                                "max_tokens": 20,  # ← OPTIMIZED: Further reduced for maximum speed
                                 "temperature": 0.1,  # Low temperature for context building
                                 "top_p": 0.8,        # Focused sampling for context
                                 "speed_mode": True   # ← OPTIMIZED: Enable speed mode for context
