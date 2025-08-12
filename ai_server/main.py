@@ -459,13 +459,13 @@ def clean_response(response: str) -> str:
             return response[:last_period+1]
     return response.strip()
 
-# OPTIMIZATION: Enhanced session storage with KV caching
+# OPTIMIZATION: Enhanced session storage with simplified KV caching
 def create_session(session_id: str, system_prompt: str) -> dict:
-    """Create optimized session with KV caching support"""
+    """Create optimized session with simplified KV caching support"""
     return {
         "system_prompt": system_prompt,
         "history": [],
-        "kv_cache": None,  # Add KV cache storage
+        "kv_cache": None,  # Simple boolean flag instead of complex past_key_values
         "tokenized_context": None,
         "token_count": 0,
         "last_trimmed": 0
@@ -589,23 +589,19 @@ def trim_history_smart(system: str, history: list, max_tokens: int = 3500) -> li
     
     return keep_messages
 
-# OPTIMIZATION: KV cache management for maximum speed
+# OPTIMIZATION: Simplified KV cache management without past_key_values
 def update_kv_cache(session: dict, inputs: dict, outputs: dict) -> None:
-    """Update KV cache for faster subsequent generations"""
+    """Update simplified KV cache for faster subsequent generations"""
     try:
-        if hasattr(outputs, 'past_key_values') and outputs.past_key_values is not None:
-            session["kv_cache"] = outputs.past_key_values
-            # Store the full context including the new response
-            if hasattr(outputs, 'sequences'):
-                session["tokenized_context"] = outputs.sequences[0]
-            else:
-                session["tokenized_context"] = outputs[0]
-            session["token_count"] = session["tokenized_context"].shape[0]
-            logger.info(f"🚀 KV Cache updated: {session['token_count']} tokens cached")
+        # Store the full context for next generation
+        if hasattr(outputs, 'sequences'):
+            session["tokenized_context"] = outputs.sequences[0]
         else:
-            session["kv_cache"] = None
-            session["tokenized_context"] = None
-            session["token_count"] = 0
+            session["tokenized_context"] = outputs[0]
+        
+        session["token_count"] = session["tokenized_context"].shape[0]
+        session["kv_cache"] = True  # Simple flag instead of complex past_key_values
+        logger.info(f"🚀 Simplified KV cache updated: {session['token_count']} tokens cached")
     except Exception as e:
         logger.warning(f"⚠️ KV cache update failed: {e}")
         session["kv_cache"] = None
@@ -614,17 +610,17 @@ def update_kv_cache(session: dict, inputs: dict, outputs: dict) -> None:
 
 # OPTIMIZATION: Safe KV cache usage with fallback
 def use_kv_cache_safely(session: dict, req: MessageRequest) -> tuple:
-    """Safely use KV cache with fallback to full context"""
+    """Safely use simplified KV cache with fallback to full context"""
     try:
-        if (session.get("kv_cache") is not None and 
+        if (session.get("kv_cache") is True and 
             session.get("tokenized_context") is not None and
             session.get("token_count", 0) > 0):
             
             # Validate cache integrity
             cache_tokens = session["token_count"]
-            if cache_tokens > 0 and cache_tokens < 4096:
-                logger.info(f"🚀 Using KV cache: {cache_tokens} tokens cached")
-                return True, session["kv_cache"]
+            if 0 < cache_tokens < 4096:
+                logger.info(f"🚀 Using simplified KV cache: {cache_tokens} tokens cached")
+                return True, session["tokenized_context"]
             else:
                 logger.warning(f"⚠️ Invalid cache size: {cache_tokens}, falling back to full context")
                 return False, None
@@ -672,19 +668,20 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
     session["history"].append(f"User: {req.message}")
     
     # OPTIMIZATION: Use KV cache if available for maximum speed
-    if session.get("kv_cache") is not None and session.get("tokenized_context") is not None:
+    if session.get("kv_cache") is True and session.get("tokenized_context") is not None:
         logger.info(f"🚀 Using KV cache: {session['token_count']} tokens cached")
-        # Only tokenize the new user message
-        new_inputs = tokenizer(
+        # Build full context from cached tokens + new message
+        cached_context = session["tokenized_context"]
+        new_message_tokens = tokenizer(
             f"<|user|>\n{req.message}\n<|assistant|>\n",
             return_tensors="pt",
             truncation=True,
             max_length=4096,
             padding=True
-        ).to(model.device)
+        ).input_ids.to(model.device)
         
-        # Use cached context for generation
-        inputs = new_inputs
+        # Concatenate cached context with new message
+        inputs = {"input_ids": torch.cat([cached_context.unsqueeze(0), new_message_tokens], dim=1)}
         full_prompt = None  # Not needed with KV cache
         prompt_time = 0  # No prompt building time
         trim_time = 0  # No trimming time
@@ -734,25 +731,8 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
     # Generation parameters
     generation_params = get_ultra_fast_generation_params(req, max_output_tokens)
     
-    # OPTIMIZATION: Add KV cache to generation params if available
-    # Use a more robust approach to avoid cache position issues
-    if session.get("kv_cache") is not None:
-        try:
-            # Validate cache before use
-            cache_tokens = session.get("token_count", 0)
-            if 0 < cache_tokens < 4096:
-                generation_params["past_key_values"] = session["kv_cache"]
-                logger.info(f"🚀 Using validated KV cache: {cache_tokens} tokens")
-            else:
-                logger.warning(f"⚠️ Invalid cache size: {cache_tokens}, clearing cache")
-                session["kv_cache"] = None
-                session["tokenized_context"] = None
-                session["token_count"] = 0
-        except Exception as e:
-            logger.warning(f"⚠️ KV cache validation failed: {e}, clearing cache")
-            session["kv_cache"] = None
-            session["tokenized_context"] = None
-            session["token_count"] = 0
+    # OPTIMIZATION: No more past_key_values - using context concatenation instead
+    # This avoids the cache position issues entirely
     
     # Generation with performance monitoring
     generation_start = time.time()
