@@ -15,6 +15,7 @@ if self.request.retries < self.max_retries:
 **Impact**: Users waited **60+ seconds** for AI responses when AI server was temporarily unavailable.
 
 **Fix Applied**:
+
 ```python
 # ✅ AFTER (Progressive retry delays):
 retry_delays = [5, 15, 30]  # ← Progressive delays: 5s, 15s, 30s
@@ -40,6 +41,7 @@ with httpx.Client(timeout=30.0) as client:  # ← Only 30 seconds!
 **Impact**: Long AI responses would timeout and fail.
 
 **Fix Applied**:
+
 ```python
 # ✅ AFTER (Extended timeout for AI generation):
 # AI generation can take 45-90 seconds for complex responses
@@ -55,6 +57,7 @@ with httpx.Client(timeout=90.0) as client:  # ← FIXED: Extended timeout for AI
 **Impact**: Tasks failed immediately if AI server was down, instead of graceful handling.
 
 **Fix Applied**:
+
 ```python
 # ✅ AFTER (Health check before requests):
 logger.info("🏥 Checking AI server health before request...")
@@ -79,6 +82,7 @@ except Exception as health_error:
 **Problem**: Celery saved error messages to database on every failure, cluttering conversation history.
 
 **Fix Applied**:
+
 ```python
 # ✅ AFTER (Only save errors on final failure):
 # Don't save error message to database on retries
@@ -107,6 +111,7 @@ except Exception as db_error:
 ## ✅ **Celery Configuration Improvements Implemented**
 
 ### **1. Task Processing Optimization**
+
 ```python
 celery_app.conf.update(
     # AI Server Integration Optimizations
@@ -125,6 +130,7 @@ celery_app.conf.update(
 ```
 
 ### **2. Enhanced Logging & Monitoring**
+
 - **Retry logging**: `🔄 Retrying task X, attempt Y/Z, delay: Ns`
 - **Error logging**: `📝 Error: [detailed error message]`
 - **Health check logging**: `🏥 Checking AI server health before request...`
@@ -133,6 +139,7 @@ celery_app.conf.update(
 ## 🔧 **Technical Fixes Applied**
 
 ### **Backend (`celery_app.py`)**
+
 ```python
 # Fixed retry mechanism
 retry_delays = [5, 15, 30]  # Progressive delays instead of 60s each
@@ -152,6 +159,7 @@ raise self.retry(countdown=delay, exc=exc)
 ```
 
 ### **Celery Configuration**
+
 ```python
 # Task processing optimization
 task_acks_late=True,  # Ensure task completion before acknowledgment
@@ -167,6 +175,7 @@ task_send_sent_event=True,
 ## 🧪 **Celery Integration Testing**
 
 ### **Test Suite Created**
+
 - **`test_celery_integration.py`** - Comprehensive Celery-AI server testing
 - **Redis connection** testing
 - **Celery worker status** verification
@@ -176,6 +185,7 @@ task_send_sent_event=True,
 - **AI server integration** testing
 
 ### **Test Coverage**
+
 1. **Redis Connection** - Message broker availability
 2. **Celery Worker Status** - Worker process verification
 3. **Celery Task Creation** - End-to-end task processing
@@ -186,12 +196,14 @@ task_send_sent_event=True,
 ## 📊 **Expected Results After Fixes**
 
 ### **Before Fixes:**
+
 - ❌ **60-second delays** for retry attempts
 - ❌ **AI response timeouts** after 30 seconds
 - ❌ **Immediate failures** when AI server down
 - ❌ **Cluttered conversation history** with error messages
 
 ### **After Fixes:**
+
 - ✅ **Progressive retry delays** (5s, 15s, 30s)
 - ✅ **Extended timeouts** (90s) for AI generation
 - ✅ **Health checking** before AI server requests
@@ -202,11 +214,13 @@ task_send_sent_event=True,
 ## 🚀 **Deployment & Verification**
 
 ### **Files Modified**
+
 1. **`backend/celery_app.py`** - Fixed retry logic, timeouts, and error handling
 2. **`test_celery_integration.py`** - Celery integration test suite
 3. **`CELERY_INTEGRATION_FIXES.md`** - This documentation
 
 ### **Verification Steps**
+
 1. **Deploy updated backend** with Celery fixes
 2. **Run Celery integration tests**: `python3 test_celery_integration.py`
 3. **Check Celery worker logs** for improved logging
@@ -214,6 +228,7 @@ task_send_sent_event=True,
 5. **Test AI server communication** with extended timeouts
 
 ### **Monitoring Points**
+
 - **Retry logs**: `🔄 Retrying task X, attempt Y/Z, delay: Ns`
 - **Health checks**: `🏥 Checking AI server health before request...`
 - **Task completion**: `✅ Celery task completed successfully!`
@@ -222,6 +237,7 @@ task_send_sent_event=True,
 ## 🎯 **Celery-AI Server Integration Architecture**
 
 ### **Communication Flow**
+
 ```
 User Message → Backend → Celery Task → AI Server Health Check → AI Generation
     ↓           ↓         ↓              ↓                      ↓
@@ -230,6 +246,7 @@ User Message → Backend → Celery Task → AI Server Health Check → AI Gener
 ```
 
 ### **Task Processing Flow**
+
 ```
 Task Created → Worker Picks Up → Health Check → AI Server Call → Response
      ↓              ↓               ↓            ↓              ↓
@@ -238,6 +255,7 @@ Task Created → Worker Picks Up → Health Check → AI Server Call → Respons
 ```
 
 ### **Retry Flow**
+
 ```
 Task Fails → Check Retry Count → Progressive Delay → Retry → Success/Fail
     ↓            ↓                ↓                ↓        ↓
@@ -251,16 +269,19 @@ Task Fails → Check Retry Count → Progressive Delay → Retry → Success/Fai
 ### **Common Problems & Solutions**
 
 1. **Task Timeouts**
+
    - Check `task_time_limit` and `task_soft_time_limit` settings
    - Verify AI server is responding within timeout
    - Check for long-running AI generation
 
 2. **Retry Failures**
+
    - Verify retry configuration in Celery settings
    - Check Redis connection for task persistence
    - Monitor worker logs for retry attempts
 
 3. **AI Server Communication**
+
    - Check AI server health endpoint
    - Verify authentication credentials
    - Monitor timeout settings for AI calls
@@ -282,6 +303,7 @@ These Celery-AI server integration fixes ensure:
 6. **Comprehensive Logging** for debugging and monitoring
 
 The Celery server now works **perfectly with the AI server**, providing:
+
 - **Efficient task processing** with proper timeouts
 - **Smart retry mechanisms** with progressive delays
 - **Health monitoring** for early issue detection
@@ -296,4 +318,4 @@ The Celery server now works **perfectly with the AI server**, providing:
 
 ---
 
-**Next Steps**: Deploy the updated backend with Celery fixes and run the integration tests to verify everything works together seamlessly. 
+**Next Steps**: Deploy the updated backend with Celery fixes and run the integration tests to verify everything works together seamlessly.

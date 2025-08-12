@@ -12,6 +12,7 @@ from uuid import uuid4
 import logging
 import re
 import threading
+import time # Added for performance monitoring
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -49,9 +50,10 @@ class InitScenario(BaseModel):
 
 class MessageRequest(BaseModel):
     message: str = Field(..., min_length=1)
-    max_tokens: int = Field(200, ge=50, le=500)  # Increased min tokens for better responses
-    temperature: float = Field(0.7, ge=0.1, le=1.0)  # Added temperature control
-    top_p: float = Field(0.9, ge=0.1, le=1.0)  # Added top-p sampling
+    max_tokens: int = Field(100, ge=20, le=500)  # ← OPTIMIZED: Reduced default for speed
+    temperature: float = Field(0.7, ge=0.1, le=1.0)
+    top_p: float = Field(0.9, ge=0.1, le=1.0)
+    speed_mode: bool = Field(False, description="Enable speed optimization mode")  # ← ADDED: Speed mode
 
 # Load model
 model_name = "teknium/OpenHermes-2.5-Mistral-7B"
@@ -321,46 +323,81 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
         
         logger.info(f"📤 Will generate up to {max_output_tokens} tokens")
     
-    # Enhanced generation with optimized parameters for accuracy
+    # Enhanced generation with speed-optimized parameters
+    generation_start_time = time.time()  # ← ADDED: Performance timing
+    
     with model_lock, torch.no_grad():
         try:
-            output = model.generate(
-                **inputs,
-                max_new_tokens=max_output_tokens,
-                temperature=req.temperature,
-                top_p=req.top_p,
-                do_sample=True,
-                num_beams=1,  # Disable beam search for more natural responses
-                pad_token_id=tokenizer.eos_token_id,
-                eos_token_id=tokenizer.eos_token_id,
-                repetition_penalty=1.1,  # ← FIXED: Reduced for better coherence
-                no_repeat_ngram_size=3,  # ← FIXED: Balanced for creativity vs repetition
-                early_stopping=True,
-                length_penalty=1.0,  # ← ADDED: Neutral length penalty
-                typical_p=0.9  # ← ADDED: Better token selection
-            )
+            # Choose generation parameters based on speed mode
+            if req.speed_mode:
+                # 🚀 SPEED MODE: Fast generation with minimal overhead
+                generation_params = {
+                    "max_new_tokens": max_output_tokens,
+                    "temperature": req.temperature,
+                    "top_p": req.top_p,
+                    "do_sample": True,
+                    "num_beams": 1,  # Single beam for speed
+                    "pad_token_id": tokenizer.eos_token_id,
+                    "eos_token_id": tokenizer.eos_token_id,
+                    # Speed optimizations - minimal processing overhead
+                    "repetition_penalty": 1.0,  # ← SPEED: No penalty calculation
+                    "no_repeat_ngram_size": 0,  # ← SPEED: No n-gram blocking
+                    "early_stopping": False,    # ← SPEED: No early stopping logic
+                    "length_penalty": 1.0,      # ← SPEED: No length penalty
+                    "typical_p": 1.0,           # ← SPEED: No typical sampling
+                    "use_cache": True,          # ← SPEED: Enable KV cache
+                    "return_dict_in_generate": False,  # ← SPEED: Skip dict conversion
+                }
+                logger.info("🚀 Using SPEED MODE for fast generation")
+            else:
+                # 🎯 ACCURACY MODE: Balanced quality and speed
+                generation_params = {
+                    "max_new_tokens": max_output_tokens,
+                    "temperature": req.temperature,
+                    "top_p": req.top_p,
+                    "do_sample": True,
+                    "num_beams": 1,
+                    "pad_token_id": tokenizer.eos_token_id,
+                    "eos_token_id": tokenizer.eos_token_id,
+                    # Balanced parameters for good quality
+                    "repetition_penalty": 1.1,
+                    "no_repeat_ngram_size": 3,
+                    "early_stopping": True,
+                    "length_penalty": 1.0,
+                    "typical_p": 0.9,
+                    "use_cache": True,
+                    "return_dict_in_generate": False,
+                }
+                logger.info("🎯 Using ACCURACY MODE for balanced quality")
+            
+            # Log generation parameters for debugging
+            logger.info(f"⚙️ Generation params: {generation_params}")
+            
+            output = model.generate(**inputs, **generation_params)
+            
         except RuntimeError as e:
             if "Half" in str(e) or "overflow" in str(e):
                 logger.warning(f"⚠️ Precision error: {e}")
                 # Retry with safer precision
                 inputs = {k: v.to(torch.float32) if torch.is_floating_point(v) else v for k, v in inputs.items()}
-                output = model.generate(
-                    **inputs,
-                    max_new_tokens=max_output_tokens,
-                    temperature=req.temperature,
-                    top_p=req.top_p,
-                    do_sample=True,
-                    pad_token_id=tokenizer.eos_token_id,
-                    eos_token_id=tokenizer.eos_token_id,
-                    repetition_penalty=1.1,  # ← FIXED: Consistent with above
-                    no_repeat_ngram_size=3,  # ← FIXED: Consistent with above
-                    early_stopping=True,
-                    length_penalty=1.0,  # ← ADDED: Consistent
-                    typical_p=0.9  # ← ADDED: Consistent
-                )
+                
+                # Use same generation parameters for retry
+                output = model.generate(**inputs, **generation_params)
             else:
                 logger.error(f"⚠️ Generation error: {e}")
                 raise HTTPException(500, "Model generation failed")
+    
+    # Performance monitoring
+    generation_time = time.time() - generation_start_time
+    tokens_per_second = max_output_tokens / generation_time if generation_time > 0 else 0
+    
+    logger.info(f"⏱️ Generation completed in {generation_time:.2f}s")
+    logger.info(f"🚀 Speed: {tokens_per_second:.1f} tokens/second")
+    
+    if req.speed_mode and generation_time > 5.0:
+        logger.warning(f"⚠️ Speed mode is slow: {generation_time:.2f}s (expected <5s)")
+    elif not req.speed_mode and generation_time > 10.0:
+        logger.warning(f"⚠️ Accuracy mode is slow: {generation_time:.2f}s (expected <10s)")
     
     # Extract and clean response
     response_tokens = output[0][inputs.input_ids.shape[1]:]
@@ -402,6 +439,82 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "model": model_name}
+
+# Speed test endpoint for performance benchmarking
+@app.post("/speed-test")
+async def speed_test(credentials: HTTPBasicCredentials = Depends(authenticate)):
+    """Test AI generation speed with different parameters"""
+    try:
+        test_prompts = [
+            "Hello, how are you?",
+            "What is the weather like today?",
+            "Explain quantum computing in simple terms.",
+            "Write a short poem about technology."
+        ]
+        
+        results = []
+        
+        for i, prompt in enumerate(test_prompts):
+            logger.info(f"🧪 Speed test {i+1}/4: {prompt}")
+            
+            # Test speed mode
+            start_time = time.time()
+            speed_response = await chat(MessageRequest(
+                message=prompt,
+                max_tokens=50,
+                temperature=0.7,
+                top_p=0.9,
+                speed_mode=True
+            ), MockRequest(), credentials)
+            speed_time = time.time() - start_time
+            
+            # Test accuracy mode
+            start_time = time.time()
+            accuracy_response = await chat(MessageRequest(
+                message=prompt,
+                max_tokens=50,
+                temperature=0.7,
+                top_p=0.9,
+                speed_mode=False
+            ), MockRequest(), credentials)
+            accuracy_time = time.time() - start_time
+            
+            results.append({
+                "prompt": prompt,
+                "speed_mode": {
+                    "time": round(speed_time, 2),
+                    "response": speed_response.get("response", "")[:100]
+                },
+                "accuracy_mode": {
+                    "time": round(accuracy_time, 2),
+                    "response": accuracy_response.get("response", "")[:100]
+                },
+                "speedup": round(accuracy_time / speed_time, 2) if speed_time > 0 else 0
+            })
+        
+        # Calculate averages
+        avg_speed_time = sum(r["speed_mode"]["time"] for r in results) / len(results)
+        avg_accuracy_time = sum(r["accuracy_mode"]["time"] for r in results) / len(results)
+        avg_speedup = avg_accuracy_time / avg_speed_time if avg_speed_time > 0 else 0
+        
+        return {
+            "test_results": results,
+            "summary": {
+                "average_speed_mode_time": round(avg_speed_time, 2),
+                "average_accuracy_mode_time": round(avg_accuracy_time, 2),
+                "average_speedup": round(avg_speedup, 2),
+                "recommendation": "Use speed_mode=True for faster responses" if avg_speedup > 1.5 else "Speed mode provides minimal benefit"
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Speed test failed: {e}")
+        raise HTTPException(500, f"Speed test failed: {str(e)}")
+
+# Mock request for speed testing
+class MockRequest:
+    def __init__(self):
+        self.cookies = {"session_id": "speed_test_session"}
 
 if __name__ == "__main__":
     import uvicorn
