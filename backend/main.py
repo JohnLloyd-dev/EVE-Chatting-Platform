@@ -76,11 +76,25 @@ def get_complete_system_prompt(db: Session, user_id: str = None, tally_prompt: s
     
     # Combine: Head + Tally + Rule
     complete_prompt = head_prompt
-    if tally_prompt.strip():
-        complete_prompt += " " + tally_prompt
-    complete_prompt += " " + rule_prompt
     
-    logger.info(f"Final combined system prompt: {complete_prompt[:300]}...")
+    # Add Tally scenario if provided
+    if tally_prompt and tally_prompt.strip():
+        logger.info(f"Adding Tally scenario: {tally_prompt[:100]}...")
+        complete_prompt += "\n\n**Scenario**:\n" + tally_prompt.strip()
+    else:
+        logger.warning("No Tally scenario provided to combine with system prompt")
+    
+    # Add rule prompt
+    complete_prompt += "\n\n" + rule_prompt
+    
+    # Log the combination process
+    logger.info(f"Combined prompt breakdown:")
+    logger.info(f"  - Head prompt length: {len(head_prompt)} characters")
+    logger.info(f"  - Tally scenario length: {len(tally_prompt) if tally_prompt else 0} characters")
+    logger.info(f"  - Rule prompt length: {len(rule_prompt)} characters")
+    logger.info(f"  - Final combined length: {len(complete_prompt)} characters")
+    logger.info(f"Final combined system prompt preview: {complete_prompt[:300]}...")
+    
     return complete_prompt
 
 # Legacy function for backward compatibility
@@ -164,6 +178,8 @@ async def tally_webhook(webhook_data: dict, db: Session = Depends(get_db)):
         try:
             scenario = generate_ai_scenario(form_data)
             logger.info(f"AI-generated scenario for user {user.user_code}: {scenario[:100]}...")
+            logger.info(f"Scenario length: {len(scenario)} characters")
+            logger.info(f"Scenario is empty: {not scenario or not scenario.strip()}")
         except Exception as e:
             logger.error(f"Failed to generate AI scenario: {str(e)}")
             # Fallback to empty scenario if AI generation fails
@@ -171,8 +187,10 @@ async def tally_webhook(webhook_data: dict, db: Session = Depends(get_db)):
         
         # Get active system prompt and combine with user scenario
         try:
+            logger.info(f"Calling get_complete_system_prompt with scenario length: {len(scenario)}")
             system_prompt = get_complete_system_prompt(db, tally_prompt=scenario)
             logger.info(f"Retrieved complete system prompt: {len(system_prompt)} characters")
+            logger.info(f"System prompt preview: {system_prompt[:300]}...")
         except Exception as e:
             logger.error(f"Failed to get system prompt: {str(e)}")
             system_prompt = "You are a helpful AI assistant. " + scenario
