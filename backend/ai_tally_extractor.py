@@ -150,16 +150,26 @@ class AITallyExtractor:
             # Map the actual questions from your Tally form - using EXACT matches
             if 'in this fantasy are you a man or a woman' in question:
                 user_gender = str(answer) if answer else ""  # This is what the USER is
+                logger.info(f"🎯 Found user gender: {user_gender}")
             elif 'gender of the other person' in question:
                 ai_gender = str(answer) if answer else ""    # This is what the AI should be
+                logger.info(f"🎯 Found AI gender: {ai_gender}")
             elif 'approximately ow old are they' in question or 'how old is the other person' in question:
-                ai_age = str(answer) if answer else ""       # This is the AI's age (handle typo)
+                # Only set if we don't already have an age (avoid duplicates)
+                if not ai_age:
+                    ai_age = str(answer) if answer else ""
+                    logger.info(f"🎯 Found AI age: {ai_age}")
             elif 'what is their ethnicity' in question or 'what is the ethnicity of the other person' in question:
-                ai_ethnicity = str(answer) if answer else "" # This is the AI's ethnicity
+                # Only set if we don't already have ethnicity (avoid duplicates)
+                if not ai_ethnicity:
+                    ai_ethnicity = str(answer) if answer else ""
+                    logger.info(f"🎯 Found AI ethnicity: {ai_ethnicity}")
             elif 'where does this take place' in question:
                 location = str(answer) if answer else ""
+                logger.info(f"🎯 Found location: {location}")
             elif 'who is in control' in question:
                 control = str(answer) if answer else ""
+                logger.info(f"🎯 Found control: {control}")
             elif 'describe to me in detail what would you like me to do to you' in question:
                 # This is the main action question - extract the actual activities
                 if isinstance(answer, list):
@@ -168,6 +178,7 @@ class AITallyExtractor:
                         activities.append(activity)
                 elif answer:
                     activities.append(answer)
+                logger.info(f"🎯 Found activities: {activities}")
             elif 'what else' in question:
                 # Additional activities question
                 if isinstance(answer, list):
@@ -175,16 +186,20 @@ class AITallyExtractor:
                         activities.append(activity)
                 elif answer:
                     activities.append(answer)
+                logger.info(f"🎯 Found additional activities: {activities}")
         
         # Build a comprehensive template that uses all available data
         template_parts = []
         
         # AI character setup (the "other person" from the form)
-        if ai_gender and ai_age:
-            if ai_ethnicity:
-                template_parts.append(f"You are a {ai_age} year old {ai_ethnicity.lower()} {ai_gender.lower()}.")
-            else:
-                template_parts.append(f"You are a {ai_age} year old {ai_gender.lower()}.")
+        if ai_gender and ai_age and ai_ethnicity:
+            template_parts.append(f"You are a {ai_age} year old {ai_ethnicity.lower()} {ai_gender.lower()}.")
+        elif ai_gender and ai_age:
+            template_parts.append(f"You are a {ai_age} year old {ai_gender.lower()}.")
+        elif ai_gender and ai_ethnicity:
+            template_parts.append(f"You are a {ai_ethnicity.lower()} {ai_gender.lower()}.")
+        elif ai_age and ai_ethnicity:
+            template_parts.append(f"You are a {ai_age} year old {ai_ethnicity.lower()} person.")
         elif ai_gender:
             template_parts.append(f"You are a {ai_gender.lower()}.")
         elif ai_age:
@@ -200,8 +215,8 @@ class AITallyExtractor:
         elif location:
             template_parts.append(f"We meet {location.lower()}.")
         
-        # Add location if we have it
-        if location and location not in [part for part in template_parts if location.lower() in part.lower()]:
+        # Add location if we have it (avoid duplicates)
+        if location and not any(location.lower() in part.lower() for part in template_parts):
             template_parts.append(f"This takes place {location.lower()}.")
         
         # Control dynamic (from the user's perspective in the form)
@@ -233,9 +248,17 @@ class AITallyExtractor:
         # Create a direct, factual scenario from the template
         scenario_text = " ".join(template_parts)
         
-        # Debug logging to see what was extracted
-        logger.info(f"🎯 Extracted elements: user_gender={user_gender}, ai_gender={ai_gender}, ai_age={ai_age}, ai_ethnicity={ai_ethnicity}, location={location}, control={control}, activities={activities}")
+        # Enhanced debug logging to see what was extracted
+        logger.info(f"🎯 Extracted elements:")
+        logger.info(f"  - user_gender: {user_gender}")
+        logger.info(f"  - ai_gender: {ai_gender}")
+        logger.info(f"  - ai_age: {ai_age}")
+        logger.info(f"  - ai_ethnicity: {ai_ethnicity}")
+        logger.info(f"  - location: {location}")
+        logger.info(f"  - control: {control}")
+        logger.info(f"  - activities: {activities}")
         logger.info(f"📝 Generated scenario: {scenario_text}")
+        logger.info(f"📝 Template parts: {template_parts}")
         
         # Simple prompt that just asks for natural flow without changing facts
         prompt_parts = [
