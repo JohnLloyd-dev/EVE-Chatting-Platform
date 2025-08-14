@@ -181,15 +181,28 @@ class AITallyExtractor:
         
         # AI character setup (the "other person" from the form)
         if ai_gender and ai_age and ai_ethnicity:
-            template_parts.append(f"You are a {ai_age} year old {ai_ethnicity.lower()} {ai_gender.lower()}.")
+            # Handle "a woman" vs "a man" properly
+            if ai_gender.lower().startswith('a '):
+                template_parts.append(f"You are an {ai_age} year old {ai_ethnicity.lower()} {ai_gender.lower()[2:]}.")
+            else:
+                template_parts.append(f"You are an {ai_age} year old {ai_ethnicity.lower()} {ai_gender.lower()}.")
         elif ai_gender and ai_age:
-            template_parts.append(f"You are a {ai_age} year old {ai_gender.lower()}.")
+            if ai_gender.lower().startswith('a '):
+                template_parts.append(f"You are an {ai_age} year old {ai_gender.lower()[2:]}.")
+            else:
+                template_parts.append(f"You are an {ai_age} year old {ai_gender.lower()}.")
         elif ai_age and ai_ethnicity:
-            template_parts.append(f"You are a {ai_age} year old {ai_ethnicity.lower()} person.")
+            template_parts.append(f"You are an {ai_age} year old {ai_ethnicity.lower()} person.")
         elif ai_gender and ai_ethnicity:
-            template_parts.append(f"You are a {ai_ethnicity.lower()} {ai_gender.lower()}.")
+            if ai_gender.lower().startswith('a '):
+                template_parts.append(f"You are a {ai_ethnicity.lower()} {ai_gender.lower()[2:]}.")
+            else:
+                template_parts.append(f"You are a {ai_ethnicity.lower()} {ai_gender.lower()}.")
         elif ai_gender:
-            template_parts.append(f"You are a {ai_gender.lower()}.")
+            if ai_gender.lower().startswith('a '):
+                template_parts.append(f"You are {ai_gender.lower()[2:]}.")
+            else:
+                template_parts.append(f"You are a {ai_gender.lower()}.")
         elif ai_age:
             template_parts.append(f"You are {ai_age} years old.")
         elif ai_ethnicity:
