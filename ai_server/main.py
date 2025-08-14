@@ -378,6 +378,10 @@ def build_chatml_prompt_ultra_fast(system: str, history: list) -> str:
                 parts.append(f"<|assistant|>\n{entry.strip()}\n")
     
     parts.append("<|assistant|>\n")
+    
+    # Add explicit instruction to only generate the AI's response
+    parts.append("Remember: Only generate YOUR response to the user. Do not include conversation history or user messages.\n")
+    
     return "".join(parts)  # Single join operation
 
 # OPTIMIZATION: Enhanced generation parameters for maximum speed
@@ -470,6 +474,13 @@ def clean_response(response: str) -> str:
     # Remove ALL ChatML tags from anywhere in the response
     response = CHATML_TAG_PATTERN.sub('', response)
     
+    # Remove any conversation history that might have leaked through
+    # Look for patterns like "User: message" or "AI: response" and remove them
+    response = re.sub(r'(?:User|AI|Assistant|Human):\s*[^\n]*\n?', '', response, flags=re.IGNORECASE)
+    
+    # Remove any system prompt text that might have leaked
+    response = re.sub(r'Remember: Only generate YOUR response.*?\.\n?', '', response, flags=re.IGNORECASE)
+    
     # Clean up any extra whitespace that might be left
     response = re.sub(r'\n\s*\n', '\n', response)  # Remove empty lines
     response = re.sub(r'^\s+', '', response)  # Remove leading whitespace
@@ -556,7 +567,7 @@ def test_chatml_cleaning():
 def create_session(session_id: str, system_prompt: str) -> dict:
     """Create optimized session with simplified KV caching support"""
     # Enhance system prompt to encourage complete sentences and discourage ChatML tags
-    enhanced_prompt = system_prompt + "\n\nIMPORTANT: Always provide complete, well-formed responses. Avoid cutting off mid-sentence. Ensure your responses are natural and conversational. NEVER include any formatting tags like <|assistant|>, <|user|>, or <|system|> in your responses - just provide clean, natural text."
+    enhanced_prompt = system_prompt + "\n\nCRITICAL INSTRUCTION: You are an AI assistant responding to a user. When you respond, ONLY provide YOUR response to the user's message. DO NOT include: 1) The conversation history, 2) User messages, 3) System prompts, 4) Any formatting tags like <|assistant|>, <|user|>, or <|system|>. Your response should be a single, natural message that directly answers what the user just said. Think of it as if you're in a live conversation - just respond naturally without repeating what was said before."
     
     return {
         "system_prompt": enhanced_prompt,
@@ -879,6 +890,22 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
         response = re.sub(r'<\|[\w]+\|>', '', response)
         response = re.sub(r'\n\s*\n', '\n', response)  # Clean up extra whitespace
         response = response.strip()
+    
+    # Final safety check: ensure no conversation history leaked through
+    if any(pattern in response.lower() for pattern in ['user:', 'ai:', 'assistant:', 'human:']):
+        logger.warning(f"⚠️ Conversation history detected in response, applying aggressive cleanup")
+        # Remove any lines that start with User:, AI:, Assistant:, or Human:
+        lines = response.split('\n')
+        cleaned_lines = []
+        for line in lines:
+            line_lower = line.lower().strip()
+            if not any(line_lower.startswith(pattern) for pattern in ['user:', 'ai:', 'assistant:', 'human:']):
+                cleaned_lines.append(line)
+        response = '\n'.join(cleaned_lines).strip()
+        
+        # If we removed everything, provide a fallback
+        if not response.strip():
+            response = "I apologize, but I need to provide a fresh response. Could you please repeat your question?"
     
     # Check if response is incomplete and retry with more tokens if needed
     if detect_incomplete_response(response) and req.max_tokens < 500:
