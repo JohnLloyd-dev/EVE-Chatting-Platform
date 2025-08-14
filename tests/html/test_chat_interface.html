@@ -256,7 +256,7 @@
       // Poll for AI response
       async function pollForResponse(taskId, attempts = 0) {
         if (attempts > 10) {
-          updateStatus("AI response timeout", "error");
+          updateStatus("give me a minute", "error");
           return;
         }
 
@@ -273,7 +273,7 @@
               "Sorry, I encountered an error. Please try again.",
               false
             );
-            updateStatus("AI response failed", "error");
+            updateStatus("I'm having trouble thinking right now", "error");
           } else {
             // Still processing, try again
             setTimeout(() => pollForResponse(taskId, attempts + 1), 2000);

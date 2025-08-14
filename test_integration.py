@@ -213,7 +213,7 @@ def test_backend_ai_integration():
                 
                 print(f"    Waiting... ({i+1}/10)")
             
-            print("❌ AI Response timeout")
+            print("❌ give me a minute")
             return False
                 
     except Exception as e:

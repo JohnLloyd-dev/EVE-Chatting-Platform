@@ -351,15 +351,14 @@ def build_chatml_prompt_ultra_fast(system: str, history: list) -> str:
     parts = [f"<|system|>\n{system.strip()}\n"]
     
     # Batch process history with minimal string operations
-    for entry in history:
-        if entry.startswith("User:"):
-            user_msg = entry[5:].strip()
-            if user_msg:
-                parts.append(f"<|user|>\n{user_msg}\n")
-        elif entry.startswith("AI:"):
-            ai_msg = entry[3:].strip()
-            if ai_msg:
-                parts.append(f"<|assistant|>\n{ai_msg}\n")
+    # Alternate between user and AI messages (user messages are even indices, AI responses are odd)
+    for i, entry in enumerate(history):
+        if i % 2 == 0:  # Even index = user message
+            if entry.strip():
+                parts.append(f"<|user|>\n{entry.strip()}\n")
+        else:  # Odd index = AI response
+            if entry.strip():
+                parts.append(f"<|assistant|>\n{entry.strip()}\n")
     
     parts.append("<|assistant|>\n")
     return "".join(parts)  # Single join operation
@@ -428,15 +427,14 @@ def build_chatml_prompt_batch(system: str, history: list) -> str:
     parts = [f"<|system|>\n{system.strip()}\n"]
     
     # Batch process history with minimal string operations
-    for entry in history:
-        if entry.startswith("User:"):
-            user_msg = entry[5:].strip()
-            if user_msg:
-                parts.append(f"<|user|>\n{user_msg}\n")
-        elif entry.startswith("AI:"):
-            ai_msg = entry[3:].strip()
-            if ai_msg:
-                parts.append(f"<|assistant|>\n{ai_msg}\n")
+    # Alternate between user and AI messages (user messages are even indices, AI responses are odd)
+    for i, entry in enumerate(history):
+        if i % 2 == 0:  # Even index = user message
+            if entry.strip():
+                parts.append(f"<|user|>\n{entry.strip()}\n")
+        else:  # Odd index = AI response
+            if entry.strip():
+                parts.append(f"<|assistant|>\n{entry.strip()}\n")
     
     parts.append("<|assistant|>\n")
     return "".join(parts)  # Single join operation
@@ -486,18 +484,16 @@ def trim_history_ultra_aggressive(system: str, history: list, max_tokens: int = 
     # But limit to maximum 4 messages for ultra-speed
     max_messages = 4  # Reduced from 6 for maximum speed
     
-    for msg in reversed(history):
+    for i, msg in enumerate(reversed(history)):
         if len(keep_messages) >= max_messages:
             break
-            
-        if msg.startswith("User:"):
-            prefix = "User:"
-            formatted_msg = f"<|user|>\n{msg[len(prefix):].strip()}\n"
-        elif msg.startswith("AI:"):
-            prefix = "AI:"
-            formatted_msg = f"<|assistant|>\n{msg[len(prefix):].strip()}\n"
-        else:
-            continue
+        
+        # Determine message type based on position (even = user, odd = AI)
+        msg_index = len(history) - 1 - i
+        if msg_index % 2 == 0:  # User message
+            formatted_msg = f"<|user|>\n{msg.strip()}\n"
+        else:  # AI response
+            formatted_msg = f"<|assistant|>\n{msg.strip()}\n"
         
         # Ultra-fast token counting
         msg_tokens = count_tokens_ultra_fast(formatted_msg)
@@ -526,18 +522,16 @@ def trim_history_advanced(system: str, history: list, max_tokens: int = 3000) ->
     # But limit to maximum 6 messages for speed
     max_messages = 6
     
-    for msg in reversed(history):
+    for i, msg in enumerate(reversed(history)):
         if len(keep_messages) >= max_messages:
             break
-            
-        if msg.startswith("User:"):
-            prefix = "User:"
-            formatted_msg = f"<|user|>\n{msg[len(prefix):].strip()}\n"
-        elif msg.startswith("AI:"):
-            prefix = "AI:"
-            formatted_msg = f"<|assistant|>\n{msg[len(prefix):].strip()}\n"
-        else:
-            continue
+        
+        # Determine message type based on position (even = user, odd = AI)
+        msg_index = len(history) - 1 - i
+        if msg_index % 2 == 0:  # User message
+            formatted_msg = f"<|user|>\n{msg.strip()}\n"
+        else:  # AI response
+            formatted_msg = f"<|assistant|>\n{msg.strip()}\n"
         
         # Ultra-fast token counting
         msg_tokens = count_tokens_ultra_fast(formatted_msg)
@@ -563,15 +557,13 @@ def trim_history_smart(system: str, history: list, max_tokens: int = 3500) -> li
     reserved_tokens = 400  # Reduced for more context
     
     # Process in reverse order (newest first) for better context preservation
-    for msg in reversed(history):
-        if msg.startswith("User:"):
-            prefix = "User:"
-            formatted_msg = f"<|user|>\n{msg[len(prefix):].strip()}\n"
-        elif msg.startswith("AI:"):
-            prefix = "AI:"
-            formatted_msg = f"<|assistant|>\n{msg[len(prefix):].strip()}\n"
-        else:
-            continue
+    for i, msg in enumerate(reversed(history)):
+        # Determine message type based on position (even = user, odd = AI)
+        msg_index = len(history) - 1 - i
+        if msg_index % 2 == 0:  # User message
+            formatted_msg = f"<|user|>\n{msg.strip()}\n"
+        else:  # AI response
+            formatted_msg = f"<|assistant|>\n{msg.strip()}\n"
         
         # Ultra-fast token counting
         msg_tokens = count_tokens_ultra_fast(formatted_msg)
@@ -664,8 +656,8 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
         if (session := user_sessions.get(session_id)) is None:
             raise HTTPException(404, "Session not found")
     
-    # Add user message to history
-    session["history"].append(f"User: {req.message}")
+    # Add user message to history (without prefix for cleaner AI responses)
+    session["history"].append(req.message)
     
     # OPTIMIZATION: Use KV cache if available for maximum speed
     if session.get("kv_cache") is True and session.get("tokenized_context") is not None:
@@ -813,10 +805,10 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
     if total_time > 5.0:  # Only optimize if response was slow
         optimize_memory_usage()
     
-    # Save to history
+    # Save to history (without prefix for cleaner AI responses)
     with session_lock:
         if session_id in user_sessions:
-            session["history"].append(f"AI: {response}")
+            session["history"].append(response)
     
     return {"response": response}
 

@@ -64,17 +64,17 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
           queryClient.invalidateQueries(["chatSession", userId]);
         } else if (response.status === "failed") {
           setIsProcessing(false);
-          toast.error("AI response failed");
+          toast.error("I'm having trouble thinking right now");
         } else if (attempts < maxAttempts) {
           attempts++;
           setTimeout(poll, 1000); // Poll every second
         } else {
           setIsProcessing(false);
-          toast.error("AI response timeout");
+          toast.error("give me a minute");
         }
       } catch (error) {
         setIsProcessing(false);
-        toast.error("Failed to get AI response status");
+        toast.error("Let me check on that for you");
       }
     };
 

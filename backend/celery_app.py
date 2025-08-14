@@ -80,13 +80,13 @@ def process_ai_response(self, session_id: str, user_message: str, max_tokens: in
             Message.is_admin_intervention == False  # Exclude admin messages from AI context
         ).order_by(Message.created_at).all()
         
-        # Build conversation history for AI
+        # Build conversation history for AI (without prefixes for cleaner responses)
         history = []
         for msg in messages:
             if msg.is_from_user:
-                history.append(f"User: {msg.content}")
+                history.append(msg.content)
             else:
-                history.append(f"AI: {msg.content}")
+                history.append(msg.content)
         
         # Handle AI-initiated messages differently
         if is_ai_initiated:
@@ -94,8 +94,8 @@ def process_ai_response(self, session_id: str, user_message: str, max_tokens: in
             # Just use the message as the AI's intended response
             ai_response = user_message  # "hi" in this case
         else:
-            # Add current user message
-            history.append(f"User: {user_message}")
+            # Add current user message (without prefix)
+            history.append(user_message)
             
             # Call AI model API with full conversation history
             combined_prompt = chat_session.scenario_prompt
@@ -267,10 +267,9 @@ def call_ai_model(system_prompt: str, history: list, max_tokens: int = 150) -> s
             
             # Get the current user message (last in history)
             current_user_message = None
-            for msg in reversed(history):
-                if msg.startswith("User: "):
-                    current_user_message = msg[6:]  # Remove "User: " prefix
-                    break
+            # Since we're alternating between user and AI messages, the last message should be the user's
+            if history and len(history) > 0:
+                current_user_message = history[-1]  # Last message is the user's
             
             if not current_user_message:
                 raise Exception("No current user message found in history")
@@ -353,7 +352,7 @@ def clean_ai_response(raw_response: str) -> str:
             if any(marker in line.lower() for marker in ['< |user|', '<|user|', 'user:', '<!assistant!>', '<|assistant|>', '<!---', '-|assistent|>', '<!--', '-->']):
                 break
                 
-            # Skip lines that look like conversation formatting
+            # Skip lines that look like conversation formatting (these shouldn't appear anymore)
             if line.startswith(('User:', 'AI:', 'Assistant:', 'Human:')):
                 continue
                 

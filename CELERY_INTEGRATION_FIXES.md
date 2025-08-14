@@ -198,7 +198,7 @@ task_send_sent_event=True,
 ### **Before Fixes:**
 
 - ❌ **60-second delays** for retry attempts
-- ❌ **AI response timeouts** after 30 seconds
+- ❌ **AI response timeouts** after 30 seconds (now shows "give me a minute")
 - ❌ **Immediate failures** when AI server down
 - ❌ **Cluttered conversation history** with error messages
 

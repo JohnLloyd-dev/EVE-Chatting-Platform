@@ -38,11 +38,12 @@ model.eval()  # Enable evaluation mode
 # Helper to build ChatML format prompt
 def build_chatml_prompt(system, history):
     prompt = f"<|system|>\n{system.strip()}\n"
-    for entry in history:
-        if entry.startswith("User:"):
-            prompt += f"<|user|>\n{entry[5:].strip()}\n"
-        elif entry.startswith("AI:"):
-            prompt += f"<|assistant|>\n{entry[3:].strip()}\n"
+    # Alternate between user and AI messages (user messages are even indices, AI responses are odd)
+    for i, entry in enumerate(history):
+        if i % 2 == 0:  # Even index = user message
+            prompt += f"<|user|>\n{entry.strip()}\n"
+        else:  # Odd index = AI response
+            prompt += f"<|assistant|>\n{entry.strip()}\n"
     prompt += "<|assistant|>\n"
     return prompt
 
@@ -96,8 +97,8 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
     if (session := user_sessions.get(session_id)) is None:
         raise HTTPException(404, "Session not found")
     
-    # Add user message to history
-    session["history"].append(f"User: {req.message}")
+    # Add user message to history (without prefix for cleaner AI responses)
+    session["history"].append(req.message)
     
     # Trim history to fit context window
     session["history"] = trim_history(
@@ -149,8 +150,8 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
         skip_special_tokens=True
     ).strip()
     
-    # Save AI response to history
-    session["history"].append(f"AI: {response}")
+    # Save AI response to history (without prefix for cleaner AI responses)
+    session["history"].append(response)
     return {"response": response}
 
 @app.post("/tally-scenario")
