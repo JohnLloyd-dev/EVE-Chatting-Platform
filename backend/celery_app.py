@@ -209,23 +209,27 @@ def call_ai_model(system_prompt: str, history: list, max_tokens: int = 300) -> s
         # Prepare the request with extended timeout for AI generation
         # AI generation can take 45-90 seconds for complex responses
         with httpx.Client(timeout=90.0) as client:  # ← FIXED: Extended timeout for AI generation
-            # Always create new AI session (simpler and more reliable)
-            logger.info("Creating new AI session with full conversation context...")
-            scenario_response = client.post(
-                f"{settings.ai_model_url}/scenario",
-                json={"scenario": system_prompt},
+            # Initialize AI session with the correct session ID and system prompt from backend
+            logger.info("Initializing AI session with backend data...")
+            
+            # Use the session ID from the database (not generate a new one)
+            session_id = str(session_id)  # Convert UUID to string
+            
+            init_response = client.post(
+                f"{settings.ai_model_url}/init-session",
+                json={
+                    "session_id": session_id,
+                    "system_prompt": system_prompt
+                },
                 auth=(settings.ai_model_auth_username, settings.ai_model_auth_password)
             )
             
-            if scenario_response.status_code != 200:
-                raise Exception(f"Failed to set scenario: {scenario_response.text}")
+            if init_response.status_code != 200:
+                raise Exception(f"Failed to initialize session: {init_response.text}")
             
-            # Get session cookie
-            session_cookie = scenario_response.cookies.get("session_id")
-            if not session_cookie:
-                raise Exception("No session ID received from AI model")
-            
-            logger.info(f"Created AI session: {session_cookie}")
+            # Use the session ID we sent (not from cookies)
+            session_cookie = session_id
+            logger.info(f"Initialized AI session: {session_cookie}")
             
             # Build conversation context by sending all previous messages
             # This ensures the AI has full conversation history even after restarts

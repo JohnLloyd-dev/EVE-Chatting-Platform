@@ -737,7 +737,35 @@ def authenticate(credentials: HTTPBasicCredentials = Depends(security)):
     if not (correct_username and correct_password):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-# Scenario setter
+# Session initializer - backend calls this to set up sessions with correct system prompts
+@app.post("/init-session")
+async def init_session(session_data: dict, request: Request, credentials: HTTPBasicCredentials = Depends(authenticate)):
+    """
+    Initialize a session with system prompt and other data from the backend
+    This ensures the AI server has the correct session data including Tally scenarios
+    """
+    session_id = session_data.get("session_id")
+    system_prompt = session_data.get("system_prompt", "")
+    
+    if not session_id:
+        raise HTTPException(400, "Missing session_id")
+    
+    if not system_prompt:
+        raise HTTPException(400, "Missing system_prompt")
+    
+    with session_lock:
+        # Create session with the correct system prompt from backend
+        user_sessions[session_id] = create_session(session_id, system_prompt)
+        
+        # Log the session initialization
+        enhanced_prompt = user_sessions[session_id]["system_prompt"]
+        logger.info(f"🎯 Session {session_id} initialized with backend data")
+        logger.info(f"📝 System prompt length: {len(system_prompt)} characters")
+        logger.info(f"📝 Enhanced prompt preview: {enhanced_prompt[:200]}...")
+    
+    return {"message": "Session initialized successfully", "session_id": session_id}
+
+# Scenario setter (legacy - kept for backward compatibility)
 @app.post("/scenario")
 async def set_scenario(scenario: InitScenario, request: Request, credentials: HTTPBasicCredentials = Depends(authenticate)):
     session_id = request.cookies.get("session_id", str(uuid4()))
@@ -761,15 +789,30 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
     # Performance monitoring start
     total_start_time = time.time()
     
-    # Get session ID
-    if (session_id := request.cookies.get("session_id")) is None:
+    # Get session ID from request
+    session_id = request.cookies.get("session_id")
+    if not session_id:
         raise HTTPException(400, "Missing session ID")
     
-    # Retrieve session
+    # Check if we have this session in memory
     session_start = time.time()
     with session_lock:
-        if (session := user_sessions.get(session_id)) is None:
-            raise HTTPException(404, "Session not found")
+        session = user_sessions.get(session_id)
+        
+        # If session not found in memory, create it with data from backend
+        if session is None:
+            logger.info(f"🔄 Session {session_id} not found in memory, creating new session")
+            
+            # Get session data from backend (this should include the correct system prompt)
+            try:
+                # For now, create a default session - the backend should provide the system prompt
+                # The real fix is to get this data from the backend
+                session = create_session(session_id, "You are playing the role of a human in a live chat conversation. You are not an AI. You must act like a real person having a natural conversation in a specific scenario.")
+                user_sessions[session_id] = session
+                logger.warning(f"⚠️ Created default session for {session_id} - backend should provide correct system prompt")
+            except Exception as e:
+                logger.error(f"❌ Failed to create session: {e}")
+                raise HTTPException(500, "Failed to create session")
     
     # Add user message to history (without prefix for cleaner AI responses)
     session["history"].append(req.message)
