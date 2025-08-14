@@ -104,7 +104,7 @@ def process_ai_response(self, session_id: str, user_message: str, max_tokens: in
             logger.info(f"Session scenario preview: {combined_prompt[:300]}...")
             
             # Call AI model API - will create new session with full context
-            ai_response = call_ai_model(combined_prompt, history, max_tokens)
+            ai_response = call_ai_model(combined_prompt, history, max_tokens, str(session_id))
         
         # Save AI response to database
         ai_message = Message(
@@ -181,7 +181,7 @@ def process_ai_response(self, session_id: str, user_message: str, max_tokens: in
             "error": str(exc)
         }
 
-def call_ai_model(system_prompt: str, history: list, max_tokens: int = 300) -> str:
+def call_ai_model(system_prompt: str, history: list, max_tokens: int = 300, session_id: str = None) -> str:
     """
     Call the AI model API with improved timeout and health checking
     Always creates new AI session with full conversation history for context
@@ -213,12 +213,14 @@ def call_ai_model(system_prompt: str, history: list, max_tokens: int = 300) -> s
             logger.info("Initializing AI session with backend data...")
             
             # Use the session ID from the database (not generate a new one)
-            session_id = str(session_id)  # Convert UUID to string
+            if session_id is None:
+                raise Exception("Session ID is required for AI model initialization")
+            session_id_str = str(session_id)  # Convert UUID to string
             
             init_response = client.post(
                 f"{settings.ai_model_url}/init-session",
                 json={
-                    "session_id": session_id,
+                    "session_id": session_id_str,
                     "system_prompt": system_prompt
                 },
                 auth=(settings.ai_model_auth_username, settings.ai_model_auth_password)
@@ -228,7 +230,7 @@ def call_ai_model(system_prompt: str, history: list, max_tokens: int = 300) -> s
                 raise Exception(f"Failed to initialize session: {init_response.text}")
             
             # Use the session ID we sent (not from cookies)
-            session_cookie = session_id
+            session_cookie = session_id_str
             logger.info(f"Initialized AI session: {session_cookie}")
             
             # Build conversation context by sending all previous messages
