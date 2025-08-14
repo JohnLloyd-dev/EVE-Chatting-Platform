@@ -140,6 +140,21 @@ def optimize_model_for_speed():
     except Exception as e:
         logger.info(f"Flash Attention 2 not available: {e}")
     
+    # OPTIMIZATION: Force performance mode for maximum speed
+    if hasattr(torch, 'cuda') and torch.cuda.is_available():
+        # Set CUDA device to maximum performance
+        torch.cuda.set_device(0)
+        torch.cuda.empty_cache()
+        
+        # Force memory optimization
+        if hasattr(torch.cuda, 'amp'):
+            torch.cuda.amp.autocast(enabled=True)
+        
+        # Set memory fraction for maximum performance
+        torch.cuda.set_per_process_memory_fraction(0.95)
+        
+        logger.info("🚀 CUDA performance mode enabled")
+    
     logger.info("🚀 Model optimized for maximum speed")
 
 # OPTIMIZATION: Preload model with optimized settings
@@ -388,10 +403,12 @@ def get_ultra_fast_generation_params(req: MessageRequest, max_output_tokens: int
             "early_stopping": False,    # No early stopping logic
             "length_penalty": 1.0,      # No length penalty
             "typical_p": 1.0,           # No typical sampling
-            "top_k": 25,                # Increased for better sentence completion
+            "top_k": 10,                # Very limited for maximum speed
             "do_sample": True,          # Enable sampling for creativity
             "use_cache": True,          # Enable KV cache
             "return_dict_in_generate": False,  # Skip dict conversion
+            "attention_mask": None,     # Skip attention mask for speed
+            "position_ids": None,       # Skip position IDs for speed
         })
     elif req.speed_mode:
         # 🚀 SPEED MODE: Fast generation with minimal overhead
@@ -402,10 +419,11 @@ def get_ultra_fast_generation_params(req: MessageRequest, max_output_tokens: int
             "early_stopping": False,    # No early stopping logic
             "length_penalty": 1.0,      # No length penalty
             "typical_p": 1.0,           # No typical sampling
-            "top_k": 25,                # Limited token selection for speed
+            "top_k": 15,                # Limited token selection for speed
             "do_sample": True,          # Enable sampling for creativity
             "use_cache": True,          # Enable KV cache
             "return_dict_in_generate": False,  # Skip dict conversion
+            "attention_mask": None,     # Skip attention mask for speed
         })
     else:
         # 🎯 ACCURACY MODE: Balanced quality and speed
@@ -715,6 +733,12 @@ async def set_scenario(scenario: InitScenario, request: Request, credentials: HT
     
     with session_lock:
         user_sessions[session_id] = create_session(session_id, scenario.scenario)
+        
+        # Log the scenario being set for debugging
+        enhanced_prompt = user_sessions[session_id]["system_prompt"]
+        logger.info(f"🎯 Scenario set for session {session_id}")
+        logger.info(f"📝 Original prompt: {scenario.scenario[:200]}...")
+        logger.info(f"📝 Enhanced prompt: {enhanced_prompt[:200]}...")
     
     response = JSONResponse({"message": "Scenario set!"})
     response.set_cookie(key="session_id", value=session_id, httponly=True)
@@ -739,62 +763,47 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
     # Add user message to history (without prefix for cleaner AI responses)
     session["history"].append(req.message)
     
-    # OPTIMIZATION: Use KV cache if available for maximum speed
-    if session.get("kv_cache") is True and session.get("tokenized_context") is not None:
-        logger.info(f"🚀 Using KV cache: {session['token_count']} tokens cached")
-        # Build full context from cached tokens + new message
-        cached_context = session["tokenized_context"]
-        new_message_tokens = tokenizer(
-            f"<|user|>\n{req.message}\n<|assistant|>\n",
-            return_tensors="pt",
-            truncation=True,
-            max_length=4096,
-            padding=True
-        ).input_ids.to(model.device)
-        
-        # Concatenate cached context with new message
-        inputs = {"input_ids": torch.cat([cached_context.unsqueeze(0), new_message_tokens], dim=1)}
-        full_prompt = None  # Not needed with KV cache
-        prompt_time = 0  # No prompt building time
-        trim_time = 0  # No trimming time
-    else:
-        logger.info("🔄 Building full context (no KV cache available)")
-        # Trim history with optimizations
-        trim_start = time.time()
-        session["history"] = trim_history_ultra_aggressive(
-            system=session["system_prompt"],
-            history=session["history"],
-            max_tokens=2000
-        )
-        trim_time = time.time() - trim_start
-        
-        # Build prompt
-        prompt_start = time.time()
-        full_prompt = build_chatml_prompt_ultra_fast(
-            session["system_prompt"],
-            session["history"]
-        )
-        prompt_time = time.time() - prompt_start
-        
-        # Tokenize full prompt
-        inputs = tokenizer(
-            full_prompt,
-            return_tensors="pt",
-            truncation=True,
-            max_length=4096,
-            padding=True
-        ).to(model.device)
+    # OPTIMIZATION: Always build full context to ensure system prompt is included
+    # KV cache approach was broken - it bypassed system prompt and context
+    logger.info("🔄 Building full context (ensuring system prompt is included)")
+    
+    # Trim history with optimizations
+    trim_start = time.time()
+    session["history"] = trim_history_ultra_aggressive(
+        system=session["system_prompt"],
+        history=session["history"],
+        max_tokens=2000
+    )
+    trim_time = time.time() - trim_start
+    
+    # Build prompt with system prompt and conversation history
+    prompt_start = time.time()
+    full_prompt = build_chatml_prompt_ultra_fast(
+        session["system_prompt"],
+        session["history"]
+    )
+    prompt_time = time.time() - prompt_start
+    
+    # Log the prompt being sent to the model for debugging
+    logger.info(f"📝 System prompt: {session['system_prompt'][:200]}...")
+    logger.info(f"📝 Full prompt length: {len(full_prompt)} characters")
+    logger.info(f"📝 History messages: {len(session['history'])}")
+    
+    # Tokenize full prompt
+    inputs = tokenizer(
+        full_prompt,
+        return_tensors="pt",
+        truncation=True,
+        max_length=4096,
+        padding=True
+    ).to(model.device)
     
     session_time = time.time() - session_start
     
-    # Tokenize with optimizations (only if not using KV cache)
-    if full_prompt is not None:
-        start_tokenize = time.time()
-        # inputs already tokenized above
-        tokenize_time = time.time() - start_tokenize
-    else:
-        # Using KV cache, minimal tokenization time
-        tokenize_time = 0.001  # Minimal time for single message
+    # Tokenize with optimizations
+    start_tokenize = time.time()
+    # inputs already tokenized above
+    tokenize_time = time.time() - start_tokenize
     
     # Calculate available context
     if isinstance(inputs, dict):
@@ -823,11 +832,8 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
     generation_start = time.time()
     try:
         with model_lock, torch.no_grad():
-            # OPTIMIZATION: Enable KV cache return for maximum speed
-            # Only set these if not using KV cache to avoid conflicts
-            if session.get("kv_cache") is None:
-                generation_params["return_dict_in_generate"] = True
-                generation_params["output_hidden_states"] = True
+            # OPTIMIZATION: Keep generation parameters optimized for speed
+            # Don't override the speed optimizations with dict return settings
             
             output = model.generate(**inputs, **generation_params)
     except RuntimeError as e:
@@ -842,8 +848,7 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
     
     generation_time = time.time() - generation_start
     
-    # OPTIMIZATION: Update KV cache for maximum speed
-    update_kv_cache(session, inputs, output)
+    # OPTIMIZATION: KV cache removed - always use full context for better responses
     
     # Extract and clean response
     response_start = time.time()
@@ -919,22 +924,31 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
     logger.info(f"  🚀 Speed: {tokens_per_sec:.1f} tokens/s")
     logger.info(f"  📝 Context: {len(session['history'])} messages, {input_tokens} tokens")
     
-    # OPTIMIZATION: Enhanced logging for KV cache and optimizations
-    logger.info(f"  🔥 KV Cache: {'✅ Hit' if session.get('kv_cache') else '❌ Miss'}")
+    # OPTIMIZATION: Enhanced logging for model optimizations
     logger.info(f"  🔥 TF32: {'✅ Enabled' if torch.backends.cuda.matmul.allow_tf32 else '❌ Disabled'}")
     logger.info(f"  🔥 Compiled: {'✅ Yes' if hasattr(model, '_compiled_call_impl') else '❌ No'}")
     
     # Performance warnings with ultra-speed mode
     if req.ultra_speed and total_time > 2.0:
         logger.warning(f"⚠️ Ultra-speed mode is slow: {total_time:.2f}s (expected <2s)")
+        logger.warning(f"🚀 Performance diagnostic: Check if model is in performance mode")
     elif req.speed_mode and total_time > 3.0:
         logger.warning(f"⚠️ Speed mode is slow: {total_time:.2f}s (expected <3s)")
+        logger.warning(f"🚀 Performance diagnostic: Check generation parameters")
     elif not req.speed_mode and total_time > 6.0:
         logger.warning(f"⚠️ Accuracy mode is slow: {total_time:.2f}s (expected <6s)")
     
     # Memory optimization after response
     if total_time > 5.0:  # Only optimize if response was slow
         optimize_memory_usage()
+        
+    # Performance diagnostic for slow responses
+    if generation_time > 5.0:
+        logger.warning(f"🚀 Performance diagnostic: Generation took {generation_time:.2f}s")
+        logger.warning(f"  - Model compilation: {'✅' if hasattr(model, '_compiled_call_impl') else '❌'}")
+        logger.warning(f"  - Flash Attention: {'✅' if hasattr(model, 'config') and getattr(model.config, 'attn_implementation', None) == 'flash_attention_2' else '❌'}")
+        logger.warning(f"  - TF32: {'✅' if torch.backends.cuda.matmul.allow_tf32 else '❌'}")
+        logger.warning(f"  - KV Cache: {'✅' if session.get('kv_cache') else '❌'}")
     
     # Save to history (without prefix for cleaner AI responses)
     with session_lock:
@@ -957,6 +971,65 @@ async def test_cleaning_endpoint():
         return {"message": "ChatML cleaning test completed", "result": result}
     except Exception as e:
         return {"error": f"Test failed: {str(e)}"}
+
+# Performance optimization endpoint
+@app.post("/optimize-performance")
+async def optimize_performance_endpoint(credentials: HTTPBasicCredentials = Depends(authenticate)):
+    """Force performance optimizations and return current status"""
+    try:
+        # Force performance optimizations
+        optimize_model_for_speed()
+        optimize_memory_usage()
+        
+        # Get current performance status
+        status = {
+            "model_compiled": hasattr(model, '_compiled_call_impl'),
+            "flash_attention": hasattr(model, 'config') and getattr(model.config, 'attn_implementation', None) == 'flash_attention_2',
+            "tf32_enabled": torch.backends.cuda.matmul.allow_tf32 if hasattr(torch.backends.cuda, 'matmul') else False,
+            "cuda_available": torch.cuda.is_available(),
+            "cuda_device": str(torch.cuda.current_device()) if torch.cuda.is_available() else "N/A",
+            "memory_allocated": f"{torch.cuda.memory_allocated() / 1024**3:.2f} GB" if torch.cuda.is_available() else "N/A",
+            "memory_reserved": f"{torch.cuda.memory_reserved() / 1024**3:.2f} GB" if torch.cuda.is_available() else "N/A"
+        }
+        
+        return {
+            "message": "Performance optimizations applied",
+            "status": status,
+            "recommendations": [
+                "Ensure ultra_speed=True for maximum performance",
+                "Use speed_mode=True for balanced speed/quality",
+                "Always use full context for better responses"
+            ]
+        }
+    except Exception as e:
+        return {"error": f"Performance optimization failed: {str(e)}"}
+
+# Debug endpoint to verify system prompt application
+@app.get("/debug-session/{session_id}")
+async def debug_session_endpoint(session_id: str, credentials: HTTPBasicCredentials = Depends(authenticate)):
+    """Debug endpoint to verify system prompt and context are properly applied"""
+    try:
+        with session_lock:
+            if (session := user_sessions.get(session_id)) is None:
+                raise HTTPException(404, "Session not found")
+            
+            # Build the prompt that would be sent to the model
+            full_prompt = build_chatml_prompt_ultra_fast(
+                session["system_prompt"],
+                session["history"]
+            )
+            
+            return {
+                "session_id": session_id,
+                "system_prompt": session["system_prompt"],
+                "history_length": len(session["history"]),
+                "history": session["history"],
+                "full_prompt_preview": full_prompt[:500] + "..." if len(full_prompt) > 500 else full_prompt,
+                "full_prompt_length": len(full_prompt),
+                "kv_cache_status": "Disabled - using full context for better responses"
+            }
+    except Exception as e:
+        return {"error": f"Debug failed: {str(e)}"}
 
 # Speed test endpoint for performance benchmarking
 @app.post("/speed-test")
