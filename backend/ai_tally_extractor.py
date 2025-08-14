@@ -143,14 +143,18 @@ class AITallyExtractor:
             question = qa['question'].lower()
             answer = qa['answer']  # Keep as original type for proper processing
             
+            # Skip questions with no answers
+            if not answer:
+                continue
+            
             # Map the actual questions from your Tally form - using EXACT matches
             if 'in this fantasy are you a man or a woman' in question:
                 user_gender = str(answer) if answer else ""  # This is what the USER is
             elif 'gender of the other person' in question:
                 ai_gender = str(answer) if answer else ""    # This is what the AI should be
-            elif 'how old is the other person' in question:
-                ai_age = str(answer) if answer else ""       # This is the AI's age
-            elif 'what is the ethnicity of the other person' in question:
+            elif 'approximately ow old are they' in question or 'how old is the other person' in question:
+                ai_age = str(answer) if answer else ""       # This is the AI's age (handle typo)
+            elif 'what is their ethnicity' in question or 'what is the ethnicity of the other person' in question:
                 ai_ethnicity = str(answer) if answer else "" # This is the AI's ethnicity
             elif 'where does this take place' in question:
                 location = str(answer) if answer else ""
@@ -195,6 +199,10 @@ class AITallyExtractor:
             template_parts.append(f"I am a {user_gender.lower()}.")
         elif location:
             template_parts.append(f"We meet {location.lower()}.")
+        
+        # Add location if we have it
+        if location and location not in [part for part in template_parts if location.lower() in part.lower()]:
+            template_parts.append(f"This takes place {location.lower()}.")
         
         # Control dynamic (from the user's perspective in the form)
         if control:
@@ -286,23 +294,21 @@ class AITallyExtractor:
         # Build the scenario directly
         scenario_parts = []
         
-        # AI character description
-        ai_description = "You are"
-        if ai_age and ai_ethnicity and ai_gender:
-            ai_description += f" a {ai_age} year old {ai_ethnicity.lower()} {ai_gender.lower()}"
-        elif ai_age and ai_gender:
-            ai_description += f" a {ai_age} year old {ai_gender.lower()}"
-        elif ai_ethnicity and ai_gender:
-            ai_description += f" a {ai_ethnicity.lower()} {ai_gender.lower()}"
-        elif ai_age:
-            ai_description += f" {ai_age} years old"
-        elif ai_ethnicity:
-            ai_description += f" {ai_ethnicity.lower()}"
+        # AI character description (the "other person" from the form)
+        if ai_gender and ai_age and ai_ethnicity:
+            scenario_parts.append(f"You are a {ai_age} year old {ai_ethnicity.lower()} {ai_gender.lower()}.")
+        elif ai_gender and ai_age:
+            scenario_parts.append(f"You are a {ai_age} year old {ai_gender.lower()}.")
+        elif ai_gender and ai_ethnicity:
+            scenario_parts.append(f"You are a {ai_ethnicity.lower()} {ai_gender.lower()}.")
+        elif ai_age and ai_ethnicity:
+            scenario_parts.append(f"You are a {ai_age} year old {ai_ethnicity.lower()} person.")
         elif ai_gender:
-            ai_description += f" a {ai_gender.lower()}"
-        
-        if ai_description != "You are":
-            scenario_parts.append(ai_description + ".")
+            scenario_parts.append(f"You are a {ai_gender.lower()}.")
+        elif ai_age:
+            scenario_parts.append(f"You are {ai_age} years old.")
+        elif ai_ethnicity:
+            scenario_parts.append(f"You are {ai_ethnicity.lower()}.")
         else:
             scenario_parts.append("You are a person.")
         
