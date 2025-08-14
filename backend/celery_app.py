@@ -334,11 +334,16 @@ def call_ai_model(system_prompt: str, history: list, max_tokens: int = 300) -> s
 def clean_ai_response(raw_response: str) -> str:
     """
     Clean the AI response to extract only the AI's actual response,
-    removing any conversation formatting or echoed user messages.
+    removing any conversation formatting, ChatML tags, or echoed user messages.
     """
     try:
+        import re
+        
+        # First, remove ALL ChatML tags from anywhere in the response
+        cleaned_response = re.sub(r'<\|[\w]+\|>', '', raw_response)
+        
         # Split by common conversation markers
-        lines = raw_response.split('\n')
+        lines = cleaned_response.split('\n')
         ai_response_lines = []
         
         for line in lines:
@@ -360,6 +365,11 @@ def clean_ai_response(raw_response: str) -> str:
         
         # Join the cleaned lines
         cleaned_response = '\n'.join(ai_response_lines).strip()
+        
+        # Clean up any extra whitespace that might be left
+        cleaned_response = re.sub(r'\n\s*\n', '\n', cleaned_response)  # Remove empty lines
+        cleaned_response = re.sub(r'^\s+', '', cleaned_response)  # Remove leading whitespace
+        cleaned_response = re.sub(r'\s+$', '', cleaned_response)  # Remove trailing whitespace
         
         # If we got nothing, return the original (fallback)
         if not cleaned_response:

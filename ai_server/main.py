@@ -297,7 +297,9 @@ class PerformanceCache:
 performance_cache = PerformanceCache()
 
 # OPTIMIZATION: Cache tokenizer results for common phrases
-CLEAN_PATTERN = re.compile(r'<\|[\w]+\|>$')
+# Comprehensive ChatML tag cleaning patterns
+CLEAN_PATTERN = re.compile(r'<\|[\w]+\|>$')  # Tags at end
+CHATML_TAG_PATTERN = re.compile(r'<\|[\w]+\|>')  # All ChatML tags anywhere
 COMMON_PHRASES = {
     "User:": tokenizer("User:")["input_ids"],
     "AI:": tokenizer("AI:")["input_ids"],
@@ -446,9 +448,14 @@ def build_chatml_prompt(system: str, history: list) -> str:
 
 # OPTIMIZATION: Faster cleaning with precompiled regex
 def clean_response(response: str) -> str:
-    """Optimized response cleaning - less aggressive to avoid cutting mid-sentence"""
-    # Remove any trailing ChatML tags
-    response = CLEAN_PATTERN.sub('', response)
+    """Optimized response cleaning - removes all ChatML tags and prevents mid-sentence cuts"""
+    # Remove ALL ChatML tags from anywhere in the response
+    response = CHATML_TAG_PATTERN.sub('', response)
+    
+    # Clean up any extra whitespace that might be left
+    response = re.sub(r'\n\s*\n', '\n', response)  # Remove empty lines
+    response = re.sub(r'^\s+', '', response)  # Remove leading whitespace
+    response = re.sub(r'\s+$', '', response)  # Remove trailing whitespace
     
     # Only trim if the response is clearly incomplete (very short or ends with obvious incomplete words)
     if response and len(response.strip()) > 10:  # Don't trim short responses
@@ -503,11 +510,35 @@ def detect_incomplete_response(response: str) -> bool:
     
     return False
 
+def test_chatml_cleaning():
+    """Test function to verify ChatML tag cleaning works correctly"""
+    test_responses = [
+        "<|assistant|>I am a helpful AI assistant.",
+        "Hello! <|user|>How are you?",
+        "This is a normal response without tags.",
+        "<|system|>Here is some information.",
+        "Mixed content <|assistant|>with tags in the middle.",
+        "Ending with <|user|>",
+        "<|assistant|>Starting with tag",
+        "No tags here, just clean text."
+    ]
+    
+    print("🧪 Testing ChatML tag cleaning...")
+    for test_response in test_responses:
+        cleaned = clean_response(test_response)
+        has_tags = '<|' in cleaned or '|>' in cleaned
+        print(f"  Input:  {test_response}")
+        print(f"  Output: {cleaned}")
+        print(f"  Clean:  {'✅' if not has_tags else '❌'}")
+        print()
+    
+    return "ChatML cleaning test completed"
+
 # OPTIMIZATION: Enhanced session storage with simplified KV caching
 def create_session(session_id: str, system_prompt: str) -> dict:
     """Create optimized session with simplified KV caching support"""
-    # Enhance system prompt to encourage complete sentences
-    enhanced_prompt = system_prompt + "\n\nIMPORTANT: Always provide complete, well-formed responses. Avoid cutting off mid-sentence. Ensure your responses are natural and conversational."
+    # Enhance system prompt to encourage complete sentences and discourage ChatML tags
+    enhanced_prompt = system_prompt + "\n\nIMPORTANT: Always provide complete, well-formed responses. Avoid cutting off mid-sentence. Ensure your responses are natural and conversational. NEVER include any formatting tags like <|assistant|>, <|user|>, or <|system|> in your responses - just provide clean, natural text."
     
     return {
         "system_prompt": enhanced_prompt,
@@ -830,6 +861,13 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
     response = tokenizer.decode(response_tokens, skip_special_tokens=True).strip()
     response = clean_response(response)
     
+    # Final safety check: ensure no ChatML tags remain
+    if '<|' in response or '|>' in response:
+        logger.warning(f"⚠️ ChatML tags detected in response, applying final cleanup")
+        response = re.sub(r'<\|[\w]+\|>', '', response)
+        response = re.sub(r'\n\s*\n', '\n', response)  # Clean up extra whitespace
+        response = response.strip()
+    
     # Check if response is incomplete and retry with more tokens if needed
     if detect_incomplete_response(response) and req.max_tokens < 500:
         logger.info(f"⚠️ Detected incomplete response, retrying with more tokens...")
@@ -849,6 +887,13 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
             retry_response_tokens = retry_output[0][inputs["input_ids"].shape[1]:] if isinstance(inputs, dict) else retry_output[0][inputs.input_ids.shape[1]:]
             retry_response = tokenizer.decode(retry_response_tokens, skip_special_tokens=True).strip()
             retry_response = clean_response(retry_response)
+            
+            # Final safety check for retry response too
+            if '<|' in retry_response or '|>' in retry_response:
+                logger.warning(f"⚠️ ChatML tags detected in retry response, applying final cleanup")
+                retry_response = re.sub(r'<\|[\w]+\|>', '', retry_response)
+                retry_response = re.sub(r'\n\s*\n', '\n', retry_response)
+                retry_response = retry_response.strip()
             
             # Use the retry response if it's more complete
             if len(retry_response) > len(response) and not detect_incomplete_response(retry_response):
@@ -902,6 +947,16 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "model": model_name}
+
+# Test ChatML cleaning endpoint
+@app.get("/test-cleaning")
+async def test_cleaning_endpoint():
+    """Test endpoint to verify ChatML tag cleaning works correctly"""
+    try:
+        result = test_chatml_cleaning()
+        return {"message": "ChatML cleaning test completed", "result": result}
+    except Exception as e:
+        return {"error": f"Test failed: {str(e)}"}
 
 # Speed test endpoint for performance benchmarking
 @app.post("/speed-test")
