@@ -42,7 +42,7 @@ celery_app.conf.update(
 )
 
 @celery_app.task(bind=True, max_retries=3)
-def process_ai_response(self, session_id: str, user_message: str, max_tokens: int = 150, is_ai_initiated: bool = False):
+def process_ai_response(self, session_id: str, user_message: str, max_tokens: int = 300, is_ai_initiated: bool = False):
     """
     Process AI response asynchronously with improved AI server integration
     """
@@ -181,7 +181,7 @@ def process_ai_response(self, session_id: str, user_message: str, max_tokens: in
             "error": str(exc)
         }
 
-def call_ai_model(system_prompt: str, history: list, max_tokens: int = 150) -> str:
+def call_ai_model(system_prompt: str, history: list, max_tokens: int = 300) -> str:
     """
     Call the AI model API with improved timeout and health checking
     Always creates new AI session with full conversation history for context
@@ -246,7 +246,7 @@ def call_ai_model(system_prompt: str, history: list, max_tokens: int = 150) -> s
                             f"{settings.ai_model_url}/chat",
                             json={
                                 "message": msg,
-                                "max_tokens": 20,  # ← OPTIMIZED: Further reduced for maximum speed
+                                "max_tokens": 100,  # ← OPTIMIZED: Increased for better sentence completion
                                 "temperature": 0.1,  # Low temperature for context building
                                 "top_p": 0.8,        # Focused sampling for context
                                 "speed_mode": True   # ← OPTIMIZED: Enable speed mode for context
@@ -277,8 +277,8 @@ def call_ai_model(system_prompt: str, history: list, max_tokens: int = 150) -> s
             logger.info(f"Sending current user message: {current_user_message[:100]}...")
             
             # Send chat request using existing session
-            # Ensure max_tokens meets AI server requirements (min 50, max 500)
-            ai_max_tokens = max(50, min(max_tokens, 500))
+            # Ensure max_tokens meets AI server requirements (min 100, max 1000)
+            ai_max_tokens = max(100, min(max_tokens, 1000))
             
             # Send the current user message to get AI response
             chat_response = client.post(

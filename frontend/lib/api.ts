@@ -7,7 +7,8 @@ import {
   SystemPrompt,
 } from "../types";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://204.12.233.105:8001";
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || "http://204.12.233.105:8001";
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -55,7 +56,7 @@ export const chatApi = {
   sendMessage: async (
     sessionId: string,
     message: string,
-    maxTokens: number = 150
+    maxTokens: number = 300
   ) => {
     const response = await api.post(`/chat/message/${sessionId}`, {
       message,

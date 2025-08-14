@@ -52,7 +52,7 @@ class InitScenario(BaseModel):
 
 class MessageRequest(BaseModel):
     message: str = Field(..., min_length=1)
-    max_tokens: int = Field(100, ge=20, le=500)
+    max_tokens: int = Field(200, ge=50, le=1000)  # Increased default and max for complete responses
     temperature: float = Field(0.7, ge=0.1, le=1.0)
     top_p: float = Field(0.9, ge=0.1, le=1.0)
     speed_mode: bool = Field(False, description="Enable speed optimization mode")
@@ -386,7 +386,7 @@ def get_ultra_fast_generation_params(req: MessageRequest, max_output_tokens: int
             "early_stopping": False,    # No early stopping logic
             "length_penalty": 1.0,      # No length penalty
             "typical_p": 1.0,           # No typical sampling
-            "top_k": 15,                # Very limited token selection for maximum speed
+            "top_k": 25,                # Increased for better sentence completion
             "do_sample": True,          # Enable sampling for creativity
             "use_cache": True,          # Enable KV cache
             "return_dict_in_generate": False,  # Skip dict conversion
@@ -446,22 +446,71 @@ def build_chatml_prompt(system: str, history: list) -> str:
 
 # OPTIMIZATION: Faster cleaning with precompiled regex
 def clean_response(response: str) -> str:
-    """Optimized response cleaning"""
+    """Optimized response cleaning - less aggressive to avoid cutting mid-sentence"""
     # Remove any trailing ChatML tags
     response = CLEAN_PATTERN.sub('', response)
     
-    # Remove incomplete sentences at end
-    if response and response[-1] not in {'.', '!', '?'}:
-        last_period = response.rfind('.')
-        if last_period != -1:
-            return response[:last_period+1]
+    # Only trim if the response is clearly incomplete (very short or ends with obvious incomplete words)
+    if response and len(response.strip()) > 10:  # Don't trim short responses
+        # Check if it ends with incomplete words (common patterns)
+        incomplete_patterns = [
+            ' the', ' a ', ' an ', ' and', ' or', ' but', ' if', ' when', ' where', ' why', ' how',
+            ' what', ' who', ' which', ' that', ' this', ' these', ' those', ' my', ' your', ' his',
+            ' her', ' their', ' our', ' its', ' is', ' are', ' was', ' were', ' have', ' has', ' had',
+            ' do', ' does', ' did', ' will', ' would', ' could', ' should', ' might', ' may', ' can'
+        ]
+        
+        response_lower = response.lower()
+        for pattern in incomplete_patterns:
+            if response_lower.endswith(pattern):
+                # Find the last complete sentence or phrase
+                last_period = response.rfind('.')
+                last_exclamation = response.rfind('!')
+                last_question = response.rfind('?')
+                last_complete = max(last_period, last_exclamation, last_question)
+                
+                if last_complete != -1 and last_complete > len(response) * 0.7:  # Only trim if we're not losing too much
+                    return response[:last_complete+1].strip()
+                break
+    
     return response.strip()
+
+def detect_incomplete_response(response: str) -> bool:
+    """Detect if a response appears to be incomplete"""
+    if not response or len(response.strip()) < 5:
+        return False
+    
+    # Check for common incomplete patterns
+    incomplete_endings = [
+        ' the', ' a ', ' an ', ' and', ' or', ' but', ' if', ' when', ' where', ' why', ' how',
+        ' what', ' who', ' which', ' that', ' this', ' these', ' those', ' my', ' your', ' his',
+        ' her', ' their', ' our', ' its', ' is', ' are', ' was', ' were', ' have', ' has', ' had',
+        ' do', ' does', ' did', ' will', ' would', ' could', ' should', ' might', ' may', ' can',
+        ' to ', ' in ', ' on ', ' at ', ' by ', ' for ', ' with ', ' without ', ' about ', ' against '
+    ]
+    
+    response_lower = response.lower().strip()
+    for ending in incomplete_endings:
+        if response_lower.endswith(ending):
+            return True
+    
+    # Check if it doesn't end with proper punctuation
+    if response and response[-1] not in {'.', '!', '?', ':', ';'}:
+        # But allow if it's a short response or ends with common conversational endings
+        if len(response) < 20 or response_lower.endswith(('ok', 'yes', 'no', 'sure', 'right', 'exactly')):
+            return False
+        return True
+    
+    return False
 
 # OPTIMIZATION: Enhanced session storage with simplified KV caching
 def create_session(session_id: str, system_prompt: str) -> dict:
     """Create optimized session with simplified KV caching support"""
+    # Enhance system prompt to encourage complete sentences
+    enhanced_prompt = system_prompt + "\n\nIMPORTANT: Always provide complete, well-formed responses. Avoid cutting off mid-sentence. Ensure your responses are natural and conversational."
+    
     return {
-        "system_prompt": system_prompt,
+        "system_prompt": enhanced_prompt,
         "history": [],
         "kv_cache": None,  # Simple boolean flag instead of complex past_key_values
         "tokenized_context": None,
@@ -729,6 +778,13 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
     # Generation parameters
     generation_params = get_ultra_fast_generation_params(req, max_output_tokens)
     
+    # Add better end-of-sequence detection to prevent mid-sentence cuts
+    generation_params.update({
+        "eos_token_id": tokenizer.eos_token_id,
+        "pad_token_id": tokenizer.eos_token_id,
+        "early_stopping": False,  # Disable early stopping to allow complete sentences
+    })
+    
     # OPTIMIZATION: No more past_key_values - using context concatenation instead
     # This avoids the cache position issues entirely
     
@@ -773,6 +829,36 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
     
     response = tokenizer.decode(response_tokens, skip_special_tokens=True).strip()
     response = clean_response(response)
+    
+    # Check if response is incomplete and retry with more tokens if needed
+    if detect_incomplete_response(response) and req.max_tokens < 500:
+        logger.info(f"⚠️ Detected incomplete response, retrying with more tokens...")
+        # Retry with more tokens
+        retry_max_tokens = min(req.max_tokens * 2, 500)
+        retry_generation_params = get_ultra_fast_generation_params(req, retry_max_tokens)
+        retry_generation_params.update({
+            "eos_token_id": tokenizer.eos_token_id,
+            "pad_token_id": tokenizer.eos_token_id,
+            "early_stopping": False,
+        })
+        
+        try:
+            with model_lock, torch.no_grad():
+                retry_output = model.generate(**inputs, **retry_generation_params)
+            
+            retry_response_tokens = retry_output[0][inputs["input_ids"].shape[1]:] if isinstance(inputs, dict) else retry_output[0][inputs.input_ids.shape[1]:]
+            retry_response = tokenizer.decode(retry_response_tokens, skip_special_tokens=True).strip()
+            retry_response = clean_response(retry_response)
+            
+            # Use the retry response if it's more complete
+            if len(retry_response) > len(response) and not detect_incomplete_response(retry_response):
+                response = retry_response
+                logger.info(f"✅ Retry successful: got more complete response ({len(retry_response)} chars vs {len(response)} chars)")
+            else:
+                logger.info(f"⚠️ Retry didn't improve response completeness")
+        except Exception as e:
+            logger.warning(f"⚠️ Retry generation failed: {e}, using original response")
+    
     response_time = time.time() - response_start
     
     # Enhanced performance logging

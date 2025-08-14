@@ -13,7 +13,7 @@ class TallyWebhookData(BaseModel):
 # Chat schemas
 class ChatMessageRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=1000)
-    max_tokens: int = Field(150, ge=10, le=500)
+    max_tokens: int = Field(300, ge=50, le=1000)  # Increased for better sentence completion
 
 class ChatMessageResponse(BaseModel):
     id: str
