@@ -799,20 +799,10 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
     with session_lock:
         session = user_sessions.get(session_id)
         
-        # If session not found in memory, create it with data from backend
+        # If session not found in memory, reject the request
         if session is None:
-            logger.info(f"🔄 Session {session_id} not found in memory, creating new session")
-            
-            # Get session data from backend (this should include the correct system prompt)
-            try:
-                # For now, create a default session - the backend should provide the system prompt
-                # The real fix is to get this data from the backend
-                session = create_session(session_id, "You are playing the role of a human in a live chat conversation. You are not an AI. You must act like a real person having a natural conversation in a specific scenario.")
-                user_sessions[session_id] = session
-                logger.warning(f"⚠️ Created default session for {session_id} - backend should provide correct system prompt")
-            except Exception as e:
-                logger.error(f"❌ Failed to create session: {e}")
-                raise HTTPException(500, "Failed to create session")
+            logger.error(f"❌ Session {session_id} not found in memory - backend must initialize sessions first")
+            raise HTTPException(404, "Session not found. Backend must initialize session with /init-session first.")
     
     # Add user message to history (without prefix for cleaner AI responses)
     session["history"].append(req.message)

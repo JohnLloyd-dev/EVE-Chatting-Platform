@@ -227,11 +227,30 @@ def call_ai_model(system_prompt: str, history: list, max_tokens: int = 300, sess
             )
             
             if init_response.status_code != 200:
-                raise Exception(f"Failed to initialize session: {init_response.text}")
+                error_detail = f"Failed to initialize AI session: {init_response.status_code}"
+                try:
+                    error_data = init_response.json()
+                    if 'detail' in error_data:
+                        error_detail += f" - {error_data['detail']}"
+                except:
+                    error_detail += f" - {init_response.text}"
+                raise Exception(error_detail)
             
             # Use the session ID we sent (not from cookies)
             session_cookie = session_id_str
             logger.info(f"Initialized AI session: {session_cookie}")
+            
+            # Verify the session was created by checking if we can access it
+            verify_response = client.get(
+                f"{settings.ai_model_url}/debug-session/{session_id_str}",
+                auth=(settings.ai_model_auth_username, settings.ai_model_auth_password)
+            )
+            
+            if verify_response.status_code == 200:
+                session_info = verify_response.json()
+                logger.info(f"✅ Session verified: {session_info.get('session_id')} with {len(session_info.get('system_prompt', ''))} chars")
+            else:
+                logger.warning(f"⚠️ Could not verify session creation: {verify_response.status_code}")
             
             # Build conversation context by sending all previous messages
             # This ensures the AI has full conversation history even after restarts
