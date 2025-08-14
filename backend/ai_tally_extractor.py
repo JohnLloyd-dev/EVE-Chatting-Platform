@@ -141,22 +141,36 @@ class AITallyExtractor:
         
         for qa in self.cleaned_data['questions_and_answers']:
             question = qa['question'].lower()
-            answer = str(qa['answer']) if qa['answer'] else ""
+            answer = qa['answer']  # Keep as original type for proper processing
             
+            # Map the actual questions from your Tally form
             if 'fantasy are you a man or a woman' in question or 'are you a man or woman' in question:
-                user_gender = answer  # This is what the USER is
+                user_gender = str(answer) if answer else ""  # This is what the USER is
             elif 'gender of the other person' in question or 'other person' in question:
-                ai_gender = answer    # This is what the AI should be
+                ai_gender = str(answer) if answer else ""    # This is what the AI should be
             elif 'old' in question or 'age' in question:
-                ai_age = answer       # This is the AI's age
+                ai_age = str(answer) if answer else ""       # This is the AI's age
             elif 'ethnicity' in question or 'race' in question:
-                ai_ethnicity = answer # This is the AI's ethnicity
+                ai_ethnicity = str(answer) if answer else "" # This is the AI's ethnicity
             elif 'where' in question or 'take place' in question or 'location' in question:
-                location = answer
+                location = str(answer) if answer else ""
             elif 'who is in control' in question or 'control' in question:
-                control = answer
-            elif 'what would you like to do' in question or 'what else' in question:
-                activities.append(answer)
+                control = str(answer) if answer else ""
+            elif 'describe to me in detail what would you like me to do to you' in question:
+                # This is the main action question - extract the actual activities
+                if isinstance(answer, list):
+                    # Multiple selected activities
+                    for activity in answer:
+                        activities.append(activity)
+                elif answer:
+                    activities.append(answer)
+            elif 'what else' in question:
+                # Additional activities question
+                if isinstance(answer, list):
+                    for activity in answer:
+                        activities.append(activity)
+                elif answer:
+                    activities.append(answer)
         
         # Build a comprehensive template that uses all available data
         template_parts = []
@@ -195,14 +209,25 @@ class AITallyExtractor:
         
         # Activities (from user's perspective - what they want to happen)
         if activities:
-            activity_text = " and ".join(activities[:2])
-            template_parts.append(f"I want you to: {activity_text.lower()}.")
+            # Use the actual content from the form more directly
+            if len(activities) == 1:
+                template_parts.append(f"I am {activities[0].lower()}.")
+            elif len(activities) == 2:
+                template_parts.append(f"I am {activities[0].lower()} and {activities[1].lower()}.")
+            else:
+                # Join multiple activities naturally
+                activity_text = ", ".join(activities[:-1]) + f" and {activities[-1]}"
+                template_parts.append(f"I am {activity_text.lower()}.")
         
         if not template_parts:
             return "You are in a roleplay scenario with me."
         
         # Create a direct, factual scenario from the template
         scenario_text = " ".join(template_parts)
+        
+        # Debug logging to see what was extracted
+        logger.info(f"🎯 Extracted elements: user_gender={user_gender}, ai_gender={ai_gender}, ai_age={ai_age}, ai_ethnicity={ai_ethnicity}, location={location}, control={control}, activities={activities}")
+        logger.info(f"📝 Generated scenario: {scenario_text}")
         
         # Simple prompt that just asks for natural flow without changing facts
         prompt_parts = [
