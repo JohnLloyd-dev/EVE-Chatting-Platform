@@ -176,7 +176,8 @@ async def tally_webhook(webhook_data: dict, db: Session = Depends(get_db)):
         
         # Generate scenario from Tally data using AI
         try:
-            scenario = generate_ai_scenario(form_data)
+            # Pass the full webhook data structure, not just form_data
+            scenario = generate_ai_scenario(webhook_data)
             logger.info(f"AI-generated scenario for user {user.user_code}: {scenario[:100]}...")
             logger.info(f"Scenario length: {len(scenario)} characters")
             logger.info(f"Scenario is empty: {not scenario or not scenario.strip()}")
