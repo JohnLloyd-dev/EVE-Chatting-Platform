@@ -143,18 +143,18 @@ class AITallyExtractor:
             question = qa['question'].lower()
             answer = qa['answer']  # Keep as original type for proper processing
             
-            # Map the actual questions from your Tally form
-            if 'fantasy are you a man or a woman' in question or 'are you a man or woman' in question:
+            # Map the actual questions from your Tally form - using EXACT matches
+            if 'in this fantasy are you a man or a woman' in question:
                 user_gender = str(answer) if answer else ""  # This is what the USER is
-            elif 'gender of the other person' in question or 'other person' in question:
+            elif 'gender of the other person' in question:
                 ai_gender = str(answer) if answer else ""    # This is what the AI should be
-            elif 'old' in question or 'age' in question:
+            elif 'how old is the other person' in question:
                 ai_age = str(answer) if answer else ""       # This is the AI's age
-            elif 'ethnicity' in question or 'race' in question:
+            elif 'what is the ethnicity of the other person' in question:
                 ai_ethnicity = str(answer) if answer else "" # This is the AI's ethnicity
-            elif 'where' in question or 'take place' in question or 'location' in question:
+            elif 'where does this take place' in question:
                 location = str(answer) if answer else ""
-            elif 'who is in control' in question or 'control' in question:
+            elif 'who is in control' in question:
                 control = str(answer) if answer else ""
             elif 'describe to me in detail what would you like me to do to you' in question:
                 # This is the main action question - extract the actual activities
