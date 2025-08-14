@@ -825,6 +825,13 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
         "early_stopping": False,  # Disable early stopping to allow complete sentences
     })
     
+    # OPTIMIZATION: Remove conflicting parameters that are already in inputs
+    # This prevents "multiple values for keyword argument" errors
+    if "attention_mask" in generation_params and "attention_mask" in inputs:
+        del generation_params["attention_mask"]
+    if "position_ids" in generation_params and "position_ids" in inputs:
+        del generation_params["position_ids"]
+    
     # OPTIMIZATION: No more past_key_values - using context concatenation instead
     # This avoids the cache position issues entirely
     
@@ -886,6 +893,12 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
         })
         
         try:
+            # Remove conflicting parameters for retry too
+            if "attention_mask" in retry_generation_params and "attention_mask" in inputs:
+                del retry_generation_params["attention_mask"]
+            if "position_ids" in retry_generation_params and "position_ids" in inputs:
+                del retry_generation_params["position_ids"]
+                
             with model_lock, torch.no_grad():
                 retry_output = model.generate(**inputs, **retry_generation_params)
             
