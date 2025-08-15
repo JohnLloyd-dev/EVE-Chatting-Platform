@@ -45,6 +45,10 @@ def build_chatml_prompt(system, history):
         else:  # Odd index = AI response
             prompt += f"<|assistant|>\n{entry.strip()}\n"
     prompt += "<|assistant|>\n"
+    
+    # Add critical instruction to only generate the AI's response
+    prompt += "CRITICAL INSTRUCTION: You are an AI assistant responding to a user. When you respond, ONLY provide YOUR response to the user's message. DO NOT include: 1) The conversation history, 2) User messages, 3) System prompts, 4) Any formatting tags like <|assistant|>, <|user|>, or <|system|>. Your response should be a single, natural message that directly answers what the user just said. Think of it as if you're in a live conversation - just respond naturally without repeating what was said before.\n"
+    
     return prompt
 
 # Token-based history trimming

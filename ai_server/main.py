@@ -379,8 +379,8 @@ def build_chatml_prompt_ultra_fast(system: str, history: list) -> str:
     
     parts.append("<|assistant|>\n")
     
-    # Add explicit instruction to only generate the AI's response
-    parts.append("Remember: Only generate YOUR response to the user. Do not include conversation history or user messages.\n")
+    # Add critical instruction to only generate the AI's response
+    parts.append("CRITICAL INSTRUCTION: You are an AI assistant responding to a user. When you respond, ONLY provide YOUR response to the user's message. DO NOT include: 1) The conversation history, 2) User messages, 3) System prompts, 4) Any formatting tags like <|assistant|>, <|user|>, or <|system|>. Your response should be a single, natural message that directly answers what the user just said. Think of it as if you're in a live conversation - just respond naturally without repeating what was said before.\n")
     
     return "".join(parts)  # Single join operation
 
@@ -461,6 +461,10 @@ def build_chatml_prompt_batch(system: str, history: list) -> str:
                 parts.append(f"<|assistant|>\n{entry.strip()}\n")
     
     parts.append("<|assistant|>\n")
+    
+    # Add critical instruction to only generate the AI's response
+    parts.append("CRITICAL INSTRUCTION: You are an AI assistant responding to a user. When you respond, ONLY provide YOUR response to the user's message. DO NOT include: 1) The conversation history, 2) User messages, 3) System prompts, 4) Any formatting tags like <|assistant|>, <|user|>, or <|system|>. Your response should be a single, natural message that directly answers what the user just said. Think of it as if you're in a live conversation - just respond naturally without repeating what was said before.\n")
+    
     return "".join(parts)  # Single join operation
 
 # Fallback function for compatibility
@@ -566,11 +570,11 @@ def test_chatml_cleaning():
 # OPTIMIZATION: Enhanced session storage with simplified KV caching
 def create_session(session_id: str, system_prompt: str) -> dict:
     """Create optimized session with simplified KV caching support"""
-    # Enhance system prompt to encourage complete sentences and discourage ChatML tags
-    enhanced_prompt = system_prompt + "\n\nCRITICAL INSTRUCTION: You are an AI assistant responding to a user. When you respond, ONLY provide YOUR response to the user's message. DO NOT include: 1) The conversation history, 2) User messages, 3) System prompts, 4) Any formatting tags like <|assistant|>, <|user|>, or <|system|>. Your response should be a single, natural message that directly answers what the user just said. Think of it as if you're in a live conversation - just respond naturally without repeating what was said before."
+    # Store the original system prompt without modification
+    # Critical instructions will be added during prompt building instead
     
     return {
-        "system_prompt": enhanced_prompt,
+        "system_prompt": system_prompt,  # Keep original system prompt intact
         "history": [],
         "kv_cache": None,  # Simple boolean flag instead of complex past_key_values
         "tokenized_context": None,
