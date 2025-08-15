@@ -111,8 +111,8 @@ class AITallyExtractor:
         if not raw_value:
             # For MULTIPLE_CHOICE fields, we might still want to process them
             if field_type == 'MULTIPLE_CHOICE':
-                processed_field['answer'] = "No selection made"
-                return processed_field
+                # Don't process fields with no value - they're likely duplicates
+                return None
             return None
         
         # Process value based on field type
