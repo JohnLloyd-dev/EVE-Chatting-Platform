@@ -314,13 +314,15 @@ performance_cache = PerformanceCache()
 # OPTIMIZATION: Cache tokenizer results for common phrases
 # Comprehensive ChatML tag cleaning patterns
 CLEAN_PATTERN = re.compile(r'<\|[\w]+\|>$')  # Tags at end
-CHATML_TAG_PATTERN = re.compile(r'<\|[\w]+\|>')  # All ChatML tags anywhere
+# Pre-compiled regex patterns for maximum performance
+CHATML_TAG_PATTERN = re.compile(r'<\|[\w]+\|>|<\|im_start\|>[\w]+|<\|im_end\|>')  # All ChatML tags including OpenHermes format
+
+# Common phrases for token counting optimization
 COMMON_PHRASES = {
-    "User:": tokenizer("User:")["input_ids"],
-    "AI:": tokenizer("AI:")["input_ids"],
-    "<|system|>": tokenizer("<|system|>")["input_ids"],
-    "<|user|>": tokenizer("<|user|>")["input_ids"],
-    "<|assistant|>": tokenizer("<|assistant|>")["input_ids"],
+    "<|im_start|>system": tokenizer("<|im_start|>system")["input_ids"],
+    "<|im_end|>": tokenizer("<|im_end|>")["input_ids"],
+    "<|im_start|>user": tokenizer("<|im_start|>user")["input_ids"],
+    "<|im_start|>assistant": tokenizer("<|im_start|>assistant")["input_ids"],
 }
 
 # OPTIMIZATION: Ultra-fast token counting with advanced caching
@@ -364,20 +366,20 @@ def count_tokens_ultra_fast(text: str) -> int:
 # OPTIMIZATION: Ultra-fast prompt building with minimal operations
 def build_chatml_prompt_ultra_fast(system: str, history: list) -> str:
     """Ultra-fast prompt building with absolute minimal string operations"""
-    # Pre-allocate string parts for maximum efficiency
-    parts = [f"<|system|>\n{system.strip()}\n"]
+    # OpenHermes-2.5-Mistral-7B uses ChatML format with specific tokens
+    parts = [f"<|im_start|>system\n{system.strip()}<|im_end|>\n"]
     
     # Batch process history with minimal string operations
     # Alternate between user and AI messages (user messages are even indices, AI responses are odd)
     for i, entry in enumerate(history):
         if i % 2 == 0:  # Even index = user message
             if entry.strip():
-                parts.append(f"<|user|>\n{entry.strip()}\n")
+                parts.append(f"<|im_start|>user\n{entry.strip()}<|im_end|>\n")
         else:  # Odd index = AI response
             if entry.strip():
-                parts.append(f"<|assistant|>\n{entry.strip()}\n")
+                parts.append(f"<|im_start|>assistant\n{entry.strip()}<|im_end|>\n")
     
-    parts.append("<|assistant|>\n")
+    parts.append("<|im_start|>assistant\n")
     
     return "".join(parts)  # Single join operation
 
@@ -444,20 +446,20 @@ def get_ultra_fast_generation_params(req: MessageRequest, max_output_tokens: int
 # OPTIMIZATION: Enhanced performance monitoring and batch processing
 def build_chatml_prompt_batch(system: str, history: list) -> str:
     """Ultra-fast batch prompt building with minimal string operations"""
-    # Pre-allocate string parts for efficiency
-    parts = [f"<|system|>\n{system.strip()}\n"]
+    # OpenHermes-2.5-Mistral-7B uses ChatML format with specific tokens
+    parts = [f"<|im_start|>system\n{system.strip()}<|im_end|>\n"]
     
     # Batch process history with minimal string operations
     # Alternate between user and AI messages (user messages are even indices, AI responses are odd)
     for i, entry in enumerate(history):
         if i % 2 == 0:  # Even index = user message
             if entry.strip():
-                parts.append(f"<|user|>\n{entry.strip()}\n")
+                parts.append(f"<|im_start|>user\n{entry.strip()}<|im_end|>\n")
         else:  # Odd index = AI response
             if entry.strip():
-                parts.append(f"<|assistant|>\n{entry.strip()}\n")
+                parts.append(f"<|im_start|>assistant\n{entry.strip()}<|im_end|>\n")
     
-    parts.append("<|assistant|>\n")
+    parts.append("<|im_start|>assistant\n")
     
     return "".join(parts)  # Single join operation
 
@@ -830,6 +832,11 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
     logger.info(f"📝 System prompt: {session['system_prompt']}")
     logger.info(f"📝 Full prompt length: {len(full_prompt)} characters")
     logger.info(f"📝 History messages: {len(session['history'])}")
+    
+    # DEBUG: Log the actual prompt being sent to the model
+    logger.info(f"🔍 FULL PROMPT SENT TO MODEL:")
+    logger.info(f"🔍 {full_prompt}")
+    logger.info(f"🔍 END OF PROMPT")
     
     # Tokenize full prompt
     inputs = tokenizer(
