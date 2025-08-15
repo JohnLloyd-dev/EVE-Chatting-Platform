@@ -177,6 +177,7 @@ class AITallyExtractor:
         ai_ethnicity = None        # AI's ethnicity (the "other person's" ethnicity)
         location = None
         control = None
+        clothing = None            # What the AI is wearing
         activities = []
         
         logger.info(f"Processing {len(self.cleaned_data['questions_and_answers'])} questions for AI prompt")
@@ -194,17 +195,47 @@ class AITallyExtractor:
             
             # Map the actual questions from your Tally form - using EXACT matches
             if 'are you a man or a woman' in question:
-                user_gender = str(answer) if answer else ""  # This is what the USER is
+                # Handle list values properly
+                if isinstance(answer, list) and answer:
+                    user_gender = answer[0]  # Take first selected option
+                else:
+                    user_gender = str(answer) if answer else ""  # This is what the USER is
             elif 'who do you want me to be' in question:
-                ai_gender = str(answer) if answer else ""    # This is what the AI should be
+                # Handle list values properly
+                if isinstance(answer, list) and answer:
+                    ai_gender = answer[0]  # Take first selected option
+                else:
+                    ai_gender = str(answer) if answer else ""
             elif 'how old am i' in question:
-                ai_age = str(answer) if answer else ""       # This is the AI's age
+                # Handle list values properly
+                if isinstance(answer, list) and answer:
+                    ai_age = answer[0]  # Take first selected option
+                else:
+                    ai_age = str(answer) if answer else ""
             elif 'what is my ethnicity' in question:
-                ai_ethnicity = str(answer) if answer else "" # This is the AI's ethnicity
+                # Handle list values properly
+                if isinstance(answer, list) and answer:
+                    ai_ethnicity = answer[0]  # Take first selected option
+                else:
+                    ai_ethnicity = str(answer) if answer else ""
             elif 'where does this take place' in question:
-                location = str(answer) if answer else ""
+                # Handle list values properly
+                if isinstance(answer, list) and answer:
+                    location = answer[0]  # Take first selected option
+                else:
+                    location = str(answer) if answer else ""
             elif 'who is in control' in question:
-                control = str(answer) if answer else ""
+                # Handle list values properly
+                if isinstance(answer, list) and answer:
+                    control = answer[0]  # Take first selected option
+                else:
+                    control = str(answer) if answer else ""
+            elif 'tell me what to wear' in question:
+                # Handle list values properly
+                if isinstance(answer, list) and answer:
+                    clothing = answer[0]  # Take first selected option
+                else:
+                    clothing = str(answer) if answer else ""  # What the AI is wearing
             elif 'describe to me in detail what would you like me to do to you' in question:
                 # This is the main action question - extract the actual activities
                 if isinstance(answer, list):
@@ -225,21 +256,34 @@ class AITallyExtractor:
         template_parts = []
         
         logger.info(f"Building template with extracted values:")
-        logger.info(f"  - AI Gender: {ai_gender}")
-        logger.info(f"  - AI Age: {ai_age}")
-        logger.info(f"  - AI Ethnicity: {ai_ethnicity}")
-        logger.info(f"  - User Gender: {user_gender}")
-        logger.info(f"  - Location: {location}")
-        logger.info(f"  - Control: {control}")
-        logger.info(f"  - Activities: {activities}")
+        logger.info(f"  - AI Gender: {ai_gender} (type: {type(ai_gender)})")
+        logger.info(f"  - AI Age: {ai_age} (type: {type(ai_age)})")
+        logger.info(f"  - AI Ethnicity: {ai_ethnicity} (type: {type(ai_ethnicity)})")
+        logger.info(f"  - User Gender: {user_gender} (type: {type(user_gender)})")
+        logger.info(f"  - Location: {location} (type: {type(location)})")
+        logger.info(f"  - Control: {control} (type: {type(control)})")
+        logger.info(f"  - Clothing: {clothing} (type: {type(clothing)})")
+        logger.info(f"  - Activities: {activities} (type: {type(activities)})")
+        
+        # Log companion information
+        companion = None
+        for qa in self.cleaned_data['questions_and_answers']:
+            question = qa['question'].lower()
+            answer = qa['answer']
+            if 'am i alone' in question and answer:
+                companion = answer
+                break
+        logger.info(f"  - Companion: {companion}")
         
         # AI character setup (the "other person" from the form)
+        logger.info(f"🔧 AI character values: gender='{ai_gender}' (type: {type(ai_gender)}), age='{ai_age}', ethnicity='{ai_ethnicity}'")
         if ai_gender and ai_age and ai_ethnicity:
-            # Handle "a woman" vs "a man" properly
-            if ai_gender.lower().startswith('a '):
-                template_parts.append(f"You are an {ai_age} year old {ai_ethnicity.lower()} {ai_gender.lower()[2:]}.")
-            else:
-                template_parts.append(f"You are an {ai_age} year old {ai_ethnicity.lower()} {ai_gender.lower()}.")
+            # Handle "a woman" vs "a man" properly - always remove "A " prefix for consistency
+            # Convert to string if it's a list
+            gender_str = ai_gender[0] if isinstance(ai_gender, list) else str(ai_gender)
+            gender_text = gender_str.lower()[2:] if gender_str.lower().startswith('a ') else gender_str.lower()
+            logger.info(f"🔧 Processing AI character: gender='{ai_gender}' -> '{gender_text}', age='{ai_age}', ethnicity='{ai_ethnicity}'")
+            template_parts.append(f"You are an {ai_age} year old {ai_ethnicity.lower()} {gender_text}.")
         elif ai_gender and ai_age:
             if ai_gender.lower().startswith('a '):
                 template_parts.append(f"You are an {ai_age} year old {ai_gender.lower()[2:]}.")
@@ -276,6 +320,10 @@ class AITallyExtractor:
         if location and location not in [part for part in template_parts if location.lower() in part.lower()]:
             template_parts.append(f"This takes place {location.lower()}.")
         
+        # Add clothing information
+        if clothing:
+            template_parts.append(f"You are wearing {clothing.lower()}.")
+        
         # Control dynamic (from the user's perspective in the form)
         if control:
             if "you will be in control" in control.lower():
@@ -298,6 +346,21 @@ class AITallyExtractor:
                 # Join multiple activities naturally
                 activity_text = ", ".join(activities[:-1]) + f" and {activities[-1]}"
                 template_parts.append(f"I am {activity_text.lower()}.")
+        
+        # Add companion information
+        companion = None
+        for qa in self.cleaned_data['questions_and_answers']:
+            question = qa['question'].lower()
+            answer = qa['answer']
+            if 'am i alone' in question and answer:
+                companion = answer
+                break
+        
+        if companion:
+            if companion.lower() == 'yes':
+                template_parts.append("You are alone with me.")
+            else:
+                template_parts.append(f"You are with {companion.lower()}.")
         
         if not template_parts:
             return "You are in a roleplay scenario with me."
@@ -377,15 +440,23 @@ class AITallyExtractor:
         
         # AI character description (the "other person" from the form)
         if ai_gender and ai_age and ai_ethnicity:
-            scenario_parts.append(f"You are a {ai_age} year old {ai_ethnicity.lower()} {ai_gender.lower()}.")
+            # Handle "A woman" vs "a man" properly - always remove "A " prefix for consistency
+            gender_text = ai_gender.lower()[2:] if ai_gender.lower().startswith('a ') else ai_gender.lower()
+            scenario_parts.append(f"You are a {ai_age} year old {ai_ethnicity.lower()} {gender_text}.")
         elif ai_gender and ai_age:
-            scenario_parts.append(f"You are a {ai_age} year old {ai_gender.lower()}.")
+            # Handle "A woman" vs "a man" properly
+            gender_text = ai_gender.lower()[2:] if ai_gender.lower().startswith('a ') else ai_gender.lower()
+            scenario_parts.append(f"You are a {ai_age} year old {gender_text}.")
         elif ai_gender and ai_ethnicity:
-            scenario_parts.append(f"You are a {ai_ethnicity.lower()} {ai_gender.lower()}.")
+            # Handle "A woman" vs "a man" properly
+            gender_text = ai_gender.lower()[2:] if ai_gender.lower().startswith('a ') else ai_gender.lower()
+            scenario_parts.append(f"You are a {ai_ethnicity.lower()} {gender_text}.")
         elif ai_age and ai_ethnicity:
             scenario_parts.append(f"You are a {ai_age} year old {ai_ethnicity.lower()} person.")
         elif ai_gender:
-            scenario_parts.append(f"You are a {ai_gender.lower()}.")
+            # Handle "A woman" vs "a man" properly
+            gender_text = ai_gender.lower()[2:] if ai_gender.lower().startswith('a ') else ai_gender.lower()
+            scenario_parts.append(f"You are a {gender_text}.")
         elif ai_age:
             scenario_parts.append(f"You are {ai_age} years old.")
         elif ai_ethnicity:
