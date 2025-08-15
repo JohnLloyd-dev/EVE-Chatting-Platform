@@ -32,11 +32,21 @@ class AITallyExtractor:
             logger.error("No form_data provided")
             return {}
         
-        if 'fields' not in self.form_data:
+        # Handle both direct fields and nested data.fields structures
+        fields = None
+        if 'fields' in self.form_data:
+            fields = self.form_data['fields']
+            logger.info(f"Found fields directly in form_data: {len(fields)} fields")
+        elif 'data' in self.form_data and 'fields' in self.form_data['data']:
+            fields = self.form_data['data']['fields']
+            logger.info(f"Found fields in form_data['data']: {len(fields)} fields")
+        else:
             logger.error(f"Form data missing 'fields' key. Available keys: {list(self.form_data.keys())}")
+            if 'data' in self.form_data:
+                logger.error(f"Data keys: {list(self.form_data['data'].keys()) if self.form_data['data'] else 'None'}")
             return {}
         
-        logger.info(f"Found {len(self.form_data['fields'])} fields to process")
+        logger.info(f"Processing {len(fields)} fields")
         
         structured_data = {
             'form_metadata': {
@@ -53,7 +63,7 @@ class AITallyExtractor:
             }
         }
         
-        for field in self.form_data['fields']:
+        for field in fields:
             logger.info(f"Processing field: {field.get('label', 'No label')} - Type: {field.get('type', 'No type')} - Value: {field.get('value', 'No value')}")
             
             field_data = self.process_field(field)
