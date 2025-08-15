@@ -765,7 +765,7 @@ async def init_session(session_data: dict, request: Request, credentials: HTTPBa
         enhanced_prompt = user_sessions[session_id]["system_prompt"]
         logger.info(f"🎯 Session {session_id} initialized with backend data")
         logger.info(f"📝 System prompt length: {len(system_prompt)} characters")
-        logger.info(f"📝 Enhanced prompt preview: {enhanced_prompt[:200]}...")
+        logger.info(f"📝 Enhanced prompt: {enhanced_prompt}")
     
     return {"message": "Session initialized successfully", "session_id": session_id}
 
@@ -780,8 +780,8 @@ async def set_scenario(scenario: InitScenario, request: Request, credentials: HT
         # Log the scenario being set for debugging
         enhanced_prompt = user_sessions[session_id]["system_prompt"]
         logger.info(f"🎯 Scenario set for session {session_id}")
-        logger.info(f"📝 Original prompt: {scenario.scenario[:200]}...")
-        logger.info(f"📝 Enhanced prompt: {enhanced_prompt[:200]}...")
+        logger.info(f"📝 Original prompt: {scenario.scenario}")
+        logger.info(f"📝 Enhanced prompt: {enhanced_prompt}")
     
     response = JSONResponse({"message": "Scenario set!"})
     response.set_cookie(key="session_id", value=session_id, httponly=True)
@@ -833,7 +833,7 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
     prompt_time = time.time() - prompt_start
     
     # Log the prompt being sent to the model for debugging
-    logger.info(f"📝 System prompt: {session['system_prompt'][:200]}...")
+    logger.info(f"📝 System prompt: {session['system_prompt']}")
     logger.info(f"📝 Full prompt length: {len(full_prompt)} characters")
     logger.info(f"📝 History messages: {len(session['history'])}")
     
