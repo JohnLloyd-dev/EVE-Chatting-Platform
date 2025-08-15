@@ -19,7 +19,11 @@ class AITallyExtractor:
     
     def __init__(self, form_data: Dict):
         self.form_data = form_data
+        logger.info(f"🔧 AITallyExtractor initialized with form_data keys: {list(form_data.keys()) if form_data else 'None'}")
+        if 'data' in form_data:
+            logger.info(f"🔧 form_data['data'] keys: {list(form_data['data'].keys()) if form_data['data'] else 'None'}")
         self.cleaned_data = self.clean_and_structure_data()
+        logger.info(f"🔧 clean_and_structure_data completed. cleaned_data keys: {list(self.cleaned_data.keys()) if self.cleaned_data else 'None'}")
     
     def clean_and_structure_data(self) -> Dict[str, Any]:
         """
@@ -330,14 +334,18 @@ class AITallyExtractor:
         
         try:
             # Create the scenario directly from the form data
+            logger.info(f"🔧 Calling create_direct_scenario...")
             scenario = self.create_direct_scenario()
+            logger.info(f"🔧 create_direct_scenario returned: '{scenario}' (length: {len(scenario) if scenario else 0})")
             
             if scenario and len(scenario.strip()) > 10:
-                logger.info(f"Successfully generated direct scenario: {len(scenario)} characters")
+                logger.info(f"✅ Successfully generated direct scenario: {len(scenario)} characters")
                 return scenario.strip()
             else:
-                logger.warning("No scenario could be generated from form data")
-                return self.create_fallback_scenario()
+                logger.warning(f"❌ No scenario could be generated from form data. Scenario: '{scenario}'")
+                fallback = self.create_fallback_scenario()
+                logger.info(f"🔧 Fallback scenario: '{fallback}' (length: {len(fallback) if fallback else 0})")
+                return fallback
                 
         except Exception as e:
             logger.error(f"Failed to generate scenario: {str(e)}")
@@ -472,7 +480,12 @@ class AITallyExtractor:
                     continuous_activities = self.convert_to_present_continuous(fixed_activity_text)
                     scenario_parts.append(f"I am {continuous_activities}.")
         
-        return " ".join(scenario_parts)
+        final_scenario = " ".join(scenario_parts)
+        logger.info(f"🎯 Final scenario generated: {final_scenario}")
+        logger.info(f"📝 Scenario parts count: {len(scenario_parts)}")
+        for i, part in enumerate(scenario_parts):
+            logger.info(f"  Part {i+1}: {part}")
+        return final_scenario
     
     def convert_to_present_continuous(self, activity_text: str) -> str:
         """
@@ -828,52 +841,36 @@ class AITallyExtractor:
             question = qa['question'].lower()
             answer = qa['answer'] if qa['answer'] else ""
             
-            # User gender patterns
-            if any(pattern in question for pattern in [
-                'fantasy are you a man or a woman', 'are you a man or woman', 
-                'your gender', 'you are a', 'are you male or female'
-            ]):
+            # User gender patterns - match the actual Tally form question
+            if 'are you a man or a woman' in question:
                 user_gender = str(answer) if not isinstance(answer, list) else str(answer[0])
             
-            # AI gender patterns (the "other person")
-            elif any(pattern in question for pattern in [
-                'gender of the other person', 'other person', 'their gender',
-                'he or she', 'man or woman they', 'gender are they'
-            ]):
+            # AI gender patterns - match the actual Tally form question
+            elif 'who do you want me to be' in question:
                 ai_gender = str(answer) if not isinstance(answer, list) else str(answer[0])
             
-            # AI age patterns
-            elif any(pattern in question for pattern in [
-                'old', 'age', 'years old', 'how old are they'
-            ]):
+            # AI age patterns - match the actual Tally form question
+            elif 'how old am i' in question:
                 ai_age = str(answer) if not isinstance(answer, list) else str(answer[0])
             
-            # AI ethnicity patterns  
-            elif any(pattern in question for pattern in [
-                'ethnicity', 'race', 'ethnic background', 'their race'
-            ]):
+            # AI ethnicity patterns - match the actual Tally form question
+            elif 'what is my ethnicity' in question:
                 ai_ethnicity = str(answer) if not isinstance(answer, list) else str(answer[0])
             
-            # Location patterns
-            elif any(pattern in question for pattern in [
-                'where', 'take place', 'location', 'place', 'setting'
-            ]):
+            # Location patterns - match the actual Tally form question
+            elif 'where does this take place' in question:
                 location = str(answer) if not isinstance(answer, list) else str(answer[0])
             
-            # Control patterns
-            elif any(pattern in question for pattern in [
-                'who is in control', 'control', 'dominant', 'submissive', 'in charge'
-            ]):
+            # Control patterns - match the actual Tally form question
+            elif 'who is in control' in question:
                 control = str(answer) if not isinstance(answer, list) else str(answer[0])
             
-            # Companion patterns (who you are with)
-            elif any(pattern in question for pattern in [
-                'am i alone', 'are you alone', 'who are you with', 'with another'
-            ]):
+            # Companion patterns - match the actual Tally form question
+            elif 'so, in this fantasy am i alone' in question:
                 companion = str(answer) if not isinstance(answer, list) else str(answer[0])
             
-            # Pick One patterns (for clothing, etc.)
-            elif 'pick one' in question:
+            # Pick One patterns (for clothing, etc.) - match the actual Tally form question
+            elif 'tell me what to wear' in question:
                 pick_one_answer = str(answer) if not isinstance(answer, list) else str(answer[0])
                 pick_one_answers.append(pick_one_answer)
             
@@ -896,6 +893,19 @@ class AITallyExtractor:
                     'D': 'Underwear'
                 }
                 clothing = clothing_map.get(pick_one_answers[0], pick_one_answers[0])
+        
+        # Debug logging to see what was extracted
+        logger.info(f"🔍 extract_key_information extracted:")
+        logger.info(f"  - user_gender: {user_gender}")
+        logger.info(f"  - ai_gender: {ai_gender}")
+        logger.info(f"  - ai_age: {ai_age}")
+        logger.info(f"  - ai_ethnicity: {ai_ethnicity}")
+        logger.info(f"  - location: {location}")
+        logger.info(f"  - control: {control}")
+        logger.info(f"  - companion: {companion}")
+        logger.info(f"  - clothing: {clothing}")
+        logger.info(f"  - activities: {activities}")
+        logger.info(f"  - pick_one_answers: {pick_one_answers}")
         
         return {
             'user_gender': user_gender,
@@ -1067,13 +1077,19 @@ def generate_ai_scenario(form_data: Dict) -> str:
         str: AI-generated scenario narrative
     """
     if not form_data:
+        logger.warning("❌ No form_data provided to generate_ai_scenario")
         return ""
+    
+    logger.info(f"🚀 Starting AI scenario generation with form_data keys: {list(form_data.keys()) if form_data else 'None'}")
     
     try:
         extractor = AITallyExtractor(form_data)
-        return extractor.generate_scenario_with_ai()
+        logger.info(f"✅ AITallyExtractor created successfully")
+        result = extractor.generate_scenario_with_ai()
+        logger.info(f"✅ generate_scenario_with_ai returned: '{result}' (length: {len(result) if result else 0})")
+        return result
     except Exception as e:
-        logger.error(f"AI scenario generation failed: {str(e)}")
+        logger.error(f"❌ AI scenario generation failed: {str(e)}", exc_info=True)
         return ""
 
 
