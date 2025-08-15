@@ -1108,6 +1108,28 @@ async def debug_session_endpoint(session_id: str, credentials: HTTPBasicCredenti
     except Exception as e:
         return {"error": f"Debug failed: {str(e)}"}
 
+# Debug endpoint to list all active sessions
+@app.get("/debug-sessions")
+async def debug_sessions_endpoint(credentials: HTTPBasicCredentials = Depends(authenticate)):
+    """Debug endpoint to list all active sessions and their system prompts"""
+    try:
+        with session_lock:
+            sessions_info = {}
+            for session_id, session in user_sessions.items():
+                sessions_info[session_id] = {
+                    "system_prompt_length": len(session.get("system_prompt", "")),
+                    "system_prompt_preview": session.get("system_prompt", "")[:200] + "..." if len(session.get("system_prompt", "")) > 200 else session.get("system_prompt", ""),
+                    "history_length": len(session.get("history", [])),
+                    "has_tally_scenario": "**Scenario**:" in session.get("system_prompt", "")
+                }
+            
+            return {
+                "total_sessions": len(user_sessions),
+                "sessions": sessions_info
+            }
+    except Exception as e:
+        return {"error": f"Debug failed: {str(e)}"}
+
 # Speed test endpoint for performance benchmarking
 @app.post("/speed-test")
 async def speed_test(credentials: HTTPBasicCredentials = Depends(authenticate)):
