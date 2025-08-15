@@ -45,10 +45,15 @@ class AITallyExtractor:
         }
         
         for field in self.form_data['fields']:
+            logger.info(f"Processing field: {field.get('label', 'No label')} - Type: {field.get('type', 'No type')} - Value: {field.get('value', 'No value')}")
+            
             field_data = self.process_field(field)
             if field_data:
                 structured_data['questions_and_answers'].append(field_data)
                 structured_data['summary']['answered_fields'] += 1
+                logger.info(f"✅ Field processed successfully: {field_data.get('question', 'No question')} → {field_data.get('answer', 'No answer')}")
+            else:
+                logger.warning(f"❌ Field processing failed: {field.get('label', 'No label')}")
             
             structured_data['summary']['total_fields'] += 1
             if field.get('type'):
@@ -70,7 +75,15 @@ class AITallyExtractor:
         options = field.get('options', [])
         
         # Skip fields without labels or values
-        if not label or not raw_value:
+        if not label:
+            return None
+        
+        # Handle empty values more gracefully
+        if not raw_value:
+            # For MULTIPLE_CHOICE fields, we might still want to process them
+            if field_type == 'MULTIPLE_CHOICE':
+                processed_field['answer'] = "No selection made"
+                return processed_field
             return None
         
         processed_field = {
@@ -94,8 +107,10 @@ class AITallyExtractor:
                     processed_field['answer'] = selected_texts[0] if len(selected_texts) == 1 else selected_texts
                     processed_field['all_options'] = [opt['text'] for opt in options]
                 else:
+                    # Don't return None, just skip this field
                     return None
             else:
+                # Don't return None, just skip this field
                 return None
         
         elif field_type in ['TEXTAREA', 'INPUT_TEXT', 'INPUT_EMAIL', 'INPUT_PHONE_NUMBER']:
@@ -105,6 +120,7 @@ class AITallyExtractor:
             elif isinstance(raw_value, list) and raw_value:
                 processed_field['answer'] = ' '.join(str(v) for v in raw_value if v)
             else:
+                # Don't return None, just skip this field
                 return None
         
         elif field_type == 'PAYMENT':
@@ -118,6 +134,7 @@ class AITallyExtractor:
             elif raw_value:
                 processed_field['answer'] = str(raw_value)
             else:
+                # Don't return None, just skip this field
                 return None
         
         return processed_field
@@ -139,12 +156,17 @@ class AITallyExtractor:
         control = None
         activities = []
         
+        logger.info(f"Processing {len(self.cleaned_data['questions_and_answers'])} questions for AI prompt")
+        
         for qa in self.cleaned_data['questions_and_answers']:
             question = qa['question'].lower()
             answer = qa['answer']  # Keep as original type for proper processing
             
+            logger.info(f"Processing Q&A: '{question}' → {answer}")
+            
             # Skip questions with no answers
             if not answer:
+                logger.warning(f"Skipping question with no answer: '{question}'")
                 continue
             
             # Map the actual questions from your Tally form - using EXACT matches
@@ -178,6 +200,15 @@ class AITallyExtractor:
         
         # Build a comprehensive template that uses all available data
         template_parts = []
+        
+        logger.info(f"Building template with extracted values:")
+        logger.info(f"  - AI Gender: {ai_gender}")
+        logger.info(f"  - AI Age: {ai_age}")
+        logger.info(f"  - AI Ethnicity: {ai_ethnicity}")
+        logger.info(f"  - User Gender: {user_gender}")
+        logger.info(f"  - Location: {location}")
+        logger.info(f"  - Control: {control}")
+        logger.info(f"  - Activities: {activities}")
         
         # AI character setup (the "other person" from the form)
         if ai_gender and ai_age and ai_ethnicity:
