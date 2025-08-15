@@ -379,9 +379,6 @@ def build_chatml_prompt_ultra_fast(system: str, history: list) -> str:
     
     parts.append("<|assistant|>\n")
     
-    # Add critical instruction to only generate the AI's response
-    parts.append("CRITICAL INSTRUCTION: You are an AI assistant responding to a user. When you respond, ONLY provide YOUR response to the user's message. DO NOT include: 1) The conversation history, 2) User messages, 3) System prompts, 4) Any formatting tags like <|assistant|>, <|user|>, or <|system|>. Your response should be a single, natural message that directly answers what the user just said. Think of it as if you're in a live conversation - just respond naturally without repeating what was said before.\n")
-    
     return "".join(parts)  # Single join operation
 
 # OPTIMIZATION: Enhanced generation parameters for maximum speed
@@ -461,9 +458,6 @@ def build_chatml_prompt_batch(system: str, history: list) -> str:
                 parts.append(f"<|assistant|>\n{entry.strip()}\n")
     
     parts.append("<|assistant|>\n")
-    
-    # Add critical instruction to only generate the AI's response
-    parts.append("CRITICAL INSTRUCTION: You are an AI assistant responding to a user. When you respond, ONLY provide YOUR response to the user's message. DO NOT include: 1) The conversation history, 2) User messages, 3) System prompts, 4) Any formatting tags like <|assistant|>, <|user|>, or <|system|>. Your response should be a single, natural message that directly answers what the user just said. Think of it as if you're in a live conversation - just respond naturally without repeating what was said before.\n")
     
     return "".join(parts)  # Single join operation
 
