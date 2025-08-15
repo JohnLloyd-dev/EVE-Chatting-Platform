@@ -26,8 +26,17 @@ class AITallyExtractor:
         Clean and structure the raw Tally data for AI processing
         Extracts meaningful information while preserving context
         """
-        if not self.form_data or 'fields' not in self.form_data:
+        logger.info(f"Starting clean_and_structure_data with form_data keys: {list(self.form_data.keys()) if self.form_data else 'None'}")
+        
+        if not self.form_data:
+            logger.error("No form_data provided")
             return {}
+        
+        if 'fields' not in self.form_data:
+            logger.error(f"Form data missing 'fields' key. Available keys: {list(self.form_data.keys())}")
+            return {}
+        
+        logger.info(f"Found {len(self.form_data['fields'])} fields to process")
         
         structured_data = {
             'form_metadata': {
@@ -78,6 +87,12 @@ class AITallyExtractor:
         if not label:
             return None
         
+        processed_field = {
+            'question': label,
+            'field_type': field_type,
+            'raw_value': raw_value
+        }
+        
         # Handle empty values more gracefully
         if not raw_value:
             # For MULTIPLE_CHOICE fields, we might still want to process them
@@ -85,12 +100,6 @@ class AITallyExtractor:
                 processed_field['answer'] = "No selection made"
                 return processed_field
             return None
-        
-        processed_field = {
-            'question': label,
-            'field_type': field_type,
-            'raw_value': raw_value
-        }
         
         # Process value based on field type
         if field_type == 'MULTIPLE_CHOICE' and options:
