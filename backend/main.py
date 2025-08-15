@@ -95,6 +95,19 @@ def get_complete_system_prompt(db: Session, user_id: str = None, tally_prompt: s
     logger.info(f"  - Final combined length: {len(complete_prompt)} characters")
     logger.info(f"Final combined system prompt preview: {complete_prompt[:300]}...")
     
+    # Also log the scenario part specifically to verify it's included
+    if tally_prompt and tally_prompt.strip():
+        scenario_marker = "**Scenario**:"
+        if scenario_marker in complete_prompt:
+            scenario_start = complete_prompt.find(scenario_marker)
+            scenario_end = complete_prompt.find("\n\n", scenario_start)
+            if scenario_end == -1:
+                scenario_end = len(complete_prompt)
+            scenario_part = complete_prompt[scenario_start:scenario_end]
+            logger.info(f"✅ Scenario found in final prompt: {scenario_part}")
+        else:
+            logger.warning("❌ Scenario marker not found in final prompt!")
+    
     return complete_prompt
 
 # Legacy function for backward compatibility
