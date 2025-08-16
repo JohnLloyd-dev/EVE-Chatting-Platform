@@ -315,14 +315,13 @@ performance_cache = PerformanceCache()
 # Comprehensive ChatML tag cleaning patterns
 CLEAN_PATTERN = re.compile(r'<\|[\w]+\|>$')  # Tags at end
 # Pre-compiled regex patterns for maximum performance
-CHATML_TAG_PATTERN = re.compile(r'<\|[\w]+\|>|<\|im_start\|>[\w]+|<\|im_end\|>')  # All ChatML tags including OpenHermes format
+CHATML_TAG_PATTERN = re.compile(r'<\|[\w]+\|>')  # Standard ChatML tags
 
 # Common phrases for token counting optimization
 COMMON_PHRASES = {
-    "<|im_start|>system": tokenizer("<|im_start|>system")["input_ids"],
-    "<|im_end|>": tokenizer("<|im_end|>")["input_ids"],
-    "<|im_start|>user": tokenizer("<|im_start|>user")["input_ids"],
-    "<|im_start|>assistant": tokenizer("<|im_start|>assistant")["input_ids"],
+    "<|system|>": tokenizer("<|system|>")["input_ids"],
+    "<|user|>": tokenizer("<|user|>")["input_ids"],
+    "<|assistant|>": tokenizer("<|assistant|>")["input_ids"],
 }
 
 # OPTIMIZATION: Ultra-fast token counting with advanced caching
@@ -366,20 +365,20 @@ def count_tokens_ultra_fast(text: str) -> int:
 # OPTIMIZATION: Ultra-fast prompt building with minimal operations
 def build_chatml_prompt_ultra_fast(system: str, history: list) -> str:
     """Ultra-fast prompt building with absolute minimal string operations"""
-    # OpenHermes-2.5-Mistral-7B uses ChatML format with specific tokens
-    parts = [f"<|im_start|>system\n{system.strip()}<|im_end|>\n"]
+    # OpenHermes-2.5-Mistral-7B uses standard ChatML format
+    parts = [f"<|system|>\n{system.strip()}\n"]
     
     # Process history with proper user/assistant alternation
     # History should alternate: user, assistant, user, assistant, etc.
     for i, entry in enumerate(history):
         if entry.strip():  # Only add non-empty messages
             if i % 2 == 0:  # Even indices should be user messages
-                parts.append(f"<|im_start|>user\n{entry.strip()}<|im_end|>\n")
+                parts.append(f"<|user|>\n{entry.strip()}\n")
             else:  # Odd indices should be assistant responses
-                parts.append(f"<|im_start|>assistant\n{entry.strip()}<|im_end|>\n")
+                parts.append(f"<|assistant|>\n{entry.strip()}\n")
     
     # Add the final assistant tag for the AI to respond
-    parts.append("<|im_start|>assistant\n")
+    parts.append("<|assistant|>\n")
     
     return "".join(parts)  # Single join operation
 
@@ -443,20 +442,20 @@ def get_ultra_fast_generation_params(req: MessageRequest, max_output_tokens: int
 # OPTIMIZATION: Enhanced performance monitoring and batch processing
 def build_chatml_prompt_batch(system: str, history: list) -> str:
     """Ultra-fast batch prompt building with minimal string operations"""
-    # OpenHermes-2.5-Mistral-7B uses ChatML format with specific tokens
-    parts = [f"<|im_start|>system\n{system.strip()}<|im_end|>\n"]
+    # OpenHermes-2.5-Mistral-7B uses standard ChatML format
+    parts = [f"<|system|>\n{system.strip()}\n"]
     
     # Process history with proper user/assistant alternation
     # History should alternate: user, assistant, user, assistant, etc.
     for i, entry in enumerate(history):
         if entry.strip():  # Only add non-empty messages
             if i % 2 == 0:  # Even indices should be user messages
-                parts.append(f"<|im_start|>user\n{entry.strip()}<|im_end|>\n")
+                parts.append(f"<|user|>\n{entry.strip()}\n")
             else:  # Odd indices should be assistant responses
-                parts.append(f"<|im_start|>assistant\n{entry.strip()}<|im_end|>\n")
+                parts.append(f"<|assistant|>\n{entry.strip()}\n")
     
     # Add the final assistant tag for the AI to respond
-    parts.append("<|im_start|>assistant\n")
+    parts.append("<|assistant|>\n")
     
     return "".join(parts)  # Single join operation
 
@@ -1049,6 +1048,60 @@ async def test_cleaning_endpoint():
     try:
         result = test_chatml_cleaning()
         return {"message": "ChatML cleaning test completed", "result": result}
+    except Exception as e:
+        return {"error": f"Test failed: {str(e)}"}
+
+# Test endpoint to verify ChatML format compatibility
+@app.get("/test-chatml-format")
+async def test_chatml_format_endpoint(credentials: HTTPBasicCredentials = Depends(authenticate)):
+    """Test different ChatML formats to see which one OpenHermes supports"""
+    try:
+        test_system = "You are a helpful AI assistant. You must always say 'I am an AI assistant' when asked about your identity."
+        test_history = ["Hello", "Hi there"]
+        
+        # Test different formats
+        formats = {
+            "OpenHermes format": f"<|im_start|>system\n{test_system}<|im_end|>\n<|im_start|>user\n{test_history[0]}<|im_end|>\n<|im_start|>assistant\n",
+            "Standard ChatML": f"<|system|>\n{test_system}\n<|user|>\n{test_history[0]}\n<|assistant|>\n",
+            "Simple format": f"System: {test_system}\n\nUser: {test_history[0]}\n\nAssistant: ",
+            "No tags": f"{test_system}\n\nUser: {test_history[0]}\n\nAssistant: "
+        }
+        
+        results = {}
+        for format_name, prompt in formats.items():
+            try:
+                # Tokenize the prompt
+                inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=512).to(model.device)
+                
+                # Generate a short response
+                with torch.no_grad():
+                    output = model.generate(
+                        **inputs,
+                        max_new_tokens=20,
+                        temperature=0.1,
+                        do_sample=False,
+                        pad_token_id=tokenizer.eos_token_id,
+                        eos_token_id=tokenizer.eos_token_id
+                    )
+                
+                response = tokenizer.decode(output[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True).strip()
+                results[format_name] = {
+                    "prompt": prompt[:200] + "..." if len(prompt) > 200 else prompt,
+                    "response": response,
+                    "success": True
+                }
+            except Exception as e:
+                results[format_name] = {
+                    "prompt": prompt[:200] + "..." if len(prompt) > 200 else prompt,
+                    "error": str(e),
+                    "success": False
+                }
+        
+        return {
+            "message": "ChatML format compatibility test completed",
+            "results": results,
+            "recommendation": "Check which format generates the most appropriate response"
+        }
     except Exception as e:
         return {"error": f"Test failed: {str(e)}"}
 
