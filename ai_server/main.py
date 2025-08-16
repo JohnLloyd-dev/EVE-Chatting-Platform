@@ -525,33 +525,8 @@ def clean_response(response: str) -> str:
     
     return response.strip()
 
-def detect_incomplete_response(response: str) -> bool:
-    """Detect if a response appears to be incomplete"""
-    if not response or len(response.strip()) < 5:
-        return False
-    
-    # Check for common incomplete patterns
-    incomplete_endings = [
-        ' the', ' a ', ' an ', ' and', ' or', ' but', ' if', ' when', ' where', ' why', ' how',
-        ' what', ' who', ' which', ' that', ' this', ' these', ' those', ' my', ' your', ' his',
-        ' her', ' their', ' our', ' its', ' is', ' are', ' was', ' were', ' have', ' has', ' had',
-        ' do', ' does', ' did', ' will', ' would', ' could', ' should', ' might', ' may', ' can',
-        ' to ', ' in ', ' on ', ' at ', ' by ', ' for ', ' with ', ' without ', ' about ', ' against '
-    ]
-    
-    response_lower = response.lower().strip()
-    for ending in incomplete_endings:
-        if response_lower.endswith(ending):
-            return True
-    
-    # Check if it doesn't end with proper punctuation
-    if response and response[-1] not in {'.', '!', '?', ':', ';'}:
-        # But allow if it's a short response or ends with common conversational endings
-        if len(response) < 20 or response_lower.endswith(('ok', 'yes', 'no', 'sure', 'right', 'exactly')):
-            return False
-        return True
-    
-    return False
+# REMOVED: detect_incomplete_response function - was causing timeouts with retry logic
+# The model should generate complete responses naturally without needing retries
 
 def test_chatml_cleaning():
     """Test function to verify ChatML tag cleaning works correctly"""
@@ -911,6 +886,9 @@ async def _chat_internal(req: MessageRequest, request: Request, credentials: HTT
         "eos_token_id": tokenizer.eos_token_id,
         "pad_token_id": tokenizer.eos_token_id,
         "early_stopping": False,  # Disable early stopping to allow complete sentences
+        "do_sample": True,        # Enable sampling for more natural responses
+        "temperature": max(req.temperature, 0.7),  # Ensure some creativity
+        "max_new_tokens": max(req.max_tokens, 100),  # Ensure enough tokens for complete responses
     })
     
     # OPTIMIZATION: Remove conflicting parameters that are already in inputs
@@ -1006,47 +984,8 @@ async def _chat_internal(req: MessageRequest, request: Request, credentials: HTT
         if not response.strip():
             response = "I apologize, but I need to provide a fresh response. Could you please repeat your question?"
     
-    # Check if response is incomplete and retry with more tokens if needed
-    if detect_incomplete_response(response) and req.max_tokens < 500:
-        logger.info(f"⚠️ Detected incomplete response, retrying with more tokens...")
-        # Retry with more tokens
-        retry_max_tokens = min(req.max_tokens * 2, 500)
-        retry_generation_params = get_ultra_fast_generation_params(req, retry_max_tokens)
-        retry_generation_params.update({
-            "eos_token_id": tokenizer.eos_token_id,
-            "pad_token_id": tokenizer.eos_token_id,
-            "early_stopping": False,
-        })
-        
-        try:
-            # Remove conflicting parameters for retry too
-            if "attention_mask" in retry_generation_params and "attention_mask" in inputs:
-                del retry_generation_params["attention_mask"]
-            if "position_ids" in retry_generation_params and "position_ids" in inputs:
-                del retry_generation_params["position_ids"]
-                
-            with model_lock, torch.no_grad():
-                retry_output = model.generate(**inputs, **retry_generation_params)
-            
-            retry_response_tokens = retry_output[0][inputs["input_ids"].shape[1]:] if isinstance(inputs, dict) else retry_output[0][inputs.input_ids.shape[1]:]
-            retry_response = tokenizer.decode(retry_response_tokens, skip_special_tokens=True).strip()
-            retry_response = clean_response(retry_response)
-            
-            # Final safety check for retry response too
-            if '<|' in retry_response or '|>' in retry_response:
-                logger.warning(f"⚠️ ChatML tags detected in retry response, applying final cleanup")
-                retry_response = re.sub(r'<\|[\w]+\|>', '', retry_response)
-                retry_response = re.sub(r'\n\s*\n', '\n', retry_response)
-                retry_response = retry_response.strip()
-            
-            # Use the retry response if it's more complete
-            if len(retry_response) > len(response) and not detect_incomplete_response(retry_response):
-                response = retry_response
-                logger.info(f"✅ Retry successful: got more complete response ({len(retry_response)} chars vs {len(response)} chars)")
-            else:
-                logger.info(f"⚠️ Retry didn't improve response completeness")
-        except Exception as e:
-            logger.warning(f"⚠️ Retry generation failed: {e}, using original response")
+    # REMOVED: Incomplete sentence retry logic that was causing timeouts
+    # The model should generate complete responses naturally
     
     response_time = time.time() - response_start
     
