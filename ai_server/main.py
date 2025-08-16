@@ -315,13 +315,14 @@ performance_cache = PerformanceCache()
 # Comprehensive ChatML tag cleaning patterns
 CLEAN_PATTERN = re.compile(r'<\|[\w]+\|>$')  # Tags at end
 # Pre-compiled regex patterns for maximum performance
-CHATML_TAG_PATTERN = re.compile(r'<\|[\w]+\|>')  # Standard ChatML tags
+CHATML_TAG_PATTERN = re.compile(r'<\|[\w]+\|>|<\|im_start\|>[\w]+|<\|im_end\|>')  # All ChatML tags including OpenHermes format
 
 # Common phrases for token counting optimization
 COMMON_PHRASES = {
-    "<|system|>": tokenizer("<|system|>")["input_ids"],
-    "<|user|>": tokenizer("<|user|>")["input_ids"],
-    "<|assistant|>": tokenizer("<|assistant|>")["input_ids"],
+    "<|im_start|>system": tokenizer("<|im_start|>system")["input_ids"],
+    "<|im_end|>": tokenizer("<|im_end|>")["input_ids"],
+    "<|im_start|>user": tokenizer("<|im_start|>user")["input_ids"],
+    "<|im_start|>assistant": tokenizer("<|im_start|>assistant")["input_ids"],
 }
 
 # OPTIMIZATION: Ultra-fast token counting with advanced caching
@@ -365,19 +366,20 @@ def count_tokens_ultra_fast(text: str) -> int:
 # OPTIMIZATION: Ultra-fast prompt building with minimal operations
 def build_chatml_prompt_ultra_fast(system: str, history: list) -> str:
     """Ultra-fast prompt building with absolute minimal string operations"""
-    # Try simple format without ChatML tags - OpenHermes might not support ChatML
-    parts = [f"{system.strip()}\n\n"]
+    # OpenHermes-2.5-Mistral-7B uses instruction-based format
+    # Start with system instruction
+    parts = [f"<|im_start|>system\n{system.strip()}<|im_end|>\n"]
     
-    # Process history with simple format
+    # Process conversation history
     for i, entry in enumerate(history):
         if entry.strip():  # Only add non-empty messages
             if i % 2 == 0:  # Even indices should be user messages
-                parts.append(f"User: {entry.strip()}\n")
+                parts.append(f"<|im_start|>user\n{entry.strip()}<|im_end|>\n")
             else:  # Odd indices should be assistant responses
-                parts.append(f"Assistant: {entry.strip()}\n")
+                parts.append(f"<|im_start|>assistant\n{entry.strip()}<|im_end|>\n")
     
-    # Add the final prompt for the AI to respond
-    parts.append("Assistant: ")
+    # Add the final assistant tag for the AI to respond
+    parts.append("<|im_start|>assistant\n")
     
     return "".join(parts)  # Single join operation
 
@@ -441,19 +443,20 @@ def get_ultra_fast_generation_params(req: MessageRequest, max_output_tokens: int
 # OPTIMIZATION: Enhanced performance monitoring and batch processing
 def build_chatml_prompt_batch(system: str, history: list) -> str:
     """Ultra-fast batch prompt building with minimal string operations"""
-    # Try simple format without ChatML tags - OpenHermes might not support ChatML
-    parts = [f"{system.strip()}\n\n"]
+    # OpenHermes-2.5-Mistral-7B uses instruction-based format
+    # Start with system instruction
+    parts = [f"<|im_start|>system\n{system.strip()}<|im_end|>\n"]
     
-    # Process history with simple format
+    # Process conversation history
     for i, entry in enumerate(history):
         if entry.strip():  # Only add non-empty messages
             if i % 2 == 0:  # Even indices should be user messages
-                parts.append(f"User: {entry.strip()}\n")
+                parts.append(f"<|im_start|>user\n{entry.strip()}<|im_end|>\n")
             else:  # Odd indices should be assistant responses
-                parts.append(f"Assistant: {entry.strip()}\n")
+                parts.append(f"<|im_start|>assistant\n{entry.strip()}\n")
     
-    # Add the final prompt for the AI to respond
-    parts.append("Assistant: ")
+    # Add the final assistant tag for the AI to respond
+    parts.append("<|im_start|>assistant\n")
     
     return "".join(parts)  # Single join operation
 
