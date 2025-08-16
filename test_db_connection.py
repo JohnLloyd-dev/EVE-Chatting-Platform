@@ -1,58 +1,51 @@
 #!/usr/bin/env python3
-
+"""
+Simple database connection test to diagnose the connection issue
+"""
 import os
-from urllib.parse import urlparse
+from sqlalchemy import create_engine, text
+from sqlalchemy.exc import OperationalError
+import time
 
-# Test the database URL parsing
+# Test the database connection
 database_url = "postgresql://adam2025man:adam2025@postgres:5432/chatting_platform"
 
-print("🔍 Testing Database URL Parsing:")
-print(f"Original URL: {database_url}")
+print(f"Testing database connection to: {database_url}")
 
-try:
-    parsed = urlparse(database_url)
-    print(f"✅ Parsed successfully:")
-    print(f"  Scheme: {parsed.scheme}")
-    print(f"  Username: {parsed.username}")
-    print(f"  Password: {parsed.password}")
-    print(f"  Hostname: {parsed.hostname}")
-    print(f"  Port: {parsed.port}")
-    print(f"  Database: {parsed.path.lstrip('/')}")
-    
-    # Check if database name is correct
-    db_name = parsed.path.lstrip('/')
-    if db_name == "chatting_platform":
-        print("✅ Database name is correct: chatting_platform")
-    else:
-        print(f"❌ Database name is wrong: {db_name}")
-        
-except Exception as e:
-    print(f"❌ Failed to parse URL: {e}")
+# Try to connect multiple times with retries
+max_retries = 5
+retry_delay = 2
 
-print("\n🔍 Environment Variables:")
-print(f"DATABASE_URL: {os.getenv('DATABASE_URL', 'Not set')}")
-
-# Test SQLAlchemy connection
-try:
-    from sqlalchemy import create_engine
-    print("\n🔍 Testing SQLAlchemy Connection:")
-    
-    engine = create_engine(database_url)
-    print("✅ Engine created successfully")
-    
-    # Try to connect
-    with engine.connect() as conn:
-        print("✅ Database connection successful!")
+for attempt in range(max_retries):
+    try:
+        print(f"Attempt {attempt + 1}/{max_retries}...")
         
-        # Check what database we're actually connected to
-        result = conn.execute("SELECT current_database()")
-        actual_db = result.scalar()
-        print(f"✅ Connected to database: {actual_db}")
+        # Create engine
+        engine = create_engine(database_url)
         
-        if actual_db == "chatting_platform":
-            print("✅ Connected to correct database!")
-        else:
-            print(f"❌ Connected to wrong database: {actual_db}")
+        # Test connection
+        with engine.connect() as conn:
+            result = conn.execute(text("SELECT 1 as test"))
+            row = result.fetchone()
+            print(f"✅ Connection successful! Test query result: {row[0]}")
             
-except Exception as e:
-    print(f"❌ SQLAlchemy connection failed: {e}") 
+            # Test if tables exist
+            result = conn.execute(text("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"))
+            tables = [row[0] for row in result.fetchall()]
+            print(f"📋 Available tables: {tables}")
+            
+            break
+            
+    except OperationalError as e:
+        print(f"❌ Connection failed (attempt {attempt + 1}): {e}")
+        if attempt < max_retries - 1:
+            print(f"Waiting {retry_delay} seconds before retry...")
+            time.sleep(retry_delay)
+        else:
+            print("❌ All connection attempts failed")
+            exit(1)
+    except Exception as e:
+        print(f"❌ Unexpected error: {e}")
+        exit(1)
+
+print("✅ Database connection test completed successfully!") 
