@@ -15,6 +15,11 @@ import threading
 import time
 import asyncio  # For async operations
 import gc # For garbage collection
+from contextlib import asynccontextmanager
+
+# Timeout configuration to prevent hanging
+GENERATION_TIMEOUT = 30.0  # 30 seconds max for generation
+REQUEST_TIMEOUT = 60.0      # 60 seconds max for entire request
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -239,10 +244,22 @@ logger.info("🎯 Model ready for inference")
 
 # OPTIMIZATION: Memory management and caching
 def optimize_memory_usage():
-    """Optimize memory usage for better performance"""
+    """Optimize memory usage for better performance and prevent crashes"""
     if hasattr(torch, 'cuda') and torch.cuda.is_available():
+        # Clear CUDA cache more aggressively
         torch.cuda.empty_cache()
         torch.cuda.synchronize()
+        
+        # Check memory usage and warn if getting too high
+        memory_allocated = torch.cuda.memory_allocated() / 1024**3  # GB
+        memory_reserved = torch.cuda.memory_reserved() / 1024**3   # GB
+        
+        if memory_allocated > 8.0:  # If using more than 8GB
+            logger.warning(f"⚠️ High GPU memory usage: {memory_allocated:.2f}GB allocated, {memory_reserved:.2f}GB reserved")
+            # Force garbage collection
+            gc.collect()
+            torch.cuda.empty_cache()
+        
         logger.info("🚀 CUDA cache cleared and synchronized")
     
     # Force garbage collection
@@ -593,7 +610,7 @@ def trim_history_ultra_aggressive(system: str, history: list, max_tokens: int = 
     for i, msg in enumerate(reversed(history)):
         if len(keep_messages) >= max_messages:
             break
-        
+            
         # Determine message type based on position (even = user, odd = AI)
         msg_index = len(history) - 1 - i
         if msg_index % 2 == 0:  # User message
@@ -631,7 +648,7 @@ def trim_history_advanced(system: str, history: list, max_tokens: int = 3000) ->
     for i, msg in enumerate(reversed(history)):
         if len(keep_messages) >= max_messages:
             break
-        
+            
         # Determine message type based on position (even = user, odd = AI)
         msg_index = len(history) - 1 - i
         if msg_index % 2 == 0:  # User message
@@ -783,9 +800,29 @@ async def set_scenario(scenario: InitScenario, request: Request, credentials: HT
 # OPTIMIZED chat endpoint with performance improvements
 @app.post("/chat")
 async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCredentials = Depends(authenticate)):
-    # Performance monitoring start
+    # Performance monitoring start with timeout protection
     total_start_time = time.time()
     
+    try:
+        # Set request timeout
+        if hasattr(asyncio, 'wait_for'):
+            # Use asyncio timeout if available
+            return await asyncio.wait_for(
+                _chat_internal(req, request, credentials),
+                timeout=REQUEST_TIMEOUT
+            )
+        else:
+            # Fallback to synchronous timeout
+            return await _chat_internal(req, request, credentials)
+            
+    except asyncio.TimeoutError:
+        logger.error(f"❌ Request timeout after {REQUEST_TIMEOUT}s")
+        raise HTTPException(408, f"Request timeout after {REQUEST_TIMEOUT} seconds")
+    except Exception as e:
+        logger.error(f"❌ Chat request failed: {e}")
+        raise HTTPException(500, f"Chat request failed: {str(e)}")
+
+async def _chat_internal(req: MessageRequest, request: Request, credentials: HTTPBasicCredentials = Depends(authenticate)):
     # Get session ID from request
     session_id = request.cookies.get("session_id")
     if not session_id:
@@ -886,14 +923,27 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
     # OPTIMIZATION: No more past_key_values - using context concatenation instead
     # This avoids the cache position issues entirely
     
-    # Generation with performance monitoring
+    # Generation with performance monitoring and timeout protection
     generation_start = time.time()
     try:
         with model_lock, torch.no_grad():
-            # OPTIMIZATION: Keep generation parameters optimized for speed
-            # Don't override the speed optimizations with dict return settings
+            # Set generation timeout to prevent hanging
+            generation_timeout = GENERATION_TIMEOUT
             
-            output = model.generate(**inputs, **generation_params)
+            # Use torch.jit.optimized_execution for better performance
+            if hasattr(torch.jit, 'optimized_execution'):
+                with torch.jit.optimized_execution(True):
+                    output = model.generate(
+                        **inputs, 
+                        **generation_params,
+                        max_time=generation_timeout  # Prevent infinite generation
+                    )
+            else:
+                output = model.generate(
+                    **inputs, 
+                    **generation_params
+                )
+                
     except RuntimeError as e:
         if "Half" in str(e) or "overflow" in str(e):
             logger.warning(f"⚠️ Precision error: {e}")
@@ -903,8 +953,17 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
         else:
             logger.error(f"⚠️ Generation error: {e}")
             raise HTTPException(500, "Model generation failed")
+    except Exception as e:
+        logger.error(f"❌ Unexpected generation error: {e}")
+        raise HTTPException(500, f"Model generation failed: {str(e)}")
     
     generation_time = time.time() - generation_start
+    
+    # Check if generation took too long
+    if generation_time > GENERATION_TIMEOUT:
+        logger.warning(f"⚠️ Generation took {generation_time:.2f}s (exceeded {GENERATION_TIMEOUT}s timeout)")
+        # Force memory cleanup after long generation
+        optimize_memory_usage()
     
     # OPTIMIZATION: KV cache removed - always use full context for better responses
     
@@ -1021,7 +1080,7 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
     # Memory optimization after response
     if total_time > 5.0:  # Only optimize if response was slow
         optimize_memory_usage()
-        
+    
     # Performance diagnostic for slow responses
     if generation_time > 5.0:
         logger.warning(f"🚀 Performance diagnostic: Generation took {generation_time:.2f}s")
@@ -1037,10 +1096,39 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
     
     return {"response": response}
 
-# Health check endpoint
+# Health check endpoint with comprehensive monitoring
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "model": model_name}
+    """Comprehensive health check to prevent crashes and timeouts"""
+    try:
+        # Check model status
+        model_healthy = model is not None and hasattr(model, 'device')
+        
+        # Check memory usage
+        memory_info = {}
+        if hasattr(torch, 'cuda') and torch.cuda.is_available():
+            memory_info = {
+                "gpu_allocated_gb": round(torch.cuda.memory_allocated() / 1024**3, 2),
+                "gpu_reserved_gb": round(torch.cuda.memory_reserved() / 1024**3, 2),
+                "gpu_available_gb": round(torch.cuda.get_device_properties(0).total_memory / 1024**3, 2),
+                "gpu_utilization": "high" if torch.cuda.memory_allocated() / 1024**3 > 8.0 else "normal"
+            }
+        
+        # Check if memory usage is critical
+        if memory_info.get("gpu_allocated_gb", 0) > 10.0:
+            logger.warning(f"🚨 CRITICAL: GPU memory usage is {memory_info['gpu_allocated_gb']}GB - forcing cleanup")
+            optimize_memory_usage()
+        
+        return {
+            "status": "healthy" if model_healthy else "unhealthy",
+            "model": model_name,
+            "model_healthy": model_healthy,
+            "memory_info": memory_info,
+            "timestamp": time.time()
+        }
+    except Exception as e:
+        logger.error(f"❌ Health check failed: {e}")
+        return {"status": "unhealthy", "error": str(e)}
 
 # Test ChatML cleaning endpoint
 @app.get("/test-cleaning")

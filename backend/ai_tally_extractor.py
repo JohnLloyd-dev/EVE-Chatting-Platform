@@ -250,7 +250,7 @@ class AITallyExtractor:
                     for activity in answer:
                         activities.append(activity)
                 elif answer:
-                    activities.append(answer)
+                activities.append(answer)
         
         # Build a comprehensive template that uses all available data
         template_parts = []
@@ -300,7 +300,7 @@ class AITallyExtractor:
             if ai_gender.lower().startswith('a '):
                 template_parts.append(f"You are {ai_gender.lower()[2:]}.")
             else:
-                template_parts.append(f"You are a {ai_gender.lower()}.")
+            template_parts.append(f"You are a {ai_gender.lower()}.")
         elif ai_age:
             template_parts.append(f"You are {ai_age} years old.")
         elif ai_ethnicity:
