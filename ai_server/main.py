@@ -369,16 +369,16 @@ def build_chatml_prompt_ultra_fast(system: str, history: list) -> str:
     # OpenHermes-2.5-Mistral-7B uses ChatML format with specific tokens
     parts = [f"<|im_start|>system\n{system.strip()}<|im_end|>\n"]
     
-    # Batch process history with minimal string operations
-    # Alternate between user and AI messages (user messages are even indices, AI responses are odd)
+    # Process history with proper user/assistant alternation
+    # History should alternate: user, assistant, user, assistant, etc.
     for i, entry in enumerate(history):
-        if i % 2 == 0:  # Even index = user message
-            if entry.strip():
+        if entry.strip():  # Only add non-empty messages
+            if i % 2 == 0:  # Even indices should be user messages
                 parts.append(f"<|im_start|>user\n{entry.strip()}<|im_end|>\n")
-        else:  # Odd index = AI response
-            if entry.strip():
+            else:  # Odd indices should be assistant responses
                 parts.append(f"<|im_start|>assistant\n{entry.strip()}<|im_end|>\n")
     
+    # Add the final assistant tag for the AI to respond
     parts.append("<|im_start|>assistant\n")
     
     return "".join(parts)  # Single join operation
@@ -449,16 +449,16 @@ def build_chatml_prompt_batch(system: str, history: list) -> str:
     # OpenHermes-2.5-Mistral-7B uses ChatML format with specific tokens
     parts = [f"<|im_start|>system\n{system.strip()}<|im_end|>\n"]
     
-    # Batch process history with minimal string operations
-    # Alternate between user and AI messages (user messages are even indices, AI responses are odd)
+    # Process history with proper user/assistant alternation
+    # History should alternate: user, assistant, user, assistant, etc.
     for i, entry in enumerate(history):
-        if i % 2 == 0:  # Even index = user message
-            if entry.strip():
+        if entry.strip():  # Only add non-empty messages
+            if i % 2 == 0:  # Even indices should be user messages
                 parts.append(f"<|im_start|>user\n{entry.strip()}<|im_end|>\n")
-        else:  # Odd index = AI response
-            if entry.strip():
+            else:  # Odd indices should be assistant responses
                 parts.append(f"<|im_start|>assistant\n{entry.strip()}<|im_end|>\n")
     
+    # Add the final assistant tag for the AI to respond
     parts.append("<|im_start|>assistant\n")
     
     return "".join(parts)  # Single join operation
@@ -837,6 +837,13 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
     logger.info(f"🔍 FULL PROMPT SENT TO MODEL:")
     logger.info(f"🔍 {full_prompt}")
     logger.info(f"🔍 END OF PROMPT")
+    
+    # DEBUG: Log detailed history breakdown
+    logger.info(f"🔍 HISTORY BREAKDOWN:")
+    for i, entry in enumerate(session["history"]):
+        role = "USER" if i % 2 == 0 else "ASSISTANT"
+        logger.info(f"🔍 [{i}] {role}: {entry[:100]}{'...' if len(entry) > 100 else ''}")
+    logger.info(f"🔍 END HISTORY BREAKDOWN")
     
     # Tokenize full prompt
     inputs = tokenizer(
