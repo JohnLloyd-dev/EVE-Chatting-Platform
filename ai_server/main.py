@@ -366,7 +366,7 @@ def count_tokens_ultra_fast(text: str) -> int:
 # OPTIMIZATION: Ultra-fast prompt building with minimal operations
 def build_chatml_prompt_ultra_fast(system: str, history: list) -> str:
     """Ultra-fast prompt building with absolute minimal string operations"""
-    # OpenHermes-2.5-Mistral-7B uses instruction-based format
+    # OpenHermes-2.5-Mistral-7B uses ChatML format as per official guide
     # Start with system instruction
     parts = [f"<|im_start|>system\n{system.strip()}<|im_end|>\n"]
     
@@ -443,7 +443,7 @@ def get_ultra_fast_generation_params(req: MessageRequest, max_output_tokens: int
 # OPTIMIZATION: Enhanced performance monitoring and batch processing
 def build_chatml_prompt_batch(system: str, history: list) -> str:
     """Ultra-fast batch prompt building with minimal string operations"""
-    # OpenHermes-2.5-Mistral-7B uses instruction-based format
+    # OpenHermes-2.5-Mistral-7B uses ChatML format as per official guide
     # Start with system instruction
     parts = [f"<|im_start|>system\n{system.strip()}<|im_end|>\n"]
     
@@ -453,7 +453,7 @@ def build_chatml_prompt_batch(system: str, history: list) -> str:
             if i % 2 == 0:  # Even indices should be user messages
                 parts.append(f"<|im_start|>user\n{entry.strip()}<|im_end|>\n")
             else:  # Odd indices should be assistant responses
-                parts.append(f"<|im_start|>assistant\n{entry.strip()}\n")
+                parts.append(f"<|im_start|>assistant\n{entry.strip()}<|im_end|>\n")
     
     # Add the final assistant tag for the AI to respond
     parts.append("<|im_start|>assistant\n")
