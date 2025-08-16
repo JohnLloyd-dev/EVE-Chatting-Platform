@@ -80,13 +80,12 @@ def process_ai_response(self, session_id: str, user_message: str, max_tokens: in
             Message.is_admin_intervention == False  # Exclude admin messages from AI context
         ).order_by(Message.created_at).all()
         
-        # Build conversation history for AI (without prefixes for cleaner responses)
+        # Build conversation history for AI (only user messages for proper flow)
         history = []
         for msg in messages:
             if msg.is_from_user:
-                history.append(msg.content)
-            else:
-                history.append(msg.content)
+                history.append(msg.content)  # Only add user messages to history
+            # Skip AI messages - they shouldn't be in the input history
         
         # Handle AI-initiated messages differently
         if is_ai_initiated:

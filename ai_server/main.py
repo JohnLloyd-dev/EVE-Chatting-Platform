@@ -406,12 +406,10 @@ def get_ultra_fast_generation_params(req: MessageRequest, max_output_tokens: int
             "early_stopping": False,    # No early stopping logic
             "length_penalty": 1.0,      # No length penalty
             "typical_p": 1.0,           # No typical sampling
-            "top_k": 10,                # Very limited for maximum speed
+            "top_k": 50,                # Balanced for speed and quality
             "do_sample": True,          # Enable sampling for creativity
             "use_cache": True,          # Enable KV cache
             "return_dict_in_generate": False,  # Skip dict conversion
-            "attention_mask": None,     # Skip attention mask for speed
-            "position_ids": None,       # Skip position IDs for speed
         })
     elif req.speed_mode:
         # 🚀 SPEED MODE: Fast generation with minimal overhead
@@ -422,11 +420,10 @@ def get_ultra_fast_generation_params(req: MessageRequest, max_output_tokens: int
             "early_stopping": False,    # No early stopping logic
             "length_penalty": 1.0,      # No length penalty
             "typical_p": 1.0,           # No typical sampling
-            "top_k": 15,                # Limited token selection for speed
+            "top_k": 50,                # Balanced token selection for speed
             "do_sample": True,          # Enable sampling for creativity
             "use_cache": True,          # Enable KV cache
             "return_dict_in_generate": False,  # Skip dict conversion
-            "attention_mask": None,     # Skip attention mask for speed
         })
     else:
         # 🎯 ACCURACY MODE: Balanced quality and speed
@@ -813,11 +810,9 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
     
     # Trim history with optimizations
     trim_start = time.time()
-    session["history"] = trim_history_ultra_aggressive(
-        system=session["system_prompt"],
-        history=session["history"],
-        max_tokens=2000
-    )
+    # Simple history trimming - keep last 10 messages for speed
+    if len(session["history"]) > 10:
+        session["history"] = session["history"][-10:]
     trim_time = time.time() - trim_start
     
     # Build prompt with system prompt and conversation history
