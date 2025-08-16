@@ -365,20 +365,19 @@ def count_tokens_ultra_fast(text: str) -> int:
 # OPTIMIZATION: Ultra-fast prompt building with minimal operations
 def build_chatml_prompt_ultra_fast(system: str, history: list) -> str:
     """Ultra-fast prompt building with absolute minimal string operations"""
-    # OpenHermes-2.5-Mistral-7B uses standard ChatML format
-    parts = [f"<|system|>\n{system.strip()}\n"]
+    # Try simple format without ChatML tags - OpenHermes might not support ChatML
+    parts = [f"{system.strip()}\n\n"]
     
-    # Process history with proper user/assistant alternation
-    # History should alternate: user, assistant, user, assistant, etc.
+    # Process history with simple format
     for i, entry in enumerate(history):
         if entry.strip():  # Only add non-empty messages
             if i % 2 == 0:  # Even indices should be user messages
-                parts.append(f"<|user|>\n{entry.strip()}\n")
+                parts.append(f"User: {entry.strip()}\n")
             else:  # Odd indices should be assistant responses
-                parts.append(f"<|assistant|>\n{entry.strip()}\n")
+                parts.append(f"Assistant: {entry.strip()}\n")
     
-    # Add the final assistant tag for the AI to respond
-    parts.append("<|assistant|>\n")
+    # Add the final prompt for the AI to respond
+    parts.append("Assistant: ")
     
     return "".join(parts)  # Single join operation
 
@@ -442,20 +441,19 @@ def get_ultra_fast_generation_params(req: MessageRequest, max_output_tokens: int
 # OPTIMIZATION: Enhanced performance monitoring and batch processing
 def build_chatml_prompt_batch(system: str, history: list) -> str:
     """Ultra-fast batch prompt building with minimal string operations"""
-    # OpenHermes-2.5-Mistral-7B uses standard ChatML format
-    parts = [f"<|system|>\n{system.strip()}\n"]
+    # Try simple format without ChatML tags - OpenHermes might not support ChatML
+    parts = [f"{system.strip()}\n\n"]
     
-    # Process history with proper user/assistant alternation
-    # History should alternate: user, assistant, user, assistant, etc.
+    # Process history with simple format
     for i, entry in enumerate(history):
         if entry.strip():  # Only add non-empty messages
             if i % 2 == 0:  # Even indices should be user messages
-                parts.append(f"<|user|>\n{entry.strip()}\n")
+                parts.append(f"User: {entry.strip()}\n")
             else:  # Odd indices should be assistant responses
-                parts.append(f"<|assistant|>\n{entry.strip()}\n")
+                parts.append(f"Assistant: {entry.strip()}\n")
     
-    # Add the final assistant tag for the AI to respond
-    parts.append("<|assistant|>\n")
+    # Add the final prompt for the AI to respond
+    parts.append("Assistant: ")
     
     return "".join(parts)  # Single join operation
 
