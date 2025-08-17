@@ -2,6 +2,7 @@ import { useQuery } from "react-query";
 import { adminApi } from "../../lib/api";
 import AdminLayout from "../../components/AdminLayout";
 import { DashboardStats } from "../../types";
+import AIModelStatus from "../../components/AIModelStatus";
 
 export default function AdminDashboard() {
   const {
@@ -177,6 +178,9 @@ export default function AdminDashboard() {
             </div>
           </div>
         </div>
+
+        {/* AI Model Status */}
+        <AIModelStatus />
       </div>
     </AdminLayout>
   );

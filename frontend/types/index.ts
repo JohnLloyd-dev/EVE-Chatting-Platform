@@ -27,6 +27,7 @@ export interface ChatSession {
   updated_at: string;
   is_active: boolean;
   messages: ChatMessage[];
+  scenario_prompt?: string; // AI scenario prompt for the session
 }
 
 export interface ConversationSummary {
@@ -114,4 +115,27 @@ export interface SystemPrompt {
   created_at: string;
   updated_at: string;
   user_id?: string; // For future per-user prompts
+}
+
+// New AI Model Types
+export interface AIHealthStatus {
+  status: "healthy" | "unhealthy";
+  ai_model: {
+    model_loaded: boolean;
+    model_name: string;
+    device: string;
+    active_sessions: number;
+    gpu_available: boolean;
+    gpu_memory_allocated: number;
+    gpu_memory_reserved: number;
+  };
+}
+
+export interface AIResponse {
+  response: string;
+}
+
+export interface AISessionInit {
+  message: string;
+  session_id: string;
 }

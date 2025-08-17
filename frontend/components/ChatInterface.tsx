@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "react-query";
 import { chatApi } from "../lib/api";
-import { ChatMessage, ChatSession } from "../types";
+import { ChatMessage, ChatSession, AIHealthStatus } from "../types";
 import { format } from "date-fns";
 import toast from "react-hot-toast";
 
@@ -32,54 +32,39 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
     }
   );
 
-  // Send message mutation
+  // Get AI health status
+  const {
+    data: aiHealth,
+    isLoading: aiHealthLoading,
+  } = useQuery<AIHealthStatus>(
+    ["aiHealth"],
+    () => chatApi.getAIHealth(),
+    {
+      refetchInterval: 30000, // Check AI health every 30 seconds
+    }
+  );
+
+  // Send message mutation using new integrated AI
   const sendMessageMutation = useMutation(
     ({ sessionId, message }: { sessionId: string; message: string }) =>
       chatApi.sendMessage(sessionId, message),
     {
       onSuccess: (data) => {
         setMessage("");
-        setIsProcessing(true);
-        // Poll for AI response
-        pollForResponse(data.task_id);
+        setIsProcessing(false);
+        // AI response is immediate with new integrated approach
+        // Refetch session to get new messages
+        queryClient.invalidateQueries(["chatSession", userId]);
+        toast.success("Message sent!");
       },
       onError: (error: any) => {
         toast.error(error.response?.data?.detail || "Failed to send message");
+        setIsProcessing(false);
       },
     }
   );
 
-  // Poll for AI response
-  const pollForResponse = async (taskId: string) => {
-    const maxAttempts = 30; // 30 seconds max
-    let attempts = 0;
-
-    const poll = async () => {
-      try {
-        const response = await chatApi.getResponseStatus(taskId);
-
-        if (response.status === "completed") {
-          setIsProcessing(false);
-          // Refetch session to get new messages
-          queryClient.invalidateQueries(["chatSession", userId]);
-        } else if (response.status === "failed") {
-          setIsProcessing(false);
-          toast.error("I'm having trouble thinking right now");
-        } else if (attempts < maxAttempts) {
-          attempts++;
-          setTimeout(poll, 1000); // Poll every second
-        } else {
-          setIsProcessing(false);
-          toast.error("give me a minute");
-        }
-      } catch (error) {
-        setIsProcessing(false);
-        toast.error("Let me check on that for you");
-      }
-    };
-
-    poll();
-  };
+  // AI response is now immediate with integrated approach - no polling needed
 
   // Loading animation effect
   useEffect(() => {
@@ -162,7 +147,7 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
     return () => document.removeEventListener("keydown", handleGlobalKeyPress);
   }, [sendMessageMutation.isLoading, isProcessing]);
 
-  // Send initial AI message
+  // Send initial AI message using new integrated approach
   useEffect(() => {
     if (
       session &&
@@ -171,11 +156,27 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
       !showLoadingAnimation
     ) {
       setHasInitializedAI(true);
-      // Trigger AI to send first message by sending a system message
-      sendMessageMutation.mutate({
-        sessionId: session.id,
-        message: "START_CONVERSATION",
-      });
+      // Initialize AI session and trigger first message
+      const initializeAI = async () => {
+        try {
+          // Get the system prompt from the session
+          const systemPrompt = session.scenario_prompt || "You are a helpful AI assistant.";
+          
+          // Initialize AI session
+          await chatApi.initAISession(session.id, systemPrompt);
+          
+          // Send a simple message to start conversation
+          sendMessageMutation.mutate({
+            sessionId: session.id,
+            message: "Hello",
+          });
+        } catch (error) {
+          console.error("Failed to initialize AI session:", error);
+          toast.error("Failed to start AI conversation");
+        }
+      };
+      
+      initializeAI();
     }
   }, [session, hasInitializedAI, showLoadingAnimation]);
 
@@ -184,13 +185,62 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [session?.messages]);
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!message.trim() || !session || sendMessageMutation.isLoading) return;
 
-    sendMessageMutation.mutate({
-      sessionId: session.id,
-      message: message.trim(),
-    });
+    try {
+      // Try the new integrated AI endpoint first
+      await sendMessageMutation.mutateAsync({
+        sessionId: session.id,
+        message: message.trim(),
+      });
+    } catch (error: any) {
+      // If the new endpoint fails, fall back to legacy Celery approach
+      console.warn("Integrated AI failed, falling back to legacy approach:", error);
+      
+      try {
+        const legacyResponse = await chatApi.sendMessageLegacy(
+          session.id,
+          message.trim()
+        );
+        
+        setMessage("");
+        setIsProcessing(true);
+        
+        // Use legacy polling for fallback
+        const maxAttempts = 30;
+        let attempts = 0;
+        
+        const poll = async () => {
+          try {
+            const response = await chatApi.getResponseStatus(legacyResponse.task_id);
+            
+            if (response.status === "completed") {
+              setIsProcessing(false);
+              queryClient.invalidateQueries(["chatSession", userId]);
+            } else if (response.status === "failed") {
+              setIsProcessing(false);
+              toast.error("I'm having trouble thinking right now");
+            } else if (attempts < maxAttempts) {
+              attempts++;
+              setTimeout(poll, 1000);
+            } else {
+              setIsProcessing(false);
+              toast.error("give me a minute");
+            }
+          } catch (pollError) {
+            setIsProcessing(false);
+            toast.error("Let me check on that for you");
+          }
+        };
+        
+        poll();
+        
+      } catch (legacyError) {
+        toast.error("Failed to send message. Please try again.");
+        setIsProcessing(false);
+      }
+    }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -277,6 +327,31 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
 
   return (
     <div className="flex flex-col h-full" onClick={handleChatAreaClick}>
+      {/* AI Status Indicator */}
+      {aiHealth && (
+        <div className="px-4 py-2 border-b border-gray-700/50">
+          <div className="flex items-center justify-between text-sm">
+            <div className="flex items-center space-x-2">
+              <div
+                className={`w-2 h-2 rounded-full ${
+                  aiHealth.status === "healthy" ? "bg-green-400" : "bg-red-400"
+                }`}
+              />
+              <span className="text-gray-300">
+                AI Model: {aiHealth.ai_model.model_name}
+              </span>
+            </div>
+            <div className="text-gray-400">
+              {aiHealth.ai_model.gpu_available ? (
+                <span className="text-green-400">GPU Active</span>
+              ) : (
+                <span className="text-yellow-400">CPU Mode</span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {session.messages.length === 0 ? (

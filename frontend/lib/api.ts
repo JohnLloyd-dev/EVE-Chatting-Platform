@@ -53,7 +53,33 @@ export const chatApi = {
     return response.data;
   },
 
+  // New integrated AI endpoints
+  initAISession: async (sessionId: string, systemPrompt: string) => {
+    const response = await api.post("/ai/init-session", {
+      session_id: sessionId,
+      system_prompt: systemPrompt,
+    });
+    return response.data;
+  },
+
   sendMessage: async (
+    sessionId: string,
+    message: string,
+    maxTokens: number = 300,
+    temperature: number = 0.7
+  ) => {
+    // Use the new integrated AI endpoint
+    const response = await api.post("/ai/chat", {
+      session_id: sessionId,
+      message,
+      max_tokens: maxTokens,
+      temperature,
+    });
+    return response.data;
+  },
+
+  // Legacy Celery-based endpoint (fallback)
+  sendMessageLegacy: async (
     sessionId: string,
     message: string,
     maxTokens: number = 300
@@ -75,6 +101,12 @@ export const chatApi = {
       device_id: deviceId,
       custom_prompt: customPrompt,
     });
+    return response.data;
+  },
+
+  // AI Model Health Check
+  getAIHealth: async () => {
+    const response = await api.get("/ai/health");
     return response.data;
   },
 };
