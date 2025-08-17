@@ -3,8 +3,8 @@ from typing import Optional
 import os
 
 class Settings(BaseSettings):
-    # Database - Fixed username and simplified password
-    database_url: str = "postgresql://adam2025man:adam2025@postgres:5432/chatting_platform"
+    # Database - Read from environment variable
+    database_url: str = os.getenv("DATABASE_URL", "postgresql://adam2025man:adam2025@postgres:5432/chatting_platform")
     
     # Redis
     redis_url: str = "redis://redis:6379/0"
