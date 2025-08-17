@@ -9,10 +9,10 @@ class Settings(BaseSettings):
     # Redis
     redis_url: str = "redis://redis:6379/0"
     
-    # AI Model
-    ai_model_url: str = "http://ai-server:8000"
-    ai_model_auth_username: str = "adam"
-    ai_model_auth_password: str = "eve2025"
+    # AI Model (Integrated - no external server needed)
+    # ai_model_url: str = "http://ai-server:8000"  # Removed - now integrated
+    # ai_model_auth_username: str = "adam"         # Removed - no auth needed
+    # ai_model_auth_password: str = "eve2025"      # Removed - no auth needed
     
     # JWT
     secret_key: str = "eve-super-secure-jwt-secret-key-2025-production"

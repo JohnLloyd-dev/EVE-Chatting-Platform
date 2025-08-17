@@ -6,8 +6,12 @@ Uses the custom AI model to intelligently generate scenarios from any Tally form
 import json
 import logging
 import httpx
+import time
 from typing import Dict, List, Any, Optional
 from config import settings
+
+# API base URL for the integrated backend
+API_BASE_URL = "http://localhost:8000"  # Will be overridden by environment
 
 logger = logging.getLogger(__name__)
 
@@ -1007,29 +1011,28 @@ class AITallyExtractor:
                     "Write realistic scenarios in second person (You are...) format."
                 )
                 
-                scenario_response = client.post(
-                    f"{settings.ai_model_url}/scenario",
-                    json={"scenario": scenario_generation_prompt},
-                    auth=(settings.ai_model_auth_username, settings.ai_model_auth_password)
+                # Use the new integrated AI endpoint
+                # First initialize a session
+                session_id = f"tally_{int(time.time())}"
+                init_response = client.post(
+                    f"{API_BASE_URL}/ai/init-session",
+                    json={
+                        "session_id": session_id,
+                        "system_prompt": scenario_generation_prompt
+                    }
                 )
                 
-                if scenario_response.status_code != 200:
-                    raise Exception(f"Failed to set scenario generation prompt: {scenario_response.text}")
-                
-                # Get session cookie
-                session_cookie = scenario_response.cookies.get("session_id")
-                if not session_cookie:
-                    raise Exception("No session ID received from AI model")
+                if init_response.status_code != 200:
+                    raise Exception(f"Failed to initialize AI session: {init_response.text}")
                 
                 # Now send the user's form data as a chat message to generate the scenario
                 chat_response = client.post(
-                    f"{settings.ai_model_url}/chat",
+                    f"{API_BASE_URL}/ai/chat",
                     json={
+                        "session_id": session_id,
                         "message": prompt,
                         "max_tokens": 300  # Allow longer response for scenario generation
-                    },
-                    cookies={"session_id": session_cookie},
-                    auth=(settings.ai_model_auth_username, settings.ai_model_auth_password)
+                    }
                 )
                 
                 if chat_response.status_code != 200:

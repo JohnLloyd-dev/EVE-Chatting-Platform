@@ -199,104 +199,37 @@ def call_ai_model(system_prompt: str, history: list, max_tokens: int = 300, sess
         logger.info(f"Sending system prompt to AI model: {system_prompt[:200]}...")
         logger.info(f"Building context with {len(history)} messages from database")
         
-        # Check AI server health first
-        logger.info("🏥 Checking AI server health before request...")
-        try:
-            with httpx.Client(timeout=10.0) as health_client:
-                health_response = health_client.get(
-                    f"{settings.ai_model_url}/health",
-                    auth=(settings.ai_model_auth_username, settings.ai_model_auth_password)
-                )
-                if health_response.status_code != 200:
-                    logger.warning(f"⚠️ AI server health check failed: {health_response.status_code}")
-                else:
-                    logger.info("✅ AI server health check passed")
-        except Exception as health_error:
-            logger.warning(f"⚠️ AI server health check error: {health_error}")
+        # Use the integrated AI model manager instead of external AI server
+        logger.info("🤖 Using integrated AI model manager...")
         
-        # Prepare the request with extended timeout for AI generation
-        # AI generation can take 45-90 seconds for complex responses
-        with httpx.Client(timeout=90.0) as client:  # ← FIXED: Extended timeout for AI generation
-            # Initialize AI session with the correct session ID and system prompt from backend
-            logger.info("Initializing AI session with backend data...")
-            
-            # Use the session ID from the database (not generate a new one)
-            if session_id is None:
-                raise Exception("Session ID is required for AI model initialization")
-            session_id_str = str(session_id)  # Convert UUID to string
-            
-            init_response = client.post(
-                f"{settings.ai_model_url}/init-session",
-                json={
-                    "session_id": session_id_str,
-                    "system_prompt": system_prompt
-                },
-                auth=(settings.ai_model_auth_username, settings.ai_model_auth_password)
-            )
-            
-            if init_response.status_code != 200:
-                error_detail = f"Failed to initialize AI session: {init_response.status_code}"
-                try:
-                    error_data = init_response.json()
-                    if 'detail' in error_data:
-                        error_detail += f" - {error_data['detail']}"
-                except:
-                    error_detail += f" - {init_response.text}"
-                raise Exception(error_detail)
-            
-            # Use the session ID we sent (not from cookies)
-            session_cookie = session_id_str
-            logger.info(f"Initialized AI session: {session_cookie}")
-            
-            # Verify the session was created by checking if we can access it
-            verify_response = client.get(
-                f"{settings.ai_model_url}/debug-session/{session_id_str}",
-                auth=(settings.ai_model_auth_username, settings.ai_model_auth_password)
-            )
-            
-            if verify_response.status_code == 200:
-                session_info = verify_response.json()
-                logger.info(f"✅ Session verified: {session_info.get('session_id')} with {len(session_info.get('system_prompt', ''))} chars")
+        try:
+            # Get the AI session
+            ai_session = ai_model_manager.get_session(str(session_id))
+            if not ai_session:
+                # Create new session if it doesn't exist
+                ai_session = ai_model_manager.create_session(str(session_id), system_prompt)
+                logger.info(f"✅ Created new AI session: {session_id}")
             else:
-                logger.warning(f"⚠️ Could not verify session creation: {verify_response.status_code}")
+                logger.info(f"✅ Using existing AI session: {session_id}")
             
-            # Build conversation context by sending all previous messages
-            # This ensures the AI has full conversation history even after restarts
-            if len(history) > 1:  # If we have more than just the current user message
-                logger.info("Building conversation context...")
-                context_messages = history[:-1]  # All messages except the current one
-                
-                # OPTIMIZATION: Limit context messages for speed
-                max_context_messages = 4  # Reduced from 6 to 4 for maximum speed
-                if len(context_messages) > max_context_messages:
-                    logger.info(f"Limiting context to {max_context_messages} messages for speed (from {len(context_messages)})")
-                    context_messages = context_messages[-max_context_messages:]  # Take most recent
-                
-                for i, msg in enumerate(context_messages):
-                    try:
-                        # Send each message to build context (with minimal tokens)
-                        context_response = client.post(
-                            f"{settings.ai_model_url}/chat",
-                            json={
-                                "message": msg,
-                                "max_tokens": 100,  # ← OPTIMIZED: Increased for better sentence completion
-                                "temperature": 0.1,  # Low temperature for context building
-                                "top_p": 0.8,        # Focused sampling for context
-                                "speed_mode": True   # ← OPTIMIZED: Enable speed mode for context
-                            },
-                            cookies={"session_id": session_cookie},
-                            auth=(settings.ai_model_auth_username, settings.ai_model_auth_password)
-                        )
-                        
-                        if context_response.status_code == 200:
-                            logger.info(f"Context message {i+1}/{len(context_messages)} processed")
-                        else:
-                            logger.warning(f"Context message {i+1} failed: {context_response.status_code}")
-                            
-                    except Exception as e:
-                        logger.warning(f"Failed to process context message {i+1}: {e}")
-                        # Continue with other context messages
-                        continue
+            # Add user message to AI session
+            ai_model_manager.add_user_message(str(session_id), user_message)
+            
+            # Generate AI response using the integrated model
+            logger.info("🚀 Generating AI response with integrated model...")
+            ai_response = ai_model_manager.generate_response(
+                str(session_id), 
+                user_message, 
+                max_tokens=200, 
+                temperature=0.7
+            )
+            
+            logger.info(f"✅ AI response generated: {len(ai_response)} characters")
+            return ai_response
+            
+        except Exception as ai_error:
+            logger.error(f"❌ Integrated AI model error: {ai_error}")
+            raise Exception(f"AI model generation failed: {str(ai_error)}")
             
             # Get the current user message (last in history)
             current_user_message = None
@@ -304,124 +237,14 @@ def call_ai_model(system_prompt: str, history: list, max_tokens: int = 300, sess
             if history and len(history) > 0:
                 current_user_message = history[-1]  # Last message is the user's
             
-            if not current_user_message:
-                raise Exception("No current user message found in history")
-            
-            logger.info(f"Sending current user message: {current_user_message[:100]}...")
-            
-            # Send chat request using existing session
-            # Ensure max_tokens meets AI server requirements (min 100, max 1000)
-            ai_max_tokens = max(100, min(max_tokens, 1000))
-            
-            # Send the current user message to get AI response
-            chat_response = client.post(
-                f"{settings.ai_model_url}/chat",
-                json={
-                    "message": current_user_message,
-                    "max_tokens": ai_max_tokens,
-                    "temperature": 0.7,
-                    "top_p": 0.9,
-                    "speed_mode": True,   # ← OPTIMIZED: Enable speed mode for faster responses
-                    "ultra_speed": True    # ← NEW: Enable ultra-speed mode for maximum performance
-                },
-                cookies={"session_id": session_cookie},
-                auth=(settings.ai_model_auth_username, settings.ai_model_auth_password)
-            )
-            
-            if chat_response.status_code != 200:
-                # Enhanced error logging for integration debugging
-                error_detail = f"AI model request failed: {chat_response.status_code}"
-                try:
-                    error_data = chat_response.json()
-                    if 'detail' in error_data:
-                        error_detail += f" - {error_data['detail']}"
-                except:
-                    error_detail += f" - {chat_response.text}"
-                
-                logger.error(f"❌ AI Server Integration Error: {error_detail}")
-                logger.error(f"📤 Request sent: message='{current_user_message[:100]}...', max_tokens={ai_max_tokens}, temperature=0.7, top_p=0.9")
-                
-                # Check for common integration issues
-                if chat_response.status_code == 422:
-                    logger.error("❌ Validation Error: AI server rejected request parameters")
-                elif chat_response.status_code == 500:
-                    logger.error("❌ AI Server Error: Internal server error")
-                elif chat_response.status_code == 404:
-                    logger.error("❌ AI Server Error: Endpoint not found")
-                
-                raise Exception(error_detail)
-            
-            response_data = chat_response.json()
-            raw_response = response_data.get("response", "I'm sorry, I couldn't generate a response.")
-            
-            # Clean the response to extract only the AI's response
-            cleaned_response = clean_ai_response(raw_response)
-            logger.info(f"Raw AI response: {raw_response[:200]}...")
-            logger.info(f"Cleaned AI response: {cleaned_response[:200]}...")
-            
-            return cleaned_response
+            # The integrated AI model manager already handled the response generation above
+            # This section is no longer needed since we're using the integrated approach
+            pass
             
     except Exception as e:
         raise Exception(f"AI model call failed: {str(e)}")
 
-def clean_ai_response(raw_response: str) -> str:
-    """
-    Clean the AI response to extract only the AI's actual response,
-    removing any conversation formatting, ChatML tags, or echoed user messages.
-    """
-    try:
-        import re
-        
-        # First, remove ALL ChatML tags from anywhere in the response
-        cleaned_response = re.sub(r'<\|[\w]+\|>', '', raw_response)
-        
-        # Split by common conversation markers
-        lines = cleaned_response.split('\n')
-        ai_response_lines = []
-        
-        for line in lines:
-            line = line.strip()
-            
-            # Skip empty lines
-            if not line:
-                continue
-                
-            # Stop if we encounter user message markers or AI processing notes
-            if any(marker in line.lower() for marker in ['< |user|', '<|user|', 'user:', '<!assistant!>', '<|assistant|>', '<!---', '-|assistent|>', '<!--', '-->']):
-                break
-                
-            # Skip lines that look like conversation formatting (these shouldn't appear anymore)
-            if line.startswith(('User:', 'AI:', 'Assistant:', 'Human:')):
-                continue
-                
-            ai_response_lines.append(line)
-        
-        # Join the cleaned lines
-        cleaned_response = '\n'.join(ai_response_lines).strip()
-        
-        # Clean up any extra whitespace that might be left
-        cleaned_response = re.sub(r'\n\s*\n', '\n', cleaned_response)  # Remove empty lines
-        cleaned_response = re.sub(r'^\s+', '', cleaned_response)  # Remove leading whitespace
-        cleaned_response = re.sub(r'\s+$', '', cleaned_response)  # Remove trailing whitespace
-        
-        # If we got nothing, return the original (fallback)
-        if not cleaned_response:
-            # Try to extract everything before the first user marker or processing note
-            user_markers = ['< |user|', '<|user|', '<!assistant!>', '<|assistant|>', '<!---', '-|assistent|>', '<!--', '-->']
-            for marker in user_markers:
-                if marker in raw_response:
-                    cleaned_response = raw_response.split(marker)[0].strip()
-                    break
-            
-            # If still nothing, return original
-            if not cleaned_response:
-                cleaned_response = raw_response
-        
-        return cleaned_response
-        
-    except Exception as e:
-        logger.warning(f"Error cleaning AI response: {e}, returning original")
-        return raw_response
+# clean_ai_response function removed - no longer needed with integrated AI model
 
 @celery_app.task
 def cleanup_expired_sessions():
