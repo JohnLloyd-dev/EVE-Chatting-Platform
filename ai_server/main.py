@@ -561,6 +561,7 @@ def create_session(session_id: str, system_prompt: str) -> dict:
     return {
         "system_prompt": system_prompt,  # Keep original system prompt intact
         "history": [],
+        "message_roles": [],  # Track whether each message is from user or assistant
         "kv_cache": None,  # Simple boolean flag instead of complex past_key_values
         "tokenized_context": None,
         "token_count": 0,
@@ -783,12 +784,12 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
         if hasattr(asyncio, 'wait_for'):
             # Use asyncio timeout if available
             return await asyncio.wait_for(
-                _chat_internal(req, request, credentials),
+                _chat_internal(req, request, credentials, total_start_time),
                 timeout=REQUEST_TIMEOUT
             )
         else:
             # Fallback to synchronous timeout
-            return await _chat_internal(req, request, credentials)
+            return await _chat_internal(req, request, credentials, total_start_time)
             
     except asyncio.TimeoutError:
         logger.error(f"❌ Request timeout after {REQUEST_TIMEOUT}s")
@@ -797,7 +798,7 @@ async def chat(req: MessageRequest, request: Request, credentials: HTTPBasicCred
         logger.error(f"❌ Chat request failed: {e}")
         raise HTTPException(500, f"Chat request failed: {str(e)}")
 
-async def _chat_internal(req: MessageRequest, request: Request, credentials: HTTPBasicCredentials = Depends(authenticate)):
+async def _chat_internal(req: MessageRequest, request: Request, credentials: HTTPBasicCredentials = Depends(authenticate), total_start_time: float = None):
     # Get session ID from request
     session_id = request.cookies.get("session_id")
     if not session_id:
@@ -813,8 +814,18 @@ async def _chat_internal(req: MessageRequest, request: Request, credentials: HTT
             logger.error(f"❌ Session {session_id} not found in memory - backend must initialize sessions first")
             raise HTTPException(404, "Session not found. Backend must initialize session with /init-session first.")
     
-    # Add user message to history (without prefix for cleaner AI responses)
+    # Ensure total_start_time is available for performance monitoring
+    if total_start_time is None:
+        total_start_time = session_start
+    
+    # Add user message to history with proper role tracking
+    # We need to track whether each message is from user or AI
+    if "message_roles" not in session:
+        session["message_roles"] = []
+    
+    # Add the new user message
     session["history"].append(req.message)
+    session["message_roles"].append("user")
     
     # OPTIMIZATION: Always build full context to ensure system prompt is included
     # KV cache approach was broken - it bypassed system prompt and context
@@ -848,8 +859,8 @@ async def _chat_internal(req: MessageRequest, request: Request, credentials: HTT
     # DEBUG: Log detailed history breakdown
     logger.info(f"🔍 HISTORY BREAKDOWN:")
     for i, entry in enumerate(session["history"]):
-        role = "USER" if i % 2 == 0 else "ASSISTANT"
-        logger.info(f"🔍 [{i}] {role}: {entry[:100]}{'...' if len(entry) > 100 else ''}")
+        role = session["message_roles"][i] if i < len(session["message_roles"]) else "UNKNOWN"
+        logger.info(f"🔍 [{i}] {role.upper()}: {entry[:100]}{'...' if len(entry) > 100 else ''}")
     logger.info(f"🔍 END HISTORY BREAKDOWN")
     
     # Tokenize full prompt
@@ -1028,10 +1039,11 @@ async def _chat_internal(req: MessageRequest, request: Request, credentials: HTT
         logger.warning(f"  - TF32: {'✅' if torch.backends.cuda.matmul.allow_tf32 else '❌'}")
         logger.warning(f"  - KV Cache: {'✅' if session.get('kv_cache') else '❌'}")
     
-    # Save to history (without prefix for cleaner AI responses)
+    # Save AI response to history with proper role tracking
     with session_lock:
         if session_id in user_sessions:
             session["history"].append(response)
+            session["message_roles"].append("assistant")
     
     return {"response": response}
 
