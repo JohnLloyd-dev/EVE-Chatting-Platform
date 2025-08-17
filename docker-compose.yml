@@ -27,7 +27,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # FastAPI Backend
+  # FastAPI Backend (with integrated AI model)
   backend:
     build:
       context: ./backend
@@ -37,20 +37,18 @@ services:
     environment:
       - DATABASE_URL=postgresql://adam2025man:adam2025@postgres:5432/chatting_platform
       - REDIS_URL=redis://redis:6379/0
-      - AI_MODEL_URL=http://ai-server:8000
-      - AI_MODEL_AUTH_USERNAME=adam
-      - AI_MODEL_AUTH_PASSWORD=eve2025
+      - TRANSFORMERS_CACHE=/app/.cache/huggingface
+      - HF_HOME=/app/.cache/huggingface
     volumes:
       - ./backend:/app
+      - ai_model_cache:/app/.cache/huggingface
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-      ai-server:
-        condition: service_healthy
 
-  # Celery Worker
+  # Celery Worker (with integrated AI model)
   celery-worker:
     build:
       context: ./backend
@@ -58,38 +56,19 @@ services:
     environment:
       - DATABASE_URL=postgresql://adam2025man:adam2025@postgres:5432/chatting_platform
       - REDIS_URL=redis://redis:6379/0
-      - AI_MODEL_URL=http://ai-server:8000
-      - AI_MODEL_AUTH_USERNAME=adam
-      - AI_MODEL_AUTH_PASSWORD=eve2025
+      - TRANSFORMERS_CACHE=/app/.cache/huggingface
+      - HF_HOME=/app/.cache/huggingface
     volumes:
       - ./backend:/app
+      - ai_model_cache:/app/.cache/huggingface
     command: celery -A celery_app worker --loglevel=info
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-      ai-server:
-        condition: service_healthy
 
-  # AI Server (GPU Version with CPU fallback)
-  ai-server:
-    build:
-      context: ./ai_server
-      dockerfile: Dockerfile.cpu
-    ports:
-      - "8000:8000"
-    environment:
-      - TRANSFORMERS_CACHE=/app/.cache/huggingface
-      - HF_HOME=/app/.cache/huggingface
-    volumes:
-      - ai_model_cache:/app/.cache/huggingface
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 30s
-      retries: 3
-      start_period: 60s
+  # AI Server functionality now integrated into backend
 
   # Next.js Frontend
   frontend:

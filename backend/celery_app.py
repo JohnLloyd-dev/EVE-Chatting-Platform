@@ -6,6 +6,15 @@ from database import SessionLocal, Message, ChatSession, User, SystemPrompt, Act
 from datetime import datetime, timezone
 import uuid
 import logging
+import time
+
+# Import AI model manager for direct integration
+try:
+    from ai_model_manager import ai_model_manager
+    AI_MODEL_AVAILABLE = True
+except ImportError:
+    AI_MODEL_AVAILABLE = False
+    logger.warning("⚠️ AI model manager not available, falling back to HTTP calls")
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)

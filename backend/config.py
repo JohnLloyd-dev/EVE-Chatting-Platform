@@ -26,6 +26,12 @@ class Settings(BaseSettings):
     # Tally webhook security
     tally_webhook_secret: Optional[str] = None
     
+    # AI Model Configuration
+    ai_model_name: str = "teknium/OpenHermes-2.5-Mistral-7B"
+    ai_model_cache_dir: str = "/app/.cache/huggingface"
+    ai_generation_timeout: float = 30.0
+    ai_request_timeout: float = 60.0
+    
     class Config:
         env_file = ".env"
 

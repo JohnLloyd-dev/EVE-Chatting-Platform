@@ -19,7 +19,7 @@ from schemas import (
 )
 from auth import authenticate_admin, create_access_token, get_current_admin, create_admin_session
 from ai_tally_extractor import generate_ai_scenario, debug_tally_data
-from celery_app import process_ai_response
+from ai_model_manager import ai_model_manager
 from config import settings
 
 # Set up logging
@@ -1273,6 +1273,136 @@ async def get_active_system_prompt(
         updated_at=active_prompt.updated_at,
         user_id=str(active_prompt.user_id) if active_prompt.user_id else None
     )
+
+# ============================================================================
+# AI MODEL ENDPOINTS (Integrated from AI Server)
+# ============================================================================
+
+@app.post("/ai/init-session")
+async def init_ai_session(session_data: dict, db: Session = Depends(get_db)):
+    """
+    Initialize an AI chat session with system prompt
+    This replaces the old AI server init-session endpoint
+    """
+    try:
+        session_id = session_data.get("session_id")
+        system_prompt = session_data.get("system_prompt", "")
+        
+        if not session_id:
+            raise HTTPException(400, "Missing session_id")
+        
+        if not system_prompt:
+            raise HTTPException(400, "Missing system_prompt")
+        
+        # Create session in AI model manager
+        ai_session = ai_model_manager.create_session(session_id, system_prompt)
+        
+        # Also create/update database session for tracking
+        db_session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+        if not db_session:
+            # Create new database session
+            db_session = ChatSession(
+                id=session_id,
+                user_id=session_data.get("user_id"),  # Optional
+                scenario_prompt=system_prompt,
+                is_active=True
+            )
+            db.add(db_session)
+        else:
+            # Update existing session
+            db_session.scenario_prompt = system_prompt
+            db_session.is_active = True
+            db_session.updated_at = datetime.now(timezone.utc)
+        
+        db.commit()
+        
+        logger.info(f"🎯 AI Session {session_id} initialized successfully")
+        return {"message": "AI Session initialized successfully", "session_id": session_id}
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize AI session: {e}")
+        raise HTTPException(500, f"Failed to initialize AI session: {str(e)}")
+
+@app.post("/ai/chat")
+async def ai_chat(req: ChatMessageRequest, db: Session = Depends(get_db)):
+    """
+    Handle AI chat requests
+    This replaces the old AI server chat endpoint
+    """
+    try:
+        # Get session ID from request
+        session_id = req.session_id if hasattr(req, 'session_id') else None
+        if not session_id:
+            raise HTTPException(400, "Missing session_id")
+        
+        # Check if AI session exists
+        ai_session = ai_model_manager.get_session(session_id)
+        if not ai_session:
+            raise HTTPException(404, "AI session not found. Initialize with /ai/init-session first.")
+        
+        # Generate AI response
+        ai_response = ai_model_manager.generate_response(
+            session_id=session_id,
+            user_message=req.message,
+            max_tokens=req.max_tokens if hasattr(req, 'max_tokens') else 200,
+            temperature=req.temperature if hasattr(req, 'temperature') else 0.7
+        )
+        
+        # Save message to database
+        db_session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+        if db_session:
+            # Save user message
+            user_message = Message(
+                session_id=db_session.id,
+                content=req.message,
+                is_from_user=True
+            )
+            db.add(user_message)
+            
+            # Save AI response
+            ai_message = Message(
+                session_id=db_session.id,
+                content=ai_response,
+                is_from_user=False
+            )
+            db.add(ai_message)
+            
+            db.commit()
+        
+        logger.info(f"💬 AI chat response generated for session {session_id}")
+        return {"response": ai_response}
+        
+    except Exception as e:
+        logger.error(f"❌ AI chat failed: {e}")
+        raise HTTPException(500, f"AI chat failed: {str(e)}")
+
+@app.get("/ai/health")
+async def ai_health_check():
+    """
+    Check AI model health status
+    This replaces the old AI server health endpoint
+    """
+    try:
+        health_status = ai_model_manager.get_health_status()
+        return {
+            "status": "healthy" if health_status["model_loaded"] else "unhealthy",
+            "ai_model": health_status
+        }
+    except Exception as e:
+        logger.error(f"❌ AI health check failed: {e}")
+        return {"status": "unhealthy", "error": str(e)}
+
+@app.post("/ai/optimize-memory")
+async def ai_optimize_memory():
+    """
+    Manually trigger AI model memory optimization
+    """
+    try:
+        ai_model_manager.optimize_memory_usage()
+        return {"message": "Memory optimization completed"}
+    except Exception as e:
+        logger.error(f"❌ Memory optimization failed: {e}")
+        raise HTTPException(500, f"Memory optimization failed: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
