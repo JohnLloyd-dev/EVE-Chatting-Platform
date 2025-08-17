@@ -222,76 +222,38 @@ else
     sleep 15
 fi
 
-# Step 6: Start AI Server
-print_status "Step 6: Starting AI Server..."
-docker-compose -f $COMPOSE_FILE up -d ai-server
+# Step 6: AI Model is now integrated into Backend - no separate AI server needed
+print_status "Step 6: AI Model is integrated into Backend (no separate AI server)"
+print_status "The AI model will load when the backend starts up"
 
-# Wait for AI server to be ready (it takes time to load the model)
-print_status "Waiting for AI Server to load model (this may take several minutes)..."
-for i in {1..20}; do
-    # Check if container is running first
-    if ! docker ps --format "table {{.Names}}" | grep -q "eve-chatting-platform-ai-server-1\|eve-chatting-platform_ai_server_1"; then
-        print_warning "AI Server container not running, attempt $i/20"
-        sleep 30
-        continue
-    fi
-    
-    # Check if the model is still loading by looking at logs
-    if docker-compose -f $COMPOSE_FILE logs ai-server --tail 5 | grep -q "Loading model\|Downloading\|Installing"; then
-        print_warning "AI Server still loading model, attempt $i/20"
-        sleep 30
-        continue
-    fi
-    
-    # Try health check
-    AI_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://$VPS_IP:8000/health 2>/dev/null || echo "000")
-    if [ "$AI_STATUS" = "200" ]; then
-        print_success "AI Server is ready"
-        break
-    else
-        print_warning "AI Server not ready yet, attempt $i/20 (Status: $AI_STATUS)"
-        
-        # Show logs every 5 attempts
-        if [ $((i % 5)) -eq 0 ]; then
-            print_status "AI Server logs (last 10 lines):"
-            docker-compose -f $COMPOSE_FILE logs ai-server --tail 10
-        fi
-        
-        sleep 30
-    fi
-done
-
-# If AI server still not ready after 20 attempts, show logs and continue
-if [ "$AI_STATUS" != "200" ]; then
-    print_warning "AI Server not ready after 20 attempts, showing logs and continuing..."
-    docker-compose -f $COMPOSE_FILE logs ai-server --tail 20
-fi
-
-# Step 7: Start Backend and Celery
-print_status "Step 7: Starting Backend and Celery..."
+# Step 7: Start Backend and Celery (with integrated AI model)
+print_status "Step 7: Starting Backend and Celery with integrated AI model..."
 docker-compose -f $COMPOSE_FILE up -d backend celery-worker
 
-# Wait for backend to be ready
-print_status "Waiting for Backend to be ready..."
-sleep 15
+# Wait for backend to be ready and AI model to load
+print_status "Waiting for Backend to be ready and AI model to load..."
+sleep 30
 
-# Check backend health with database connection verification
-print_status "Checking backend health and database connection..."
-for i in {1..5}; do
+# Check backend health and AI model status
+print_status "Checking backend health, database connection, and AI model status..."
+for i in {1..8}; do
     BACKEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://$VPS_IP:8001/health 2>/dev/null || echo "000")
-    if [ "$BACKEND_STATUS" = "200" ]; then
-        print_success "Backend is healthy and database connection successful"
+    AI_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://$VPS_IP:8001/ai/health 2>/dev/null || echo "000")
+    
+    if [ "$BACKEND_STATUS" = "200" ] && [ "$AI_STATUS" = "200" ]; then
+        print_success "Backend is healthy, database connected, and AI model loaded successfully"
         break
     else
-        print_warning "Backend not ready yet, attempt $i/5 (Status: $BACKEND_STATUS)"
+        print_warning "Backend/AI not ready yet, attempt $i/8"
+        print_warning "Backend Status: $BACKEND_STATUS, AI Status: $AI_STATUS"
         
-        # Check backend logs for database connection issues
-        if [ $i -eq 3 ]; then
-            print_status "Checking backend logs for database connection issues..."
-            docker-compose -f $COMPOSE_FILE logs backend --tail 5
+        # Check backend logs for issues
+        if [ $i -eq 4 ]; then
+            print_status "Checking backend logs for issues..."
+            docker-compose -f $COMPOSE_FILE logs backend --tail 10
         fi
         
-        sleep 10
+        sleep 15
     fi
 done
 

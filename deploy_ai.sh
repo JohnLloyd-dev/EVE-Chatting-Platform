@@ -1,7 +1,7 @@
 #!/bin/bash
 
-echo "🤖 EVE Chat Platform - AI Server Deployment"
-echo "==========================================="
+echo "🤖 EVE Chat Platform - AI Model Integration Deployment"
+echo "======================================================"
 
 # Colors for output
 RED='\033[0;31m'
@@ -69,35 +69,15 @@ else
 fi
 
 echo ""
-print_status "Deployment Options:"
-echo "1. CPU-only deployment (slower but works everywhere)"
-echo "2. GPU deployment (faster, requires NVIDIA GPU + Docker runtime)"
+print_status "AI Model Integration Status:"
+echo "✅ AI model is now integrated into the backend service"
+echo "✅ No separate AI server needed"
+echo "✅ GPU acceleration automatically detected and used"
+echo "✅ Simplified deployment and management"
 
-if [ "$GPU_AVAILABLE" = true ] && [ "$NVIDIA_DOCKER_AVAILABLE" = true ]; then
-    echo ""
-    print_status "Your system supports GPU acceleration!"
-    echo "Recommended: Option 2 (GPU deployment)"
-    echo ""
-    read -p "Choose deployment type (1=CPU, 2=GPU): " choice
-else
-    print_warning "GPU acceleration not available, using CPU-only deployment"
-    choice=1
-fi
-
-case $choice in
-    1)
-        print_status "Deploying with CPU-only AI server..."
-        COMPOSE_FILE="docker-compose.yml"
-        ;;
-    2)
-        if [ "$GPU_AVAILABLE" = true ] && [ "$NVIDIA_DOCKER_AVAILABLE" = true ]; then
-            print_status "Deploying with GPU-accelerated AI server..."
-            COMPOSE_FILE="docker-compose.gpu.yml"
-        else
-            print_error "GPU deployment requested but not available"
-            print_status "Falling back to CPU-only deployment..."
-            COMPOSE_FILE="docker-compose.yml"
-        fi
+# Use the standard docker-compose.yml (AI model is integrated)
+COMPOSE_FILE="docker-compose.yml"
+print_status "Using integrated docker-compose.yml"
         ;;
     *)
         print_error "Invalid choice, using CPU-only deployment"
@@ -140,15 +120,25 @@ for i in {1..5}; do
     fi
 done
 
-# Wait for AI server (takes longer to load model)
-print_status "Waiting for AI Server to load model (this may take several minutes)..."
-for i in {1..30}; do
-    AI_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://$VPS_IP:8000/health 2>/dev/null || echo "000")
-    if [ "$AI_STATUS" = "200" ]; then
-        print_success "AI Server is ready"
+# Wait for backend with integrated AI model to load
+print_status "Waiting for Backend with integrated AI model to load (this may take several minutes)..."
+for i in {1..20}; do
+    BACKEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://$VPS_IP:8001/health 2>/dev/null || echo "000")
+    AI_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://$VPS_IP:8001/ai/health 2>/dev/null || echo "000")
+    
+    if [ "$BACKEND_STATUS" = "200" ] && [ "$AI_STATUS" = "200" ]; then
+        print_success "Backend with AI model is ready"
         break
     else
-        print_warning "AI Server not ready yet, attempt $i/30 (Status: $AI_STATUS)"
+        print_warning "Backend/AI not ready yet, attempt $i/20"
+        print_warning "Backend Status: $BACKEND_STATUS, AI Status: $AI_STATUS"
+        
+        # Show backend logs every 5 attempts
+        if [ $((i % 5)) -eq 0 ]; then
+            print_status "Backend logs (last 10 lines):"
+            docker-compose -f $COMPOSE_FILE logs backend --tail 10
+        fi
+        
         sleep 30
     fi
 done
@@ -165,12 +155,12 @@ else
     print_error "Backend: FAILED (Status: $BACKEND_STATUS)"
 fi
 
-# Test AI server
-AI_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://$VPS_IP:8000/health 2>/dev/null || echo "000")
+# Test AI model integration
+AI_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://$VPS_IP:8001/ai/health 2>/dev/null || echo "000")
 if [ "$AI_STATUS" = "200" ]; then
-    print_success "AI Server: OK (http://$VPS_IP:8000)"
+    print_success "AI Model Integration: OK (http://$VPS_IP:8001/ai/health)"
 else
-    print_warning "AI Server: FAILED (Status: $AI_STATUS)"
+    print_warning "AI Model Integration: FAILED (Status: $AI_STATUS)"
 fi
 
 # Test frontend
@@ -182,13 +172,14 @@ else
 fi
 
 echo ""
-print_success "🚀 AI Server deployment completed!"
+print_success "🚀 AI Model Integration deployment completed!"
 echo ""
 print_status "Access URLs:"
 echo "  Frontend: http://$VPS_IP:3000"
 echo "  Backend API: http://$VPS_IP:8001"
-echo "  AI Server: http://$VPS_IP:8000"
+echo "  AI Model Health: http://$VPS_IP:8001/ai/health"
 echo ""
-print_status "AI Server Type: $([ "$choice" = "2" ] && echo "GPU-accelerated" || echo "CPU-only")"
+print_status "AI Model Status: Integrated into Backend"
+print_status "GPU Acceleration: Automatically detected and used"
 echo ""
 print_status "For troubleshooting, run: ./troubleshoot.sh" 

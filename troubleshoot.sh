@@ -58,12 +58,22 @@ else
     print_error "Backend: FAILED (Status: $BACKEND_STATUS)"
 fi
 
-# Test AI server
-AI_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://$VPS_IP:8000/health 2>/dev/null || echo "000")
+# Test AI model integration
+AI_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://$VPS_IP:8001/ai/health 2>/dev/null || echo "000")
 if [ "$AI_STATUS" = "200" ]; then
-    print_success "AI Server: OK (http://$VPS_IP:8000)"
+    print_success "AI Model Integration: OK (http://$VPS_IP:8001/ai/health)"
+    
+    # Get AI model details
+    AI_DETAILS=$(curl -s http://$VPS_IP:8001/ai/health 2>/dev/null)
+    if [ -n "$AI_DETAILS" ]; then
+        echo "   AI Model Details:"
+        echo "$AI_DETAILS" | jq -r '.model_name, .device, .status' 2>/dev/null || \
+        echo "$AI_DETAILS" | grep -E '"model_name"|"device"|"status"' 2>/dev/null || \
+        echo "   (Raw response: $AI_DETAILS)"
+    fi
 else
-    print_warning "AI Server: FAILED (Status: $AI_STATUS)"
+    print_warning "AI Model Integration: FAILED (Status: $AI_STATUS)"
+    print_status "Note: AI model is now integrated into backend, not a separate service"
 fi
 
 # Test frontend
@@ -108,4 +118,12 @@ print_status "Troubleshooting complete!"
 print_status "Access URLs:"
 echo "  Frontend: http://$VPS_IP:3000"
 echo "  Backend API: http://$VPS_IP:8001"
-echo "  AI Server: http://$VPS_IP:8000" 
+echo "  AI Model Health: http://$VPS_IP:8001/ai/health"
+
+echo ""
+print_status "AI Integration Troubleshooting Tips:"
+echo "  1. If AI model fails to load, check backend logs: docker-compose logs backend"
+echo "  2. Verify GPU availability: nvidia-smi"
+echo "  3. Check AI model cache: docker exec backend ls -la /app/.cache/huggingface"
+echo "  4. Test AI endpoints: ./test_ai_integration.sh"
+echo "  5. Restart backend if needed: docker-compose restart backend" 
