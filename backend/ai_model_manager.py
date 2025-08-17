@@ -49,14 +49,26 @@ class AIModelManager:
             
             # Load model with optimizations and timeout
             logger.info("📥 Loading model (this may take several minutes)...")
+            
+            # Memory optimization settings for 8GB VRAM
+            model_kwargs = {
+                "torch_dtype": torch.float16 if torch.cuda.is_available() else torch.float32,
+                "low_cpu_mem_usage": True,
+                "cache_dir": settings.ai_model_cache_dir,
+                "local_files_only": False,
+                "trust_remote_code": True,
+                "max_memory": {0: "7GB"} if torch.cuda.is_available() else None,
+                "offload_folder": "offload" if torch.cuda.is_available() else None,
+            }
+            
+            # Use device_map="auto" for better memory management
+            if torch.cuda.is_available():
+                model_kwargs["device_map"] = "auto"
+                logger.info("🚀 Using auto device mapping for GPU memory optimization")
+            
             self.model = AutoModelForCausalLM.from_pretrained(
                 settings.ai_model_name,
-                torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-                device_map="auto" if torch.cuda.is_available() else None,
-                low_cpu_mem_usage=True,
-                cache_dir=settings.ai_model_cache_dir,
-                local_files_only=False,
-                trust_remote_code=True
+                **model_kwargs
             )
             
             # Move to GPU if available
