@@ -8,6 +8,7 @@ import torch
 import gc
 from typing import Dict, List, Optional, Tuple
 from transformers import AutoTokenizer, AutoModelForCausalLM
+import os
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -50,16 +51,29 @@ class AIModelManager:
             # Load model with optimizations and timeout
             logger.info("📥 Loading model (this may take several minutes)...")
             
-            # Memory optimization settings for 8GB VRAM
-            model_kwargs = {
-                "torch_dtype": torch.float16 if torch.cuda.is_available() else torch.float32,
-                "low_cpu_mem_usage": True,
-                "cache_dir": settings.ai_model_cache_dir,
-                "local_files_only": False,
-                "trust_remote_code": True,
-                "max_memory": {0: "7GB"} if torch.cuda.is_available() else None,
-                "offload_folder": "offload" if torch.cuda.is_available() else None,
-            }
+            # Check if this is a GGUF model
+            if "GGUF" in settings.ai_model_name:
+                logger.info("🚀 Detected GGUF model - using optimized loading...")
+                # GGUF models are already optimized for memory
+                model_kwargs = {
+                    "torch_dtype": torch.float16 if torch.cuda.is_available() else torch.float32,
+                    "low_cpu_mem_usage": True,
+                    "cache_dir": settings.ai_model_cache_dir,
+                    "local_files_only": False,
+                    "trust_remote_code": True,
+                    "max_memory": {0: "7GB"} if torch.cuda.is_available() else None,
+                }
+            else:
+                # Standard model loading with memory optimization
+                model_kwargs = {
+                    "torch_dtype": torch.float16 if torch.cuda.is_available() else torch.float32,
+                    "low_cpu_mem_usage": True,
+                    "cache_dir": settings.ai_model_cache_dir,
+                    "local_files_only": False,
+                    "trust_remote_code": True,
+                    "max_memory": {0: "7GB"} if torch.cuda.is_available() else None,
+                    "offload_folder": "offload" if torch.cuda.is_available() else None,
+                }
             
             # Use device_map="auto" for better memory management
             if torch.cuda.is_available():
