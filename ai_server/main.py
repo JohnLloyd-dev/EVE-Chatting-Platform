@@ -514,7 +514,7 @@ def clean_response(response: str) -> str:
         for pattern in incomplete_patterns:
             if response_lower.endswith(pattern):
                 # Find the last complete sentence or phrase
-                last_period = response.rfind('.')
+        last_period = response.rfind('.')
                 last_exclamation = response.rfind('!')
                 last_question = response.rfind('?')
                 last_complete = max(last_period, last_exclamation, last_question)
@@ -831,20 +831,20 @@ async def _chat_internal(req: MessageRequest, request: Request, credentials: HTT
     # KV cache approach was broken - it bypassed system prompt and context
     logger.info("🔄 Building full context (ensuring system prompt is included)")
     
-    # Trim history with optimizations
-    trim_start = time.time()
+        # Trim history with optimizations
+        trim_start = time.time()
     # Simple history trimming - keep last 10 messages for speed
     if len(session["history"]) > 10:
         session["history"] = session["history"][-10:]
-    trim_time = time.time() - trim_start
-    
+        trim_time = time.time() - trim_start
+        
     # Build prompt with system prompt and conversation history
-    prompt_start = time.time()
-    full_prompt = build_chatml_prompt_ultra_fast(
-        session["system_prompt"],
-        session["history"]
-    )
-    prompt_time = time.time() - prompt_start
+        prompt_start = time.time()
+        full_prompt = build_chatml_prompt_ultra_fast(
+            session["system_prompt"],
+            session["history"]
+        )
+        prompt_time = time.time() - prompt_start
     
     # Log the prompt being sent to the model for debugging
     logger.info(f"📝 System prompt: {session['system_prompt']}")
@@ -862,22 +862,22 @@ async def _chat_internal(req: MessageRequest, request: Request, credentials: HTT
         role = session["message_roles"][i] if i < len(session["message_roles"]) else "UNKNOWN"
         logger.info(f"🔍 [{i}] {role.upper()}: {entry[:100]}{'...' if len(entry) > 100 else ''}")
     logger.info(f"🔍 END HISTORY BREAKDOWN")
-    
-    # Tokenize full prompt
-    inputs = tokenizer(
-        full_prompt,
-        return_tensors="pt",
-        truncation=True,
-        max_length=4096,
-        padding=True
-    ).to(model.device)
+        
+        # Tokenize full prompt
+        inputs = tokenizer(
+            full_prompt,
+            return_tensors="pt",
+            truncation=True,
+            max_length=4096,
+            padding=True
+        ).to(model.device)
     
     session_time = time.time() - session_start
     
     # Tokenize with optimizations
-    start_tokenize = time.time()
-    # inputs already tokenized above
-    tokenize_time = time.time() - start_tokenize
+        start_tokenize = time.time()
+        # inputs already tokenized above
+        tokenize_time = time.time() - start_tokenize
     
     # Calculate available context
     if isinstance(inputs, dict):

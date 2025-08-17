@@ -2,11 +2,22 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies for AI model loading
 RUN apt-get update && apt-get install -y \
     gcc \
+    g++ \
     curl \
+    git \
+    wget \
     && rm -rf /var/lib/apt/lists/*
+
+# Set environment variables for better AI model loading
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV TRANSFORMERS_CACHE=/app/.cache/huggingface
+ENV HF_HOME=/app/.cache/huggingface
+ENV TOKENIZERS_PARALLELISM=false
+ENV TRANSFORMERS_OFFLINE=0
 
 # Copy requirements and install Python dependencies
 COPY requirements.txt .

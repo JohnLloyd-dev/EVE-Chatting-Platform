@@ -29,22 +29,46 @@ class AIModelManager:
         try:
             logger.info(f"🚀 Loading AI model: {settings.ai_model_name}")
             
-            # Load tokenizer
-            self.tokenizer = AutoTokenizer.from_pretrained(settings.ai_model_name)
-            self.tokenizer.pad_token = self.tokenizer.eos_token
+            # Check CUDA availability
+            if torch.cuda.is_available():
+                logger.info(f"✅ CUDA available: {torch.cuda.get_device_name(0)}")
+                logger.info(f"✅ GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f}GB")
+            else:
+                logger.warning("⚠️ CUDA not available, using CPU")
             
-            # Load model with optimizations
+            # Load tokenizer with timeout and retry
+            logger.info("📥 Loading tokenizer...")
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                settings.ai_model_name,
+                cache_dir=settings.ai_model_cache_dir,
+                local_files_only=False,
+                trust_remote_code=True
+            )
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+            logger.info("✅ Tokenizer loaded successfully")
+            
+            # Load model with optimizations and timeout
+            logger.info("📥 Loading model (this may take several minutes)...")
             self.model = AutoModelForCausalLM.from_pretrained(
                 settings.ai_model_name,
                 torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
                 device_map="auto" if torch.cuda.is_available() else None,
-                low_cpu_mem_usage=True
+                low_cpu_mem_usage=True,
+                cache_dir=settings.ai_model_cache_dir,
+                local_files_only=False,
+                trust_remote_code=True
             )
             
             # Move to GPU if available
             if torch.cuda.is_available():
+                logger.info("🚀 Moving model to GPU...")
                 self.model = self.model.cuda()
                 logger.info(f"✅ Model loaded on GPU: {self.model.device}")
+                
+                # Verify GPU memory usage
+                memory_allocated = torch.cuda.memory_allocated() / 1024**3
+                memory_reserved = torch.cuda.memory_reserved() / 1024**3
+                logger.info(f"📊 GPU Memory: {memory_allocated:.1f}GB allocated, {memory_reserved:.1f}GB reserved")
             else:
                 logger.info("✅ Model loaded on CPU")
             
@@ -56,7 +80,17 @@ class AIModelManager:
             
         except Exception as e:
             logger.error(f"❌ Failed to load AI model: {e}")
+            logger.error(f"❌ Error type: {type(e).__name__}")
             self.model_loaded = False
+            
+            # Provide specific error guidance
+            if "CUDA" in str(e):
+                logger.error("💡 CUDA Error: Check GPU drivers and CUDA installation")
+            elif "out of memory" in str(e).lower():
+                logger.error("💡 Memory Error: Model too large for GPU memory")
+            elif "timeout" in str(e).lower():
+                logger.error("💡 Timeout Error: Model download taking too long")
+            
             raise
     
     def create_session(self, session_id: str, system_prompt: str) -> Dict:

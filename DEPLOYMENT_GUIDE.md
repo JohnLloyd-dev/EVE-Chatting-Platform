@@ -7,11 +7,13 @@ This guide covers deploying the fully integrated EVE Chatting Platform where the
 ## 🏗️ **Architecture Changes**
 
 ### **Before (Separate Services)**
+
 ```
 Frontend → Backend → AI Server (separate container)
 ```
 
 ### **After (Integrated)**
+
 ```
 Frontend → Backend (with AI model inside) → No external calls needed
 ```
@@ -19,13 +21,16 @@ Frontend → Backend (with AI model inside) → No external calls needed
 ## 🚀 **Deployment Steps**
 
 ### **Step 1: Pull Latest Changes**
+
 ```bash
 cd ~/EVE-Chatting-Platform
 git pull origin main
 ```
 
 ### **Step 2: Verify Integration Files**
+
 Ensure these files exist and are updated:
+
 - ✅ `backend/ai_model_manager.py` - AI model integration
 - ✅ `backend/main.py` - AI endpoints added
 - ✅ `backend/config.py` - AI configuration updated
@@ -34,6 +39,7 @@ Ensure these files exist and are updated:
 - ✅ `frontend/lib/api.ts` - AI endpoints integrated
 
 ### **Step 3: Rebuild Backend with AI Dependencies**
+
 ```bash
 # Stop services
 docker-compose down
@@ -46,12 +52,14 @@ docker-compose up -d
 ```
 
 ### **Step 4: Monitor Backend Startup**
+
 ```bash
 # Watch backend logs for AI model loading
 docker-compose logs -f backend
 ```
 
 **Expected Output:**
+
 ```
 🚀 Loading AI model: teknium/OpenHermes-2.5-Mistral-7B
 ✅ Model loaded on GPU: cuda:0
@@ -59,6 +67,7 @@ docker-compose logs -f backend
 ```
 
 ### **Step 5: Test AI Integration**
+
 ```bash
 # Test AI health endpoint
 curl http://localhost:8001/ai/health
@@ -74,6 +83,7 @@ curl http://localhost:8001/ai/health
 ```
 
 ### **Step 6: Test Frontend**
+
 ```bash
 # Rebuild frontend
 docker-compose build frontend
@@ -86,6 +96,7 @@ docker-compose logs -f frontend
 ## 🔧 **Configuration Details**
 
 ### **Backend AI Configuration**
+
 ```python
 # backend/config.py
 ai_model_name: str = "teknium/OpenHermes-2.5-Mistral-7B"
@@ -95,6 +106,7 @@ ai_request_timeout: float = 60.0
 ```
 
 ### **Docker Compose Changes**
+
 ```yaml
 backend:
   environment:
@@ -104,10 +116,11 @@ backend:
     - ai_model_cache:/app/.cache/huggingface
 
 volumes:
-  ai_model_cache:  # Persistent AI model storage
+  ai_model_cache: # Persistent AI model storage
 ```
 
 ### **AI Endpoints**
+
 - `POST /ai/init-session` - Initialize AI chat session
 - `POST /ai/chat` - Send message and get AI response
 - `GET /ai/health` - AI model health status
@@ -116,11 +129,13 @@ volumes:
 ## 🧪 **Testing the Integration**
 
 ### **1. Run Integration Tests**
+
 ```bash
 python test_integration.py
 ```
 
 **Expected Results:**
+
 ```
 ✅ Backend Health
 ✅ AI Model Health
@@ -131,6 +146,7 @@ python test_integration.py
 ```
 
 ### **2. Manual Testing**
+
 ```bash
 # Test session creation
 curl -X POST http://localhost:8001/ai/init-session \
@@ -144,6 +160,7 @@ curl -X POST http://localhost:8001/ai/chat \
 ```
 
 ### **3. Frontend Testing**
+
 1. Open `http://your-vps-ip:3000`
 2. Start a new chat session
 3. Verify AI responses appear immediately (no polling)
@@ -152,6 +169,7 @@ curl -X POST http://localhost:8001/ai/chat \
 ## 📊 **Monitoring & Debugging**
 
 ### **Backend Logs**
+
 ```bash
 # Real-time backend logs
 docker-compose logs -f backend
@@ -161,6 +179,7 @@ docker-compose logs backend | grep -E "(AI|Model|GPU)"
 ```
 
 ### **AI Model Status**
+
 ```bash
 # Check AI health
 curl http://localhost:8001/ai/health
@@ -172,6 +191,7 @@ nvidia-smi
 ### **Common Issues & Solutions**
 
 #### **Issue: AI Model Not Loading**
+
 ```bash
 # Check if model cache exists
 docker-compose exec backend ls -la /app/.cache/huggingface
@@ -181,6 +201,7 @@ docker-compose exec backend python -c "import torch; print(torch.cuda.is_availab
 ```
 
 #### **Issue: Out of Memory**
+
 ```bash
 # Optimize memory
 curl -X POST http://localhost:8001/ai/optimize-memory
@@ -190,6 +211,7 @@ nvidia-smi
 ```
 
 #### **Issue: Frontend Can't Connect to AI**
+
 ```bash
 # Verify backend is running
 docker-compose ps
@@ -217,21 +239,25 @@ docker-compose up -d
 ## 📈 **Performance Expectations**
 
 ### **Response Times**
+
 - **Before**: 4-6 seconds (with HTTP overhead)
 - **After**: 2-4 seconds (direct model access)
 
 ### **Memory Usage**
+
 - **GPU Memory**: ~3-4 GB for model
 - **System Memory**: ~2-3 GB additional
 - **Total**: ~5-7 GB for full AI functionality
 
 ### **Concurrent Users**
+
 - **Single Model**: 1-2 concurrent conversations
 - **Multiple Models**: 2-4 concurrent conversations (future enhancement)
 
 ## 🚀 **Future Enhancements**
 
 ### **Multiple AI Models**
+
 ```yaml
 # Future docker-compose.yml
 backend-ai-1:
@@ -248,6 +274,7 @@ backend-ai-2:
 ```
 
 ### **Load Balancing**
+
 - Round-robin between model instances
 - Health-based routing
 - Performance monitoring
@@ -268,11 +295,13 @@ backend-ai-2:
 ## 🆘 **Support & Troubleshooting**
 
 ### **Log Locations**
+
 - **Backend**: `docker-compose logs backend`
 - **Frontend**: `docker-compose logs frontend`
 - **Database**: `docker-compose logs postgres`
 
 ### **Useful Commands**
+
 ```bash
 # Restart specific service
 docker-compose restart backend
@@ -289,4 +318,4 @@ docker-compose exec backend bash
 
 ---
 
-**🎯 Ready to deploy? Follow the steps above and enjoy your integrated EVE Chatting Platform!** 
+**🎯 Ready to deploy? Follow the steps above and enjoy your integrated EVE Chatting Platform!**

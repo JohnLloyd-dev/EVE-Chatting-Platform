@@ -39,9 +39,20 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - TRANSFORMERS_CACHE=/app/.cache/huggingface
       - HF_HOME=/app/.cache/huggingface
+      - CUDA_VISIBLE_DEVICES=0
+      - PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
+      - TOKENIZERS_PARALLELISM=false
+      - TRANSFORMERS_OFFLINE=0
     volumes:
       - ./backend:/app
       - ai_model_cache:/app/.cache/huggingface
+    deploy:
+      resources:
+        limits:
+          memory: 12G
+        reservations:
+          memory: 8G
+    runtime: nvidia
     depends_on:
       postgres:
         condition: service_healthy
