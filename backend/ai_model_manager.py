@@ -151,10 +151,12 @@ class AIModelManager:
             session["message_roles"].append("user")
             session["last_updated"] = time.time()
             
-            # Trim history if too long (keep last 10 messages)
-            if len(session["history"]) > 10:
-                session["history"] = session["history"][-10:]
-                session["message_roles"] = session["message_roles"][-10:]
+            # Enhanced history management to prevent system prompt dilution
+            # Keep only last 6 messages to maintain system prompt impact
+            if len(session["history"]) > 6:
+                session["history"] = session["history"][-6:]
+                session["message_roles"] = session["message_roles"][-6:]
+                logger.info(f"📝 Trimmed history to last 6 messages for session {session_id}")
     
     def add_assistant_message(self, session_id: str, message: str):
         """Add an assistant message to session history"""
@@ -165,17 +167,32 @@ class AIModelManager:
             session["last_updated"] = time.time()
     
     def build_chatml_prompt(self, system_prompt: str, history: List[str], message_roles: List[str]) -> str:
-        """Build ChatML format prompt for the GGUF model"""
-        parts = [f"<|im_start|>system\n{system_prompt.strip()}<|im_end|>\n"]
+        """Build enhanced ChatML format prompt for better accuracy"""
         
-        # Add conversation history
+        # Enhanced system prompt with reinforcement
+        enhanced_system = f"""<|im_start|>system
+{system_prompt.strip()}
+
+**CRITICAL REMINDER:**
+- Stay in character at all times
+- Respond as the specified person
+- Answer the user's question directly
+- Use first person dialogue only
+- Keep responses under 140 characters
+<|im_end|>
+
+"""
+        
+        parts = [enhanced_system]
+        
+        # Add conversation history (limited to prevent dilution)
         for i, (message, role) in enumerate(zip(history, message_roles)):
             if role == "user":
                 parts.append(f"<|im_start|>user\n{message}<|im_end|>\n")
             elif role == "assistant":
                 parts.append(f"<|im_start|>assistant\n{message}<|im_end|>\n")
         
-        # Add final user prompt
+        # Add final user prompt with character reminder
         parts.append("<|im_start|>assistant\n")
         
         return "".join(parts)
@@ -213,15 +230,18 @@ class AIModelManager:
             # Generate response with GGUF model
             start_time = time.time()
             
+            # Optimized parameters for better instruction following and accuracy
             output = self.model(
                 prompt=prompt,
-                max_tokens=512,          # Response length
-                temperature=0.7,         # Creativity control
-                top_p=0.9,              # Nucleus sampling
-                top_k=40,               # Top-k sampling
-                stop=["<|im_end|>"],    # Stop token
+                max_tokens=200,          # Shorter responses for better focus (140 char limit)
+                temperature=0.3,         # Lower temperature for more consistent responses
+                top_p=0.85,             # Tighter nucleus sampling for focused generation
+                top_k=25,               # Lower top-k for more focused selection
+                stop=["<|im_end|>", "\n\n", "User:", "Human:"],  # Better stop tokens
                 stream=False,            # No streaming for now
-                repeat_penalty=1.1,     # Prevent repetition
+                repeat_penalty=1.2,     # Higher repetition penalty to prevent generic responses
+                frequency_penalty=0.1,   # Slight frequency penalty for variety
+                presence_penalty=0.1,   # Slight presence penalty for engagement
             )
             
             generation_time = time.time() - start_time
@@ -229,23 +249,89 @@ class AIModelManager:
             if output and "choices" in output and len(output["choices"]) > 0:
                 response = output["choices"][0]["text"].strip()
                 
-                # Add assistant message to history
-                self.add_assistant_message(session_id, response)
+                # Validate and enhance response for better accuracy
+                validated_response = self._validate_response(response, session_id)
+                
+                # Add validated assistant message to history
+                self.add_assistant_message(session_id, validated_response)
                 
                 # Log performance metrics
-                tokens_generated = len(response.split())  # Approximate
+                tokens_generated = len(validated_response.split())  # Approximate
                 tokens_per_second = tokens_generated / generation_time if generation_time > 0 else 0
                 
                 logger.info(f"✅ Response generated in {generation_time:.2f}s")
                 logger.info(f"📊 Tokens: {tokens_generated}, Speed: {tokens_per_second:.1f} tokens/s")
+                logger.info(f"🎯 Response validation: {len(response)} -> {len(validated_response)} chars")
                 
-                return response
+                return validated_response
             else:
                 raise RuntimeError("No response generated from model")
                 
         except Exception as e:
             logger.error(f"❌ Failed to generate response: {e}")
             raise
+    
+    def _validate_response(self, response: str, session_id: str) -> str:
+        """Validate and enhance response for better accuracy"""
+        try:
+            if not response or len(response.strip()) == 0:
+                return "I'm here, what would you like me to do?"
+            
+            # Clean up response
+            cleaned = response.strip()
+            
+            # Ensure response is under 140 characters
+            if len(cleaned) > 140:
+                cleaned = cleaned[:137] + "..."
+                logger.info(f"📝 Truncated response to 140 chars for session {session_id}")
+            
+            # Check for character consistency indicators
+            session = self.user_sessions.get(session_id, {})
+            system_prompt = session.get("system_prompt", "").lower()
+            
+            # If response seems generic, add character reinforcement
+            generic_indicators = ["i am an ai", "as an ai", "i'm an ai", "artificial intelligence"]
+            if any(indicator in cleaned.lower() for indicator in generic_indicators):
+                logger.warning(f"⚠️ Generic response detected, reinforcing character for session {session_id}")
+                # Try to regenerate with stronger character focus
+                return self._regenerate_with_character_focus(session_id, response)
+            
+            return cleaned
+            
+        except Exception as e:
+            logger.error(f"❌ Response validation failed: {e}")
+            return response  # Return original if validation fails
+    
+    def _regenerate_with_character_focus(self, session_id: str, original_response: str) -> str:
+        """Regenerate response with stronger character focus"""
+        try:
+            session = self.user_sessions.get(session_id, {})
+            system_prompt = session.get("system_prompt", "")
+            
+            # Create a more focused prompt
+            focused_prompt = f"{system_prompt}\n\n**URGENT: You MUST stay in character!**\n\nUser's question requires a response that stays true to your character."
+            
+            # Regenerate with stricter parameters
+            output = self.model(
+                prompt=focused_prompt,
+                max_tokens=100,
+                temperature=0.1,  # Very low temperature for consistency
+                top_p=0.7,
+                top_k=15,
+                stop=["<|im_end|>", "\n\n"],
+                repeat_penalty=1.3,
+            )
+            
+            if output and "choices" in output and len(output["choices"]) > 0:
+                new_response = output["choices"][0]["text"].strip()
+                logger.info(f"🔄 Regenerated response with character focus for session {session_id}")
+                return new_response[:140]  # Ensure length limit
+            
+            return original_response  # Fallback to original
+            
+        except Exception as e:
+            logger.error(f"❌ Character focus regeneration failed: {e}")
+            return original_response
     
     def optimize_memory_usage(self) -> Dict:
         """Optimize memory usage for GGUF model"""

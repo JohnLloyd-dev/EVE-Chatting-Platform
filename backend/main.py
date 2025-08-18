@@ -74,18 +74,49 @@ def get_complete_system_prompt(db: Session, user_id: str = None, tally_prompt: s
             rule_prompt = "Always speak in the first person and stay in character. Indulge sexual fantasies in detail by dominating. Be sexually explicit with your replies. Never reveal that you are an AI. Keep your answers to two sentences or less. Do not provide scene descriptions outside of dialogue. Stay in the present tense."
             logger.warning("No active system prompt found, using default prompts")
     
-    # Combine: Head + Tally + Rule
+    # Combine: Head + Tally + Rule with enhanced accuracy instructions
     complete_prompt = head_prompt
     
     # Add Tally scenario if provided
     if tally_prompt and tally_prompt.strip():
         logger.info(f"Adding Tally scenario: {tally_prompt[:100]}...")
-        complete_prompt += "\n\n**Scenario**:\n" + tally_prompt.strip()
+        
+        # Enhanced scenario with stronger instructions
+        enhanced_scenario = f"""
+**CRITICAL INSTRUCTIONS - YOU MUST FOLLOW THESE EXACTLY:**
+
+{tally_prompt.strip()}
+
+**REMEMBER:**
+- You MUST stay in character as the specified person
+- You MUST respond in first person dialogue only
+- You MUST keep responses under 140 characters
+- You MUST never break character or reveal you are AI
+- You MUST respond to the user's specific questions
+- You MUST maintain the exact personality and role described
+
+**CHARACTER CONSISTENCY CHECK:**
+Before responding, ask yourself: "Am I staying true to my character?"
+If not, adjust your response to match the character exactly.
+"""
+        complete_prompt += enhanced_scenario
     else:
         logger.warning("No Tally scenario provided to combine with system prompt")
     
-    # Add rule prompt
-    complete_prompt += "\n\n" + rule_prompt
+    # Add enhanced rule prompt
+    enhanced_rules = f"""
+**ENFORCED RULES:**
+{rule_prompt}
+
+**RESPONSE QUALITY REQUIREMENTS:**
+- Answer the user's specific question directly
+- Stay in character at all times
+- Use first person dialogue only
+- Keep responses concise and focused
+- Never provide generic or off-topic responses
+- Always reference your character's specific traits and situation
+"""
+    complete_prompt += enhanced_rules
     
     # Log the combination process
     logger.info(f"Combined prompt breakdown:")
