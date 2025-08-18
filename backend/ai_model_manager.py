@@ -7,6 +7,7 @@ import time
 import os
 import gc
 import threading
+from threading import Lock
 import torch
 from typing import Dict, List, Optional, Tuple
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
@@ -23,6 +24,9 @@ class AIModelManager:
         self.model_loaded = False
         self.user_sessions: Dict[str, Dict] = {}
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        
+        # Thread safety for concurrent requests
+        self.generate_lock = Lock()
         
         # Load model on initialization
         self._load_model()
@@ -156,7 +160,7 @@ class AIModelManager:
             test_response = self.tokenizer.decode(test_outputs[0], skip_special_tokens=True)
             
             # Quantization calibration for better accuracy (guide recommendation)
-            if settings.ai_use_4bit and self.device == "cuda":
+            if (settings.ai_use_4bit or settings.ai_use_8bit) and self.device == "cuda":
                 logger.info("🔧 Running quantization calibration for better accuracy...")
                 try:
                     with torch.inference_mode():
@@ -354,103 +358,105 @@ class AIModelManager:
             raise RuntimeError("AI model not loaded")
         
         try:
-            # Get or create session
-            if session_id not in self.user_sessions:
-                # Try to rebuild session from database if available
-                if db_session and db:
-                    self.rebuild_session_from_database(session_id, db_session, db)
-                else:
-                    # Fallback to generic prompt if no database access
-                    self.create_session(session_id, "You are a helpful assistant.")
-            
-            # Add user message to history
-            self.add_user_message(session_id, user_message)
-            
-            # Get session data
-            session = self.user_sessions[session_id]
-            system_prompt = session["system_prompt"]
-            history = session["history"][:-1]  # Exclude the current user message
-            message_roles = session["message_roles"][:-1]  # Exclude the current user message
-            
-            # Build ChatML prompt
-            prompt = self.build_chatml_prompt(system_prompt, history, message_roles, user_message)
-            
-            logger.info(f"🚀 Generating response for session {session_id}")
-            logger.info(f"📝 Prompt length: {len(prompt)} characters")
-            
-            # Generate response with 7B transformers model
-            start_time = time.time()
-            
-            # Tokenize the prompt with RTX 4060 memory limits
-            inputs = self.tokenizer(
-                prompt, 
-                return_tensors="pt", 
-                truncation=True, 
-                max_length=settings.ai_max_context_length
-            ).to(self.device)
-            
-            # Setup inference precision for maximum accuracy
-            self._setup_inference_precision()
-            
-            # Optimized parameters applying guide principles: Accuracy-First + Speed Optimization
-            with torch.inference_mode():  # Stronger than no_grad for inference accuracy
-                outputs = self.model.generate(
-                    **inputs,
-                    max_new_tokens=100,          # Optimized for 200 char limit + concise responses
-                    temperature=0.28,            # Slightly lower for accuracy compensation (guide principle)
-                    top_p=0.9,                  # More flexible than 0.85 for better accuracy (guide principle)
-                    top_k=30,                   # Better than 25 for accuracy (guide principle)
-                    do_sample=True,              # Enable sampling for better quality
-                    pad_token_id=self.tokenizer.eos_token_id,
-                    eos_token_id=self.tokenizer.eos_token_id,
-                    repetition_penalty=1.15,    # Optimized for accuracy (guide principle)
-                    use_cache=True,             # Enable KV cache for memory efficiency
-                    num_beams=1,                # Single beam for memory efficiency
-                    # New guide-based parameters for accuracy preservation
-                    typical_p=0.9,              # Filters atypical tokens (guide principle)
-                )
-            
-            generation_time = time.time() - start_time
-            
-            # Decode the response
-            response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-            
-            # Extract only the new tokens (remove the input prompt)
-            # Use token-based extraction for better accuracy
-            response = self._extract_ai_response(response, inputs, self.tokenizer)
-            
-            # Restore training precision settings
-            self._restore_training_precision()
-            
-            # Validate and enhance response for better accuracy
-            validated_response = self._validate_response(response, session_id)
-            
-            # Add validated assistant message to history
-            self.add_assistant_message(session_id, validated_response)
-            
-            # Periodic memory optimization for RTX 4060 with cooldown (every 5 responses, 5 min cooldown)
-            session = self.user_sessions.get(session_id, {})
-            current_time = time.time()
-            last_optimized = session.get("last_optimized", 0)
-            
-            if len(session.get("history", [])) % 5 == 0 and (current_time - last_optimized) > 300:  # 5 minutes
-                logger.info(f"🧹 Running periodic memory optimization for session {session_id}")
-                self._async_optimize_memory()
-                session["last_optimized"] = current_time
-            
-            # Log performance metrics with Guide's quality monitoring
-            tokens_generated = len(validated_response.split())  # Approximate
-            tokens_per_second = tokens_generated / generation_time if generation_time > 0 else 0
-            
-            # Guide principle: Monitor accuracy indicators
-            accuracy_indicators = self._assess_response_quality(validated_response, session_id)
-            
-            logger.info(f"✅ Response generated in {generation_time:.2f}s")
-            logger.info(f"📊 Tokens: {tokens_generated}, Speed: {tokens_per_second:.1f} tokens/s")
-            logger.info(f"🎯 Response validation: {len(response)} -> {len(validated_response)} chars")
-            logger.info(f"🎯 Quality assessment: {accuracy_indicators}")
-            
-            return validated_response
+            # Thread safety for concurrent requests
+            with self.generate_lock:
+                # Get or create session
+                if session_id not in self.user_sessions:
+                    # Try to rebuild session from database if available
+                    if db_session and db:
+                        self.rebuild_session_from_database(session_id, db_session, db)
+                    else:
+                        # Fallback to generic prompt if no database access
+                        self.create_session(session_id, "You are a helpful assistant.")
+                
+                # Add user message to history
+                self.add_user_message(session_id, user_message)
+                
+                # Get session data
+                session = self.user_sessions[session_id]
+                system_prompt = session["system_prompt"]
+                history = session["history"][:-1]  # Exclude the current user message
+                message_roles = session["message_roles"][:-1]  # Exclude the current user message
+                
+                # Build ChatML prompt
+                prompt = self.build_chatml_prompt(system_prompt, history, message_roles, user_message)
+                
+                logger.info(f"🚀 Generating response for session {session_id}")
+                logger.info(f"📝 Prompt length: {len(prompt)} characters")
+                
+                # Generate response with 7B transformers model
+                start_time = time.time()
+                
+                # Tokenize the prompt with RTX 4060 memory limits
+                inputs = self.tokenizer(
+                    prompt, 
+                    return_tensors="pt", 
+                    truncation=True, 
+                    max_length=settings.ai_max_context_length
+                ).to(self.device)
+                
+                # Setup inference precision for maximum accuracy
+                self._setup_inference_precision()
+                
+                # Optimized parameters applying guide principles: Accuracy-First + Speed Optimization
+                with torch.inference_mode():  # Stronger than no_grad for inference accuracy
+                    outputs = self.model.generate(
+                        **inputs,
+                        max_new_tokens=100,          # Optimized for 200 char limit + concise responses
+                        temperature=0.28,            # Slightly lower for accuracy compensation (guide principle)
+                        top_p=0.9,                  # More flexible than 0.85 for better accuracy (guide principle)
+                        top_k=30,                   # Better than 25 for accuracy (guide principle)
+                        do_sample=True,              # Enable sampling for better quality
+                        pad_token_id=self.tokenizer.eos_token_id,
+                        eos_token_id=self.tokenizer.eos_token_id,
+                        repetition_penalty=1.15,    # Optimized for accuracy (guide principle)
+                        use_cache=True,             # Enable KV cache for memory efficiency
+                        num_beams=1,                # Single beam for memory efficiency
+                        # New guide-based parameters for accuracy preservation
+                        typical_p=0.9,              # Filters atypical tokens (guide principle)
+                    )
+                
+                generation_time = time.time() - start_time
+                
+                # Decode the response
+                response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+                
+                # Extract only the new tokens (remove the input prompt)
+                # Use token-based extraction for better accuracy
+                response = self._extract_ai_response(response, inputs, self.tokenizer)
+                
+                # Restore training precision settings
+                self._restore_training_precision()
+                
+                # Validate and enhance response for better accuracy
+                validated_response = self._validate_response(response, session_id)
+                
+                # Add validated assistant message to history
+                self.add_assistant_message(session_id, validated_response)
+                
+                # Periodic memory optimization for RTX 4060 with cooldown (every 5 responses, 5 min cooldown)
+                session = self.user_sessions.get(session_id, {})
+                current_time = time.time()
+                last_optimized = session.get("last_optimized", 0)
+                
+                if len(session.get("history", [])) % 5 == 0 and (current_time - last_optimized) > 300:  # 5 minutes
+                    logger.info(f"🧹 Running periodic memory optimization for session {session_id}")
+                    self._async_optimize_memory()
+                    session["last_optimized"] = current_time
+                
+                # Log performance metrics with Guide's quality monitoring
+                tokens_generated = len(validated_response.split())  # Approximate
+                tokens_per_second = tokens_generated / generation_time if generation_time > 0 else 0
+                
+                # Guide principle: Monitor accuracy indicators
+                accuracy_indicators = self._assess_response_quality(validated_response, session_id)
+                
+                logger.info(f"✅ Response generated in {generation_time:.2f}s")
+                logger.info(f"📊 Tokens: {tokens_generated}, Speed: {tokens_per_second:.1f} tokens/s")
+                logger.info(f"🎯 Response validation: {len(response)} -> {len(validated_response)} chars")
+                logger.info(f"🎯 Quality assessment: {accuracy_indicators}")
+                
+                return validated_response
                 
         except Exception as e:
             logger.error(f"❌ Failed to generate response: {e}")
@@ -744,9 +750,11 @@ class AIModelManager:
                 # Re-enable TF32 for potential future training operations
                 torch.backends.cuda.matmul.allow_tf32 = True
                 torch.backends.cudnn.allow_tf32 = True
+                if hasattr(torch, 'set_float32_matmul_precision'):
+                    torch.set_float32_matmul_precision('high')
                 logger.info("🔧 Training precision settings restored")
         except Exception as e:
-            logger.warning(f"⚠️ Training precision restoration failed: {e}")
+            logger.error(f"❌ Precision restoration failed: {e}")
     
     def get_health_status(self) -> Dict:
         """Get health status of the AI model"""
