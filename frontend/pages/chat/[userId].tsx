@@ -2,6 +2,7 @@ import { useRouter } from "next/router";
 import { useState, useEffect } from "react";
 import { useQuery } from "react-query";
 import ChatInterface from "../../components/ChatInterface";
+import ErrorBoundary from "../../components/ErrorBoundary";
 import Link from "next/link";
 import { userSession } from "../../lib/userSession";
 import { chatApi } from "../../lib/api";
@@ -81,7 +82,9 @@ export default function ChatPage() {
           className="bg-gray-800/60 backdrop-blur-sm shadow-2xl border-x border-gray-700/50"
           style={{ height: "calc(100vh - 120px)" }}
         >
-          <ChatInterface userId={userId} />
+          <ErrorBoundary>
+            <ChatInterface userId={userId} />
+          </ErrorBoundary>
         </div>
       </div>
     </div>

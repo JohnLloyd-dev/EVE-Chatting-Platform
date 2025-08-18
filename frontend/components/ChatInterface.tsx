@@ -291,11 +291,28 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
   }
 
   if (error) {
+    // Debug: Log the error object to see its structure
+    console.log('Error object:', error);
+    console.log('Error type:', typeof error);
+    console.log('Error keys:', error && typeof error === 'object' ? Object.keys(error) : 'N/A');
+    
+    // Safely extract error message
+    let errorMessage = "Failed to load chat session";
+    
+    if (error && typeof error === 'object') {
+      if ('response' in error && error.response?.data?.detail) {
+        errorMessage = error.response.data.detail;
+      } else if ('message' in error && typeof error.message === 'string') {
+        errorMessage = error.message;
+      } else if ('detail' in error && typeof error.detail === 'string') {
+        errorMessage = error.detail;
+      }
+    }
+    
     return (
       <div className="text-center py-8">
         <div className="text-red-400 mb-4 text-lg">
-          {(error as any)?.response?.data?.detail ||
-            "Failed to load chat session"}
+          {errorMessage}
         </div>
         <button
           onClick={() => window.location.reload()}
@@ -341,7 +358,16 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
                   msg.is_from_user ? "chat-message-user" : "chat-message-ai"
                 }`}
               >
-                <div className="text-sm">{msg.content}</div>
+                <div className="text-sm">
+                  {(() => {
+                    // Debug: Log message content to see what we're getting
+                    if (typeof msg.content !== 'string') {
+                      console.log('Non-string message content:', msg.content);
+                      console.log('Message object:', msg);
+                    }
+                    return typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+                  })()}
+                </div>
                 <div
                   className={`text-xs mt-1 ${
                     msg.is_from_user ? "text-purple-200" : "text-gray-400"
