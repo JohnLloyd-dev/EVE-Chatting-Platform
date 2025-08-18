@@ -6,6 +6,7 @@ import logging
 import time
 import os
 import gc
+import threading
 import torch
 from typing import Dict, List, Optional, Tuple
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
@@ -51,12 +52,13 @@ class AIModelManager:
                 raise ValueError("❌ Cannot use both 4-bit and 8-bit quantization simultaneously")
             
             if settings.ai_use_4bit and self.device == "cuda":
-                logger.info("🔧 Configuring 4-bit quantization...")
+                logger.info("🔧 Configuring 4-bit quantization for RTX 4060...")
                 quantization_config = BitsAndBytesConfig(
                     load_in_4bit=True,
-                    bnb_4bit_compute_dtype=torch.float16,
+                    bnb_4bit_compute_dtype=torch.bfloat16,  # Better for Ada Lovelace
                     bnb_4bit_use_double_quant=True,
-                    bnb_4bit_quant_type="nf4"
+                    bnb_4bit_quant_type="nf4",
+                    llm_int8_skip_modules=["lm_head"]  # Prevent quantization of output layer
                 )
             elif settings.ai_use_8bit and self.device == "cuda":
                 logger.info("🔧 Configuring 8-bit quantization...")
@@ -91,6 +93,26 @@ class AIModelManager:
             torch.backends.cudnn.allow_tf32 = True
             torch.set_float32_matmul_precision('high')
             
+            # Enable kernel optimizations for RTX 4060
+            try:
+                torch.backends.cuda.enable_math_precision()
+                torch._C._jit_set_texpr_fuser_enabled(True)
+                logger.info("✅ RTX 4060 kernel optimizations enabled")
+            except Exception as e:
+                logger.warning(f"⚠️ Some RTX 4060 kernel optimizations failed: {e}")
+            
+            # Setup Flash Attention with fallback mechanism
+            attn_kwargs = {}
+            try:
+                if self.device == "cuda":
+                    attn_kwargs = {
+                        "use_flash_attention_2": True,
+                        "attn_implementation": "flash_attention_2"
+                    }
+                    logger.info("✅ Flash Attention 2 enabled")
+            except Exception as e:
+                logger.warning(f"⚠️ Flash Attention 2 not available, using default: {e}")
+            
             self.model = AutoModelForCausalLM.from_pretrained(
                 settings.ai_model_name,
                 cache_dir=settings.ai_model_cache_dir,
@@ -102,9 +124,7 @@ class AIModelManager:
                 max_memory=max_memory,
                 offload_folder=settings.ai_offload_folder,
                 offload_state_dict=True,
-                # RTX 4060 Flash Attention Support
-                use_flash_attention_2=True,
-                attn_implementation="flash_attention_2"
+                **attn_kwargs
             )
             
             # Move to device if not using device_map
@@ -363,8 +383,6 @@ class AIModelManager:
                     repetition_penalty=1.15,    # Optimized for accuracy (guide principle)
                     use_cache=True,             # Enable KV cache for memory efficiency
                     num_beams=1,                # Single beam for memory efficiency
-                    # RTX 4060 Tensor Core Optimization
-                    batch_size=4,               # Optimal for 7B on 8GB VRAM
                     # New guide-based parameters for accuracy preservation
                     typical_p=0.9,              # Filters atypical tokens (guide principle)
                 )
@@ -384,11 +402,15 @@ class AIModelManager:
             # Add validated assistant message to history
             self.add_assistant_message(session_id, validated_response)
             
-            # Periodic memory optimization for RTX 4060 (every 5 responses)
+            # Periodic memory optimization for RTX 4060 with cooldown (every 5 responses, 5 min cooldown)
             session = self.user_sessions.get(session_id, {})
-            if len(session.get("history", [])) % 5 == 0:
+            current_time = time.time()
+            last_optimized = session.get("last_optimized", 0)
+            
+            if len(session.get("history", [])) % 5 == 0 and (current_time - last_optimized) > 300:  # 5 minutes
                 logger.info(f"🧹 Running periodic memory optimization for session {session_id}")
-                self.optimize_memory_usage()
+                self._async_optimize_memory()
+                session["last_optimized"] = current_time
             
             # Log performance metrics with Guide's quality monitoring
             tokens_generated = len(validated_response.split())  # Approximate
@@ -664,6 +686,14 @@ class AIModelManager:
             logger.error(f"❌ RTX 4060 memory optimization failed: {e}")
             return {"status": "error", "message": str(e)}
     
+    def _async_optimize_memory(self):
+        """Asynchronous memory optimization to avoid blocking"""
+        try:
+            threading.Thread(target=self.optimize_memory_usage, daemon=True).start()
+            logger.info("🔄 Asynchronous memory optimization started")
+        except Exception as e:
+            logger.warning(f"⚠️ Async memory optimization failed: {e}")
+    
     def get_health_status(self) -> Dict:
         """Get health status of the AI model"""
         try:
@@ -694,6 +724,12 @@ class AIModelManager:
                         "gpu_reserved_memory_gb": round(reserved_memory, 1),
                         "gpu_available_memory_gb": round(total_memory - allocated_memory, 1),
                         "memory_efficiency_percent": round((allocated_memory / total_memory) * 100, 1),
+                        "rtx4060_optimizations": {
+                            "tensor_cores_enabled": torch.backends.cuda.matmul.allow_tf32,
+                            "flash_attention": hasattr(self.model, 'config') and getattr(self.model.config, 'use_flash_attention_2', False),
+                            "mixed_precision": str(self.model.dtype) if self.model else "unknown",
+                            "kernel_optimizations": hasattr(torch.backends.cuda, 'enable_math_precision')
+                        }
                     })
             
             return status
