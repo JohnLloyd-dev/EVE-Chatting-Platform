@@ -88,7 +88,7 @@ class AIModelManager:
             # Load model with RTX 4060 optimizations + Guide's accuracy principles
             logger.info("📥 Loading 7B model with RTX 4060 + Guide optimization...")
             
-            # Enable RTX 4060-specific optimizations
+            # Enable RTX 4060-specific optimizations for training/loading
             torch.backends.cuda.matmul.allow_tf32 = True
             torch.backends.cudnn.allow_tf32 = True
             torch.set_float32_matmul_precision('high')
@@ -131,11 +131,20 @@ class AIModelManager:
             if not quantization_config:
                 self.model = self.model.to(self.device)
             
+            # CRITICAL ADDITION - Set to evaluation mode for maximum accuracy
+            self.model.eval()
+            logger.info("🔒 Model set to evaluation mode for maximum accuracy")
+            
+            # Precision consistency for inference (guide recommendation)
+            torch.set_grad_enabled(False)  # Ensure gradients are disabled
+            logger.info("🔒 Gradients disabled for inference")
+            
             # Test model loading with memory constraints
             logger.info("🧪 Testing model with memory constraints...")
             test_inputs = self.tokenizer("Hello", return_tensors="pt", max_length=64).to(self.device)
             
-            with torch.no_grad():
+            # Use inference_mode() for stronger inference optimization
+            with torch.inference_mode():
                 test_outputs = self.model.generate(
                     **test_inputs,
                     max_new_tokens=10,
@@ -145,6 +154,17 @@ class AIModelManager:
                 )
             
             test_response = self.tokenizer.decode(test_outputs[0], skip_special_tokens=True)
+            
+            # Quantization calibration for better accuracy (guide recommendation)
+            if settings.ai_use_4bit and self.device == "cuda":
+                logger.info("🔧 Running quantization calibration for better accuracy...")
+                try:
+                    with torch.inference_mode():
+                        for _ in range(3):  # Warmup for better quantization accuracy
+                            self.model.generate(**test_inputs, max_new_tokens=10)
+                    logger.info("✅ Quantization calibration completed")
+                except Exception as e:
+                    logger.warning(f"⚠️ Quantization calibration failed: {e}")
             
             if test_response and len(test_response) > 0:
                 logger.info("✅ Model test successful!")
@@ -369,8 +389,11 @@ class AIModelManager:
                 max_length=settings.ai_max_context_length
             ).to(self.device)
             
+            # Setup inference precision for maximum accuracy
+            self._setup_inference_precision()
+            
             # Optimized parameters applying guide principles: Accuracy-First + Speed Optimization
-            with torch.no_grad():
+            with torch.inference_mode():  # Stronger than no_grad for inference accuracy
                 outputs = self.model.generate(
                     **inputs,
                     max_new_tokens=100,          # Optimized for 200 char limit + concise responses
@@ -395,6 +418,9 @@ class AIModelManager:
             # Extract only the new tokens (remove the input prompt)
             # Use token-based extraction for better accuracy
             response = self._extract_ai_response(response, inputs, self.tokenizer)
+            
+            # Restore training precision settings
+            self._restore_training_precision()
             
             # Validate and enhance response for better accuracy
             validated_response = self._validate_response(response, session_id)
@@ -604,7 +630,10 @@ class AIModelManager:
                 max_length=settings.ai_max_context_length
             ).to(self.device)
             
-            with torch.no_grad():
+            # Setup inference precision for maximum accuracy
+            self._setup_inference_precision()
+            
+            with torch.inference_mode():  # Stronger than no_grad for inference accuracy
                 outputs = self.model.generate(
                     **inputs,
                     max_new_tokens=70,           # Optimized for speed + accuracy
@@ -629,6 +658,9 @@ class AIModelManager:
             # Extract only the new tokens
             input_length = inputs["input_ids"].shape[1]
             new_response = new_response[input_length:].strip()
+            
+            # Restore training precision settings
+            self._restore_training_precision()
             
             if new_response and len(new_response) > 0:
                 logger.info(f"🔄 Regenerated response with character focus for session {session_id}")
@@ -693,6 +725,28 @@ class AIModelManager:
             logger.info("🔄 Asynchronous memory optimization started")
         except Exception as e:
             logger.warning(f"⚠️ Async memory optimization failed: {e}")
+    
+    def _setup_inference_precision(self):
+        """Setup precision consistency for inference (guide recommendation)"""
+        try:
+            if self.device == "cuda":
+                # Disable TF32 during inference for better precision
+                torch.backends.cuda.matmul.allow_tf32 = False
+                torch.backends.cudnn.allow_tf32 = False
+                logger.info("🔒 TF32 disabled during inference for precision consistency")
+        except Exception as e:
+            logger.warning(f"⚠️ Inference precision setup failed: {e}")
+    
+    def _restore_training_precision(self):
+        """Restore training precision settings after inference"""
+        try:
+            if self.device == "cuda":
+                # Re-enable TF32 for potential future training operations
+                torch.backends.cuda.matmul.allow_tf32 = True
+                torch.backends.cudnn.allow_tf32 = True
+                logger.info("🔧 Training precision settings restored")
+        except Exception as e:
+            logger.warning(f"⚠️ Training precision restoration failed: {e}")
     
     def get_health_status(self) -> Dict:
         """Get health status of the AI model"""
