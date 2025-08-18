@@ -56,13 +56,13 @@ class AIModelManager:
                 raise ValueError("❌ Cannot use both 4-bit and 8-bit quantization simultaneously")
             
             if settings.ai_use_4bit and self.device == "cuda":
-                logger.info("🔧 Configuring 4-bit quantization for RTX 4060...")
+                logger.info("🔧 Configuring 4-bit quantization for 8GB RTX 4060...")
                 quantization_config = BitsAndBytesConfig(
                     load_in_4bit=True,
-                    bnb_4bit_compute_dtype=torch.bfloat16,  # Better for Ada Lovelace
+                    bnb_4bit_compute_dtype=torch.float16,  # Better VRAM efficiency
                     bnb_4bit_use_double_quant=True,
                     bnb_4bit_quant_type="nf4",
-                    llm_int8_skip_modules=["lm_head"]  # Prevent quantization of output layer
+                    llm_int8_skip_modules=["lm_head", "embed_tokens"]  # Skip more layers for VRAM
                 )
             elif settings.ai_use_8bit and self.device == "cuda":
                 logger.info("🔧 Configuring 8-bit quantization...")
@@ -74,18 +74,19 @@ class AIModelManager:
                 logger.info("🔧 No quantization - using full precision")
                 quantization_config = None
             
-            # RTX 4060 Memory Optimization with Guide's Strategic Layer Management
-            # Reserve some layers for CPU to prevent quantization drift (guide principle)
+            # RTX 4060 Memory Optimization for 8GB VRAM (Guide Implementation)
             if self.device == "cuda":
-                # Guide principle: Keep some layers on CPU for accuracy
-                # Reserve 0.5GB for CPU layers to prevent quantization drift
-                cpu_memory = 0.5
-                gpu_memory = settings.ai_max_memory_gb - cpu_memory
+                # New memory mapping optimized for 8GB RTX 4060
+                total_vram = torch.cuda.get_device_properties(0).total_memory / 1024**3
+                gpu_memory = min(6.0, total_vram * 0.85)  # Max 85% of VRAM (6.8GB)
+                cpu_memory = 2.0  # Increased for smart offloading
+                
                 max_memory = {
-                    0: f"{gpu_memory}GB",      # GPU memory
-                    "cpu": f"{cpu_memory}GB"    # CPU memory for some layers
+                    0: f"{gpu_memory}GB",      # GPU memory (6.0GB)
+                    "cpu": f"{cpu_memory}GB"    # CPU memory for offloading
                 }
-                logger.info(f"🔧 Strategic layer management: GPU {gpu_memory}GB, CPU {cpu_memory}GB")
+                logger.info(f"🔧 Memory mapping for 8GB RTX 4060: GPU {gpu_memory:.1f}GB, CPU {cpu_memory}GB")
+                logger.info(f"📏 Reduced context to {settings.ai_max_context_length} tokens for 8GB VRAM")
             else:
                 max_memory = None
             
@@ -97,13 +98,15 @@ class AIModelManager:
             torch.backends.cudnn.allow_tf32 = True
             torch.set_float32_matmul_precision('high')
             
-            # Enable kernel optimizations for RTX 4060
+            # Enable kernel optimizations for RTX 4060 (fixed for compatibility)
             try:
-                torch.backends.cuda.enable_math_precision()
-                torch._C._jit_set_texpr_fuser_enabled(True)
+                torch.backends.cuda.matmul.allow_tf32 = True
+                torch.backends.cudnn.allow_tf32 = True
+                if hasattr(torch, 'set_float32_matmul_precision'):
+                    torch.set_float32_matmul_precision('high')
                 logger.info("✅ RTX 4060 kernel optimizations enabled")
             except Exception as e:
-                logger.warning(f"⚠️ Some RTX 4060 kernel optimizations failed: {e}")
+                logger.warning(f"⚠️ RTX 4060 optimizations unavailable: {e}")
             
             # Setup Flash Attention with fallback mechanism
             attn_kwargs = {}
@@ -121,7 +124,7 @@ class AIModelManager:
                 settings.ai_model_name,
                 cache_dir=settings.ai_model_cache_dir,
                 quantization_config=quantization_config,
-                device_map="auto" if quantization_config else None,
+                device_map="balanced_low_0" if quantization_config else None,  # Optimized for low VRAM
                 torch_dtype=torch.float16,
                 low_cpu_mem_usage=True,
                 trust_remote_code=True,
@@ -138,6 +141,20 @@ class AIModelManager:
             # CRITICAL ADDITION - Set to evaluation mode for maximum accuracy
             self.model.eval()
             logger.info("🔒 Model set to evaluation mode for maximum accuracy")
+            
+            # Aggressive garbage collection for 8GB RTX 4060
+            gc.collect()
+            torch.cuda.empty_cache()
+            
+            # Memory monitoring after model loading
+            if self.device == "cuda":
+                allocated = torch.cuda.memory_allocated() / 1024**3
+                reserved = torch.cuda.memory_reserved() / 1024**3
+                logger.info(f"📉 Post-load VRAM: Allocated={allocated:.2f}GB, Reserved={reserved:.2f}GB")
+                
+                if allocated > 7.0:
+                    logger.warning("⚠️ High VRAM usage - activating emergency measures")
+                    self._activate_low_memory_mode()
             
             # Precision consistency for inference (guide recommendation)
             torch.set_grad_enabled(False)  # Ensure gradients are disabled
@@ -420,12 +437,20 @@ class AIModelManager:
                     max_length=settings.ai_max_context_length
                 ).to(self.device)
                 
-                # Setup inference precision for maximum accuracy
-                self._setup_inference_precision()
-                
-                # Optimized parameters applying guide principles: Accuracy-First + Speed Optimization
-                with torch.inference_mode():  # Stronger than no_grad for inference accuracy
-                    outputs = self.model.generate(
+            # Pre-generation VRAM monitoring for 8GB RTX 4060
+            if self.device == "cuda":
+                current_mem = torch.cuda.memory_allocated() / 1024**3
+                if current_mem > 6.5:  # 6.5GB threshold
+                    logger.warning("⚠️ Pre-generation VRAM high ({:.2f}GB) - clearing cache".format(current_mem))
+                    torch.cuda.empty_cache()
+                    gc.collect()
+            
+            # Setup inference precision for maximum accuracy
+            self._setup_inference_precision()
+            
+            # Optimized parameters applying guide principles: Accuracy-First + Speed Optimization
+            with torch.inference_mode():  # Stronger than no_grad for inference accuracy
+                outputs = self.model.generate(
                         **inputs,
                         max_new_tokens=100,          # Optimized for 200 char limit + concise responses
                         temperature=0.28,            # Slightly lower for accuracy compensation (guide principle)
@@ -788,6 +813,32 @@ class AIModelManager:
                 logger.info("🔧 Training precision settings restored")
         except Exception as e:
             logger.error(f"❌ Precision restoration failed: {e}")
+    
+    def _activate_low_memory_mode(self):
+        """Emergency VRAM reduction measures for 8GB RTX 4060"""
+        logger.warning("🚨 ACTIVATING LOW MEMORY MODE for 8GB RTX 4060")
+        try:
+            # 1. Reduce context further
+            settings.ai_max_context_length = 512
+            logger.info("📏 Context reduced to 512 tokens")
+            
+            # 2. Clear session history
+            self.user_sessions = {}
+            logger.info("🧹 Session history cleared")
+            
+            # 3. Force aggressive garbage collection
+            gc.collect()
+            torch.cuda.empty_cache()
+            logger.info("🗑️ Aggressive memory cleanup completed")
+            
+            # 4. Log final memory status
+            if self.device == "cuda":
+                allocated = torch.cuda.memory_allocated() / 1024**3
+                reserved = torch.cuda.memory_reserved() / 1024**3
+                logger.info(f"📉 Final VRAM: Allocated={allocated:.2f}GB, Reserved={reserved:.2f}GB")
+                
+        except Exception as e:
+            logger.error(f"❌ Low memory mode activation failed: {e}")
     
     def get_health_status(self) -> Dict:
         """Get health status of the AI model"""
