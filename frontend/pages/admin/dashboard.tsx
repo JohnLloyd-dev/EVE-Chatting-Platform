@@ -2,7 +2,6 @@ import { useQuery } from "react-query";
 import { adminApi } from "../../lib/api";
 import AdminLayout from "../../components/AdminLayout";
 import { DashboardStats } from "../../types";
-import AIModelStatus from "../../components/AIModelStatus";
 
 export default function AdminDashboard() {
   const {
@@ -165,9 +164,9 @@ export default function AdminDashboard() {
               </span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-gray-600">AI Model</span>
+              <span className="text-gray-600">Response System</span>
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                ✓ Connected
+                ✓ Active
               </span>
             </div>
             <div className="flex items-center justify-between">
@@ -179,8 +178,7 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* AI Model Status */}
-        <AIModelStatus />
+        {/* System monitoring - no AI references for users */}
       </div>
     </AdminLayout>
   );

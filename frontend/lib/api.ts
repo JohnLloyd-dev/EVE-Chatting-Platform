@@ -53,24 +53,15 @@ export const chatApi = {
     return response.data;
   },
 
-  // New integrated AI endpoints
-  initAISession: async (sessionId: string, systemPrompt: string) => {
-    const response = await api.post("/ai/init-session", {
-      session_id: sessionId,
-      system_prompt: systemPrompt,
-    });
-    return response.data;
-  },
-
+  // AI is now integrated into chat flow - no separate endpoints needed
   sendMessage: async (
     sessionId: string,
     message: string,
     maxTokens: number = 300,
     temperature: number = 0.7
   ) => {
-    // Use the new integrated AI endpoint
-    const response = await api.post("/ai/chat", {
-      session_id: sessionId,
+    // Use the unified chat endpoint with integrated AI
+    const response = await api.post(`/chat/message/${sessionId}`, {
       message,
       max_tokens: maxTokens,
       temperature,

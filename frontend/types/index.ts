@@ -117,25 +117,5 @@ export interface SystemPrompt {
   user_id?: string; // For future per-user prompts
 }
 
-// New AI Model Types
-export interface AIHealthStatus {
-  status: "healthy" | "unhealthy";
-  ai_model: {
-    model_loaded: boolean;
-    model_name: string;
-    device: string;
-    active_sessions: number;
-    gpu_available: boolean;
-    gpu_memory_allocated: number;
-    gpu_memory_reserved: number;
-  };
-}
-
-export interface AIResponse {
-  response: string;
-}
-
-export interface AISessionInit {
-  message: string;
-  session_id: string;
-}
+// AI types removed - AI is now integrated into chat flow
+// No separate AI endpoints or status needed for users

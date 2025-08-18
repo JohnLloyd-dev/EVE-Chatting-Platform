@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "react-query";
 import { chatApi } from "../lib/api";
-import { ChatMessage, ChatSession, AIHealthStatus } from "../types";
+import { ChatMessage, ChatSession } from "../types";
 import { format } from "date-fns";
 import toast from "react-hot-toast";
 
@@ -32,17 +32,7 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
     }
   );
 
-  // Get AI health status
-  const {
-    data: aiHealth,
-    isLoading: aiHealthLoading,
-  } = useQuery<AIHealthStatus>(
-    ["aiHealth"],
-    () => chatApi.getAIHealth(),
-    {
-      refetchInterval: 30000, // Check AI health every 30 seconds
-    }
-  );
+  // No AI health status needed for users - keep it clean and human-like
 
   // Send message mutation using new integrated AI
   const sendMessageMutation = useMutation(
@@ -328,29 +318,7 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
   return (
     <div className="flex flex-col h-full" onClick={handleChatAreaClick}>
       {/* AI Status Indicator */}
-      {aiHealth && (
-        <div className="px-4 py-2 border-b border-gray-700/50">
-          <div className="flex items-center justify-between text-sm">
-            <div className="flex items-center space-x-2">
-              <div
-                className={`w-2 h-2 rounded-full ${
-                  aiHealth.status === "healthy" ? "bg-green-400" : "bg-red-400"
-                }`}
-              />
-              <span className="text-gray-300">
-                AI Model: {aiHealth.ai_model.model_name}
-              </span>
-            </div>
-            <div className="text-gray-400">
-              {aiHealth.ai_model.gpu_available ? (
-                <span className="text-green-400">GPU Active</span>
-              ) : (
-                <span className="text-yellow-400">CPU Mode</span>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Clean chat interface - no system status for users */}
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
