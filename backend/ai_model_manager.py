@@ -213,6 +213,7 @@ class AIModelManager:
             "system_prompt": system_prompt,
             "history": [],
             "message_roles": [],  # Track user vs assistant messages
+            "token_counts": [],   # Dynamic token counting for performance
             "created_at": time.time(),
             "last_updated": time.time()
         }
@@ -296,8 +297,29 @@ class AIModelManager:
             # Use token-based truncation instead of message count for better memory management
             max_tokens = 512 if self.device == "cuda" else 1024  # RTX 4060 optimized
             
-            # Calculate total tokens in history
-            total_tokens = sum(len(self.tokenizer.encode(msg, add_special_tokens=False)) for msg in session["history"])
+            # Adaptive history trimming based on VRAM pressure (guide recommendation)
+            if self.device == "cuda":
+                total_vram = torch.cuda.get_device_properties(0).total_memory
+                allocated_vram = torch.cuda.memory_allocated()
+                vram_pressure = allocated_vram / total_vram
+                
+                if vram_pressure > 0.8:  # High VRAM pressure
+                    max_tokens = 384  # Reduce context when VRAM pressured
+                    logger.info(f"🔧 High VRAM pressure ({vram_pressure:.1%}), reducing context to {max_tokens} tokens")
+                elif vram_pressure > 0.6:  # Medium VRAM pressure
+                    max_tokens = 448  # Moderate context reduction
+                    logger.info(f"🔧 Medium VRAM pressure ({vram_pressure:.1%}), reducing context to {max_tokens} tokens")
+            
+            # Use stored token counts for performance (guide recommendation)
+            if "token_counts" not in session:
+                session["token_counts"] = []
+            
+            # Calculate and store token count for current message
+            current_tokens = len(self.tokenizer.encode(message, add_special_tokens=False))
+            session["token_counts"].append(current_tokens)
+            
+            # Calculate total tokens using stored counts for better performance
+            total_tokens = sum(session["token_counts"])
             
             if total_tokens > max_tokens:
                 # Trim history to fit within token limit
@@ -306,17 +328,20 @@ class AIModelManager:
                 current_tokens = 0
                 
                 # Start from most recent messages and work backwards
+                trimmed_token_counts = []
                 for msg, role in zip(reversed(session["history"]), reversed(session["message_roles"])):
                     msg_tokens = len(self.tokenizer.encode(msg, add_special_tokens=False))
                     if current_tokens + msg_tokens <= max_tokens:
                         trimmed_history.insert(0, msg)
                         trimmed_roles.insert(0, role)
+                        trimmed_token_counts.insert(0, msg_tokens)
                         current_tokens += msg_tokens
                     else:
                         break
                 
                 session["history"] = trimmed_history
                 session["message_roles"] = trimmed_roles
+                session["token_counts"] = trimmed_token_counts  # Update stored token counts
                 logger.info(f"📝 Trimmed history to {len(trimmed_history)} messages ({current_tokens} tokens) for session {session_id} (RTX 4060 optimized)")
     
     def add_assistant_message(self, session_id: str, message: str):
@@ -567,7 +592,7 @@ class AIModelManager:
             return response  # Return original if validation fails
     
     def _quick_quality_check(self, response: str) -> int:
-        """Quick quality assessment (1-10 scale)"""
+        """Enhanced quality assessment with nuanced scoring (guide recommendation)"""
         score = 10
         
         # Deduct points for various issues
@@ -581,6 +606,14 @@ class AIModelManager:
             score -= 1  # Too many sentences
         if response.count("!") > 2:
             score -= 1  # Too many exclamations
+        
+        # Add coherence check (guide recommendation)
+        if "?" in response and not any(w in response.lower() for w in ["answer", "explain", "solution", "because", "since"]):
+            score -= 2
+        
+        # Add technical depth bonus (guide recommendation)
+        if any(w in response.lower() for w in ["algorithm", "protocol", "api", "framework", "method", "technique"]):
+            score += 1
             
         return max(1, score)  # Minimum score of 1
     
