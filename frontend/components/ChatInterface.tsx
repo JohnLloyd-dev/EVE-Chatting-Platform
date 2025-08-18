@@ -40,7 +40,7 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
     {
       onSuccess: (data) => {
         setMessage("");
-        setIsProcessing(false);
+        // isProcessing removed - using sendMessageMutation.isLoading instead
         // AI response is immediate with new integrated approach
         // Refetch session to get new messages
         queryClient.invalidateQueries(["chatSession", userId]);
@@ -50,12 +50,16 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
         // Safely extract error message
         let errorMessage = "Failed to send message";
         if (error?.response?.data?.detail) {
-          if (typeof error.response.data.detail === 'string') {
+          if (typeof error.response.data.detail === "string") {
             errorMessage = error.response.data.detail;
           } else if (Array.isArray(error.response.data.detail)) {
             // Handle validation error array
             const firstError = error.response.data.detail[0];
-            if (firstError && typeof firstError === 'object' && 'msg' in firstError) {
+            if (
+              firstError &&
+              typeof firstError === "object" &&
+              "msg" in firstError
+            ) {
               errorMessage = firstError.msg;
             }
           }
@@ -112,12 +116,11 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
   useEffect(() => {
     if (
       !sendMessageMutation.isLoading &&
-      !isProcessing &&
       textareaRef.current
     ) {
       textareaRef.current.focus();
     }
-  }, [sendMessageMutation.isLoading, isProcessing]);
+  }, [sendMessageMutation.isLoading]);
 
   // Global keyboard event listener to focus input on any key press
   useEffect(() => {
@@ -129,8 +132,7 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
         e.metaKey ||
         e.target instanceof HTMLInputElement ||
         e.target instanceof HTMLTextAreaElement ||
-        sendMessageMutation.isLoading ||
-        isProcessing
+        sendMessageMutation.isLoading
       ) {
         return;
       }
@@ -146,7 +148,7 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
 
     document.addEventListener("keydown", handleGlobalKeyPress);
     return () => document.removeEventListener("keydown", handleGlobalKeyPress);
-  }, [sendMessageMutation.isLoading, isProcessing]);
+  }, [sendMessageMutation.isLoading]);
 
   // Send initial AI message using new integrated approach
   useEffect(() => {
@@ -161,11 +163,12 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
       const initializeAI = async () => {
         try {
           // Get the system prompt from the session
-          const systemPrompt = session.scenario_prompt || "You are a helpful AI assistant.";
-          
+          const systemPrompt =
+            session.scenario_prompt || "You are a helpful AI assistant.";
+
           // Initialize AI session
           await chatApi.initAISession(session.id, systemPrompt);
-          
+
           // Send a simple message to start conversation
           sendMessageMutation.mutate({
             sessionId: session.id,
@@ -176,7 +179,7 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
           toast.error("Failed to start AI conversation");
         }
       };
-      
+
       initializeAI();
     }
   }, [session, hasInitializedAI, showLoadingAnimation]);
@@ -198,16 +201,20 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
     } catch (error: any) {
       // Log error for debugging
       console.error("Failed to send message:", error);
-      
+
       // Safely extract error message
       let errorMessage = "Failed to send message";
       if (error?.response?.data?.detail) {
-        if (typeof error.response.data.detail === 'string') {
+        if (typeof error.response.data.detail === "string") {
           errorMessage = error.response.data.detail;
         } else if (Array.isArray(error.response.data.detail)) {
           // Handle validation error array
           const firstError = error.response.data.detail[0];
-          if (firstError && typeof firstError === 'object' && 'msg' in firstError) {
+          if (
+            firstError &&
+            typeof firstError === "object" &&
+            "msg" in firstError
+          ) {
             errorMessage = firstError.msg;
           }
         }
@@ -225,10 +232,7 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
 
   // Handle clicking anywhere in the chat area to focus the input
   const handleChatAreaClick = () => {
-    if (
-      textareaRef.current &&
-      !sendMessageMutation.isLoading
-    ) {
+    if (textareaRef.current && !sendMessageMutation.isLoading) {
       textareaRef.current.focus();
     }
   };
@@ -274,28 +278,29 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
 
   if (error) {
     // Debug: Log the error object to see its structure
-    console.log('Error object:', error);
-    console.log('Error type:', typeof error);
-    console.log('Error keys:', error && typeof error === 'object' ? Object.keys(error) : 'N/A');
-    
+    console.log("Error object:", error);
+    console.log("Error type:", typeof error);
+    console.log(
+      "Error keys:",
+      error && typeof error === "object" ? Object.keys(error) : "N/A"
+    );
+
     // Safely extract error message
     let errorMessage = "Failed to load chat session";
-    
-    if (error && typeof error === 'object') {
-      if ('response' in error && error.response?.data?.detail) {
+
+    if (error && typeof error === "object") {
+      if ("response" in error && error.response?.data?.detail) {
         errorMessage = error.response.data.detail;
-      } else if ('message' in error && typeof error.message === 'string') {
+      } else if ("message" in error && typeof error.message === "string") {
         errorMessage = error.message;
-      } else if ('detail' in error && typeof error.detail === 'string') {
+      } else if ("detail" in error && typeof error.detail === "string") {
         errorMessage = error.detail;
       }
     }
-    
+
     return (
       <div className="text-center py-8">
-        <div className="text-red-400 mb-4 text-lg">
-          {errorMessage}
-        </div>
+        <div className="text-red-400 mb-4 text-lg">{errorMessage}</div>
         <button
           onClick={() => window.location.reload()}
           className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 transform hover:scale-105"
@@ -343,11 +348,13 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
                 <div className="text-sm">
                   {(() => {
                     // Debug: Log message content to see what we're getting
-                    if (typeof msg.content !== 'string') {
-                      console.log('Non-string message content:', msg.content);
-                      console.log('Message object:', msg);
+                    if (typeof msg.content !== "string") {
+                      console.log("Non-string message content:", msg.content);
+                      console.log("Message object:", msg);
                     }
-                    return typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+                    return typeof msg.content === "string"
+                      ? msg.content
+                      : JSON.stringify(msg.content);
                   })()}
                 </div>
                 <div
@@ -401,9 +408,7 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
           />
           <button
             onClick={handleSendMessage}
-            disabled={
-              !message.trim() || sendMessageMutation.isLoading
-            }
+            disabled={!message.trim() || sendMessageMutation.isLoading}
             className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
           >
             Send
