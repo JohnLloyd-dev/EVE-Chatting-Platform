@@ -1,24 +1,22 @@
 """
-AI Model Manager for Backend
-Handles model loading, inference, and session management
+AI Model Manager for Backend (GGUF with GPU Acceleration)
+Handles GGUF model loading, inference, and session management using llama-cpp-python
 """
 import logging
 import time
-import torch
+import os
 import gc
 from typing import Dict, List, Optional, Tuple
-from transformers import AutoTokenizer, AutoModelForCausalLM
-import os
+from llama_cpp import Llama
 from config import settings
 
 logger = logging.getLogger(__name__)
 
 class AIModelManager:
-    """Manages AI model loading, inference, and session management"""
+    """Manages GGUF AI model loading, inference, and session management"""
     
     def __init__(self):
         self.model = None
-        self.tokenizer = None
         self.model_loaded = False
         self.user_sessions: Dict[str, Dict] = {}
         
@@ -26,86 +24,63 @@ class AIModelManager:
         self._load_model()
     
     def _load_model(self):
-        """Load the AI model and tokenizer"""
+        """Load the GGUF AI model with GPU acceleration"""
         try:
-            logger.info(f"🚀 Loading AI model: {settings.ai_model_name}")
+            logger.info(f"🚀 Loading GGUF AI model: {settings.ai_model_name}")
+            logger.info(f"📁 Model file: {settings.ai_model_file}")
             
-            # Check CUDA availability
-            if torch.cuda.is_available():
-                logger.info(f"✅ CUDA available: {torch.cuda.get_device_name(0)}")
-                logger.info(f"✅ GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f}GB")
-            else:
-                logger.warning("⚠️ CUDA not available, using CPU")
+            # Check if model file exists
+            model_path = os.path.join(settings.ai_model_cache_dir, settings.ai_model_file)
+            if not os.path.exists(model_path):
+                logger.warning(f"⚠️ Model file not found: {model_path}")
+                logger.info("📥 You need to download the GGUF model file manually")
+                logger.info("💡 Download from: https://huggingface.co/TheBloke/OpenHermes-2.5-Mistral-7B-GGUF")
+                logger.info("💡 Recommended: openhermes-2.5-mistral-7b.Q5_K_M.gguf")
+                raise FileNotFoundError(f"Model file not found: {model_path}")
             
-            # Load tokenizer with timeout and retry
-            logger.info("📥 Loading tokenizer...")
-            self.tokenizer = AutoTokenizer.from_pretrained(
-                settings.ai_model_name,
-                cache_dir=settings.ai_model_cache_dir,
-                local_files_only=False,
-                trust_remote_code=True
-            )
-            self.tokenizer.pad_token = self.tokenizer.eos_token
-            logger.info("✅ Tokenizer loaded successfully")
+            # Load GGUF model with GPU acceleration
+            logger.info("📥 Loading GGUF model with GPU acceleration...")
             
-            # Load model with optimizations and timeout
-            logger.info("📥 Loading model (this may take several minutes)...")
+            # Optimized settings for RTX 4060 (8GB VRAM)
+            model_kwargs = {
+                "model_path": model_path,
+                "n_ctx": 4096,              # Context window size
+                "n_gpu_layers": 33,         # Offload ALL layers to GPU (RTX 4060 can handle this)
+                "n_threads": 8,             # CPU threads for non-offloaded operations
+                "verbose": False,            # Reduce logging noise
+                "n_batch": 512,             # Batch size for prompt processing
+                "use_mmap": True,            # Memory mapping for efficiency
+                "use_mlock": False,         # Don't lock memory (allows swapping if needed)
+            }
             
-            # Check if this is a GGUF model
-            if "GGUF" in settings.ai_model_name:
-                logger.info("🚀 Detected GGUF model - using optimized loading...")
-                # GGUF models are already optimized for memory
-                model_kwargs = {
-                    "torch_dtype": torch.float16 if torch.cuda.is_available() else torch.float32,
-                    "low_cpu_mem_usage": True,
-                    "cache_dir": settings.ai_model_cache_dir,
-                    "local_files_only": False,
-                    "trust_remote_code": True,
-                    "max_memory": {0: "7GB"} if torch.cuda.is_available() else None,
-                }
-            else:
-                # Standard model loading with memory optimization
-                model_kwargs = {
-                    "torch_dtype": torch.float16 if torch.cuda.is_available() else torch.float32,
-                    "low_cpu_mem_usage": True,
-                    "cache_dir": settings.ai_model_cache_dir,
-                    "local_files_only": False,
-                    "trust_remote_code": True,
-                    "max_memory": {0: "7GB"} if torch.cuda.is_available() else None,
-                    "offload_folder": "offload" if torch.cuda.is_available() else None,
-                }
+            logger.info("🚀 Initializing GGUF model with GPU acceleration...")
+            self.model = Llama(**model_kwargs)
             
-            # Use device_map="auto" for better memory management
-            if torch.cuda.is_available():
-                model_kwargs["device_map"] = "auto"
-                logger.info("🚀 Using auto device mapping for GPU memory optimization")
-            
-            self.model = AutoModelForCausalLM.from_pretrained(
-                settings.ai_model_name,
-                **model_kwargs
+            # Test model loading
+            logger.info("🧪 Testing model with simple prompt...")
+            test_output = self.model(
+                prompt="Hello",
+                max_tokens=10,
+                temperature=0.0,
+                stop=["\n"],
+                stream=False
             )
             
-            # Move to GPU if available
-            if torch.cuda.is_available():
-                logger.info("🚀 Moving model to GPU...")
-                self.model = self.model.cuda()
-                logger.info(f"✅ Model loaded on GPU: {self.model.device}")
+            if test_output and "choices" in test_output:
+                logger.info("✅ Model test successful!")
+                self.model_loaded = True
+                logger.info("✅ GGUF AI Model loaded successfully with GPU acceleration!")
                 
-                # Verify GPU memory usage
-                memory_allocated = torch.cuda.memory_allocated() / 1024**3
-                memory_reserved = torch.cuda.memory_reserved() / 1024**3
-                logger.info(f"📊 GPU Memory: {memory_allocated:.1f}GB allocated, {memory_reserved:.1f}GB reserved")
+                # Log model info
+                logger.info(f"📊 Model context: {self.model.n_ctx} tokens")
+                logger.info(f"🚀 GPU layers: {model_kwargs['n_gpu_layers']}")
+                logger.info(f"⚙️ CPU threads: {model_kwargs['n_threads']}")
+                
             else:
-                logger.info("✅ Model loaded on CPU")
-            
-            # Set model to evaluation mode
-            self.model.eval()
-            self.model_loaded = True
-            
-            logger.info("✅ AI Model loaded successfully!")
+                raise RuntimeError("Model test failed - no output generated")
             
         except Exception as e:
-            logger.error(f"❌ Failed to load AI model: {e}")
+            logger.error(f"❌ Failed to load GGUF AI model: {e}")
             logger.error(f"❌ Error type: {type(e).__name__}")
             self.model_loaded = False
             
@@ -113,9 +88,9 @@ class AIModelManager:
             if "CUDA" in str(e):
                 logger.error("💡 CUDA Error: Check GPU drivers and CUDA installation")
             elif "out of memory" in str(e).lower():
-                logger.error("💡 Memory Error: Model too large for GPU memory")
-            elif "timeout" in str(e).lower():
-                logger.error("💡 Timeout Error: Model download taking too long")
+                logger.error("💡 Memory Error: Reduce n_gpu_layers or use smaller quantization")
+            elif "file not found" in str(e).lower():
+                logger.error("💡 File Error: Download the GGUF model file first")
             
             raise
     
@@ -159,121 +134,124 @@ class AIModelManager:
             session["last_updated"] = time.time()
     
     def build_chatml_prompt(self, system_prompt: str, history: List[str], message_roles: List[str]) -> str:
-        """Build ChatML format prompt for the model"""
+        """Build ChatML format prompt for the GGUF model"""
         parts = [f"<|im_start|>system\n{system_prompt.strip()}<|im_end|>\n"]
         
         # Add conversation history
         for i, (message, role) in enumerate(zip(history, message_roles)):
             if role == "user":
-                parts.append(f"<|im_start|>user\n{message.strip()}<|im_end|>\n")
+                parts.append(f"<|im_start|>user\n{message}<|im_end|>\n")
             elif role == "assistant":
-                parts.append(f"<|im_start|>assistant\n{message.strip()}<|im_end|>\n")
+                parts.append(f"<|im_start|>assistant\n{message}<|im_end|>\n")
         
-        # Add final assistant tag for the model to respond
+        # Add final user prompt
         parts.append("<|im_start|>assistant\n")
         
         return "".join(parts)
     
-    def generate_response(self, session_id: str, user_message: str, max_tokens: int = 200, temperature: float = 0.7) -> str:
-        """Generate AI response for a chat session"""
+    def generate_response(self, session_id: str, user_message: str) -> str:
+        """Generate AI response using GGUF model"""
         if not self.model_loaded:
             raise RuntimeError("AI model not loaded")
         
         try:
+            # Get or create session
+            if session_id not in self.user_sessions:
+                self.create_session(session_id, "You are a helpful assistant.")
+            
             # Add user message to history
             self.add_user_message(session_id, user_message)
             
-            # Get session
-            session = self.get_session(session_id)
-            if not session:
-                raise ValueError(f"Session {session_id} not found")
+            # Get session data
+            session = self.user_sessions[session_id]
+            system_prompt = session["system_prompt"]
+            history = session["history"][:-1]  # Exclude the current user message
+            message_roles = session["message_roles"][:-1]  # Exclude the current user message
             
-            # Build prompt
-            prompt = self.build_chatml_prompt(
-                session["system_prompt"],
-                session["history"],
-                session["message_roles"]
+            # Build ChatML prompt
+            prompt = self.build_chatml_prompt(system_prompt, history, message_roles)
+            
+            logger.info(f"🚀 Generating response for session {session_id}")
+            logger.info(f"📝 Prompt length: {len(prompt)} characters")
+            
+            # Generate response with GGUF model
+            start_time = time.time()
+            
+            output = self.model(
+                prompt=prompt,
+                max_tokens=512,          # Response length
+                temperature=0.7,         # Creativity control
+                top_p=0.9,              # Nucleus sampling
+                top_k=40,               # Top-k sampling
+                stop=["<|im_end|>"],    # Stop token
+                stream=False,            # No streaming for now
+                repeat_penalty=1.1,     # Prevent repetition
             )
             
-            logger.info(f"📝 Generated prompt: {len(prompt)} characters")
-            logger.info(f"📝 History: {len(session['history'])} messages")
+            generation_time = time.time() - start_time
             
-            # Tokenize input
-            inputs = self.tokenizer(
-                prompt,
-                return_tensors="pt",
-                truncation=True,
-                max_length=4096,
-                padding=True
-            )
-            
-            if torch.cuda.is_available():
-                inputs = {k: v.cuda() for k, v in inputs.items()}
-            
-            # Generate response
-            with torch.no_grad():
-                generation_start = time.time()
+            if output and "choices" in output and len(output["choices"]) > 0:
+                response = output["choices"][0]["text"].strip()
                 
-                outputs = self.model.generate(
-                    **inputs,
-                    max_new_tokens=max_tokens,
-                    temperature=temperature,
-                    do_sample=True,
-                    top_p=0.9,
-                    top_k=50,
-                    pad_token_id=self.tokenizer.eos_token_id,
-                    eos_token_id=self.tokenizer.eos_token_id,
-                    max_time=settings.ai_generation_timeout
-                )
-                
-                generation_time = time.time() - generation_start
-                
-                # Decode response
-                response = self.tokenizer.decode(outputs[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True)
-                
-                # Clean up response
-                response = response.strip()
-                if response.endswith("<|im_end|>"):
-                    response = response[:-10].strip()
-                
-                logger.info(f"⚙️ Generated response in {generation_time:.2f}s: {len(response)} chars")
-                
-                # Add assistant response to history
+                # Add assistant message to history
                 self.add_assistant_message(session_id, response)
                 
+                # Log performance metrics
+                tokens_generated = len(response.split())  # Approximate
+                tokens_per_second = tokens_generated / generation_time if generation_time > 0 else 0
+                
+                logger.info(f"✅ Response generated in {generation_time:.2f}s")
+                logger.info(f"📊 Tokens: {tokens_generated}, Speed: {tokens_per_second:.1f} tokens/s")
+                
                 return response
+            else:
+                raise RuntimeError("No response generated from model")
                 
         except Exception as e:
-            logger.error(f"❌ Error generating response: {e}")
+            logger.error(f"❌ Failed to generate response: {e}")
             raise
     
-    def optimize_memory_usage(self):
-        """Optimize GPU memory usage"""
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            torch.cuda.synchronize()
+    def optimize_memory_usage(self) -> Dict:
+        """Optimize memory usage for GGUF model"""
+        try:
+            logger.info("🧹 Optimizing memory usage...")
             
-            memory_allocated = torch.cuda.memory_allocated() / 1024**3
-            memory_reserved = torch.cuda.memory_reserved() / 1024**3
+            # Force garbage collection
+            gc.collect()
             
-            logger.info(f"🚀 GPU Memory: {memory_allocated:.2f}GB allocated, {memory_reserved:.2f}GB reserved")
+            # Clear any cached data
+            if hasattr(self.model, 'reset'):
+                self.model.reset()
             
-            if memory_allocated > 8.0:
-                logger.warning(f"⚠️ High GPU memory usage: {memory_allocated:.2f}GB")
-                gc.collect()
-                torch.cuda.empty_cache()
+            logger.info("✅ Memory optimization completed")
+            return {"status": "success", "message": "Memory optimized"}
+            
+        except Exception as e:
+            logger.error(f"❌ Memory optimization failed: {e}")
+            return {"status": "error", "message": str(e)}
     
     def get_health_status(self) -> Dict:
-        """Get AI model health status"""
-        return {
-            "model_loaded": self.model_loaded,
-            "model_name": settings.ai_model_name,
-            "device": str(self.model.device) if self.model else "None",
-            "active_sessions": len(self.user_sessions),
-            "gpu_available": torch.cuda.is_available(),
-            "gpu_memory_allocated": round(torch.cuda.memory_allocated() / 1024**3, 2) if torch.cuda.is_available() else 0,
-            "gpu_memory_reserved": round(torch.cuda.memory_reserved() / 1024**3, 2) if torch.cuda.is_available() else 0
-        }
+        """Get health status of the AI model"""
+        try:
+            status = {
+                "model_loaded": self.model_loaded,
+                "model_type": "GGUF (llama-cpp-python)",
+                "active_sessions": len(self.user_sessions),
+                "total_sessions": len(self.user_sessions),
+            }
+            
+            if self.model_loaded and self.model:
+                status.update({
+                    "context_window": getattr(self.model, 'n_ctx', 'Unknown'),
+                    "gpu_layers": getattr(self.model, 'n_gpu_layers', 'Unknown'),
+                    "cpu_threads": getattr(self.model, 'n_threads', 'Unknown'),
+                })
+            
+            return status
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to get health status: {e}")
+            return {"status": "error", "message": str(e)}
 
-# Global AI model manager instance
+# Global instance
 ai_model_manager = AIModelManager() 

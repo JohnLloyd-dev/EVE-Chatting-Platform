@@ -26,8 +26,9 @@ class Settings(BaseSettings):
     # Tally webhook security
     tally_webhook_secret: Optional[str] = None
     
-    # AI Model Configuration (Optimized 7B model for 8GB VRAM)
+    # AI Model Configuration (GGUF optimized for RTX 4060)
     ai_model_name: str = "TheBloke/OpenHermes-2.5-Mistral-7B-GGUF"
+    ai_model_file: str = "openhermes-2.5-mistral-7b.Q5_K_M.gguf"  # Q5_K_M for best speed/accuracy
     ai_model_cache_dir: str = "/app/.cache/huggingface"
     ai_generation_timeout: float = 30.0
     ai_request_timeout: float = 60.0

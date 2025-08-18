@@ -40,8 +40,10 @@ RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.11
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install PyTorch with CUDA support (CUDA 11.8 compatible)
-RUN pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+# Install llama-cpp-python with CUDA support for GGUF models
+ENV CMAKE_ARGS="-DLLAMA_CUBLAS=on"
+ENV FORCE_CMAKE=1
+RUN pip install --no-cache-dir llama-cpp-python[server] --force-reinstall --upgrade
 
 # Copy application code
 COPY . .
