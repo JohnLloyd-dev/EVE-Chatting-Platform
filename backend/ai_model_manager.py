@@ -224,7 +224,7 @@ class AIModelManager:
             session["message_roles"].append("assistant")
             session["last_updated"] = time.time()
     
-    def build_chatml_prompt(self, system_prompt: str, history: List[str], message_roles: List[str]) -> str:
+    def build_chatml_prompt(self, system_prompt: str, history: List[str], message_roles: List[str], user_message: str) -> str:
         """Build enhanced ChatML format prompt for better accuracy"""
         
         # Enhanced system prompt applying guide principles: Accuracy-First + Speed
@@ -239,7 +239,7 @@ class AIModelManager:
         - Respond as the specified person
         - Answer the user's question directly
         - Use first person dialogue only
-        - Keep responses under 140 characters
+        - Keep responses under 500 characters for meaningful conversation
         
         **QUALITY ASSURANCE:**
         - Verify information before responding
@@ -258,7 +258,8 @@ class AIModelManager:
             elif role == "assistant":
                 parts.append(f"<|im_start|>assistant\n{message}<|im_end|>\n")
         
-        # Add final user prompt with character reminder
+        # Add the user message and assistant prompt
+        parts.append(f"<|im_start|>user\n{user_message}<|im_end|>\n")
         parts.append("<|im_start|>assistant\n")
         
         return "".join(parts)
@@ -288,7 +289,7 @@ class AIModelManager:
             message_roles = session["message_roles"][:-1]  # Exclude the current user message
             
             # Build ChatML prompt
-            prompt = self.build_chatml_prompt(system_prompt, history, message_roles)
+            prompt = self.build_chatml_prompt(system_prompt, history, message_roles, user_message)
             
             logger.info(f"🚀 Generating response for session {session_id}")
             logger.info(f"📝 Prompt length: {len(prompt)} characters")
@@ -308,7 +309,7 @@ class AIModelManager:
             with torch.no_grad():
                 outputs = self.model.generate(
                     **inputs,
-                    max_new_tokens=70,           # Optimized for 140 char limit + speed
+                    max_new_tokens=200,          # Optimized for 500 char limit + meaningful responses
                     temperature=0.28,            # Slightly lower for accuracy compensation (guide principle)
                     top_p=0.9,                  # More flexible than 0.85 for better accuracy (guide principle)
                     top_k=30,                   # Better than 25 for accuracy (guide principle)
@@ -328,8 +329,13 @@ class AIModelManager:
             response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
             
             # Extract only the new tokens (remove the input prompt)
-            input_length = inputs["input_ids"].shape[1]
-            response = response[input_length:].strip()
+            # Look for the last assistant tag and extract from there
+            if "<|im_start|>assistant\n" in response:
+                response = response.split("<|im_start|>assistant\n")[-1].strip()
+            else:
+                # Fallback: use token-based extraction
+                input_length = inputs["input_ids"].shape[1]
+                response = response[input_length:].strip()
             
             # Validate and enhance response for better accuracy
             validated_response = self._validate_response(response, session_id)
@@ -364,10 +370,10 @@ class AIModelManager:
             # Clean up response
             cleaned = response.strip()
             
-            # Ensure response is under 140 characters
-            if len(cleaned) > 140:
-                cleaned = cleaned[:137] + "..."
-                logger.info(f"📝 Truncated response to 140 chars for session {session_id}")
+            # Ensure response is under 500 characters for meaningful conversation
+            if len(cleaned) > 500:
+                cleaned = cleaned[:497] + "..."
+                logger.info(f"📝 Truncated response to 500 chars for session {session_id}")
             
             # Check for character consistency indicators
             session = self.user_sessions.get(session_id, {})
@@ -412,7 +418,7 @@ class AIModelManager:
                 quality_indicators["response_relevance"] = "❌"
             
             # Check length appropriateness
-            if len(response) > 140:
+            if len(response) > 500:
                 quality_indicators["length_appropriate"] = "❌"
             
             return quality_indicators
