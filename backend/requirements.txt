@@ -19,8 +19,7 @@ cryptography==41.0.7
 psutil==5.9.6
 requests==2.31.0
 
-# AI Model Dependencies (GGUF with GPU acceleration)
-llama-cpp-python[server]>=0.2.0
+# AI Model Dependencies (7B with 4-bit quantization for RTX 4060)
 transformers>=4.36.0
 accelerate>=0.25.0
 bitsandbytes>=0.41.3
@@ -29,8 +28,13 @@ protobuf==3.20.3
 scipy>=1.11.4
 numpy>=1.24.3
 
-# PyTorch (fallback, optional)
-# torch>=2.1.0
+# PyTorch (required for 7B model)
+torch>=2.1.0
+torchvision>=0.16.0
+torchaudio>=2.1.0
+
+# GGUF fallback (optional)
+llama-cpp-python[server]>=0.2.0
 
 # Note: Celery removed - AI model now integrated into backend
 # No separate worker needed for real-time chat

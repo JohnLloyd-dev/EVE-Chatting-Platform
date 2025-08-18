@@ -1,96 +1,153 @@
 """
-AI Model Manager for Backend (GGUF with GPU Acceleration)
-Handles GGUF model loading, inference, and session management using llama-cpp-python
+AI Model Manager for Backend (7B with 4-bit Quantization)
+Handles transformers model loading, inference, and session management with GPU acceleration
 """
 import logging
 import time
 import os
 import gc
+import torch
 from typing import Dict, List, Optional, Tuple
-from llama_cpp import Llama
+from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from config import settings
 
 logger = logging.getLogger(__name__)
 
 class AIModelManager:
-    """Manages GGUF AI model loading, inference, and session management"""
+    """Manages 7B AI model loading, inference, and session management with 4-bit quantization"""
     
     def __init__(self):
         self.model = None
+        self.tokenizer = None
         self.model_loaded = False
         self.user_sessions: Dict[str, Dict] = {}
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
         
         # Load model on initialization
         self._load_model()
     
     def _load_model(self):
-        """Load the GGUF AI model with GPU acceleration"""
+        """Load the 7B AI model with 4-bit quantization optimized for RTX 4060 (8GB VRAM)"""
         try:
-            logger.info(f"🚀 Loading GGUF AI model: {settings.ai_model_name}")
-            logger.info(f"📁 Model file: {settings.ai_model_file}")
+            logger.info(f"🚀 Loading 7B AI model: {settings.ai_model_name}")
+            logger.info(f"🔧 Device: {self.device}")
+            logger.info(f"📊 4-bit quantization: {settings.ai_use_4bit}")
+            logger.info(f"💾 Max memory: {settings.ai_max_memory_gb}GB")
+            logger.info(f"📏 Max context: {settings.ai_max_context_length} tokens")
             
-            # Check if model file exists
-            model_path = os.path.join(settings.ai_model_cache_dir, settings.ai_model_file)
-            if not os.path.exists(model_path):
-                logger.warning(f"⚠️ Model file not found: {model_path}")
-                logger.info("📥 You need to download the GGUF model file manually")
-                logger.info("💡 Download from: https://huggingface.co/TheBloke/OpenHermes-2.5-Mistral-7B-GGUF")
-                logger.info("💡 Recommended: openhermes-2.5-mistral-7b.Q5_K_M.gguf")
-                raise FileNotFoundError(f"Model file not found: {model_path}")
+            # Create offload directory if it doesn't exist
+            os.makedirs(settings.ai_offload_folder, exist_ok=True)
             
-            # Load GGUF model with GPU acceleration
-            logger.info("📥 Loading GGUF model with GPU acceleration...")
-            
-            # Optimized settings for RTX 4060 (8GB VRAM)
-            model_kwargs = {
-                "model_path": model_path,
-                "n_ctx": 4096,              # Context window size
-                "n_gpu_layers": 33,         # Offload ALL layers to GPU (RTX 4060 can handle this)
-                "n_threads": 8,             # CPU threads for non-offloaded operations
-                "verbose": False,            # Reduce logging noise
-                "n_batch": 512,             # Batch size for prompt processing
-                "use_mmap": True,            # Memory mapping for efficiency
-                "use_mlock": False,         # Don't lock memory (allows swapping if needed)
-            }
-            
-            logger.info("🚀 Initializing GGUF model with GPU acceleration...")
-            self.model = Llama(**model_kwargs)
-            
-            # Test model loading
-            logger.info("🧪 Testing model with simple prompt...")
-            test_output = self.model(
-                prompt="Hello",
-                max_tokens=10,
-                temperature=0.0,
-                stop=["\n"],
-                stream=False
+            # Load tokenizer
+            logger.info("📥 Loading tokenizer...")
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                settings.ai_model_name,
+                cache_dir=settings.ai_model_cache_dir,
+                trust_remote_code=True
             )
             
-            if test_output and "choices" in test_output:
+            # Configure 4-bit quantization for RTX 4060 (8GB VRAM)
+            if settings.ai_use_4bit and self.device == "cuda":
+                logger.info("🔧 Configuring 4-bit quantization...")
+                quantization_config = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_compute_dtype=torch.float16,
+                    bnb_4bit_use_double_quant=True,
+                    bnb_4bit_quant_type="nf4"
+                )
+            elif settings.ai_use_8bit and self.device == "cuda":
+                logger.info("🔧 Configuring 8-bit quantization...")
+                quantization_config = BitsAndBytesConfig(
+                    load_in_8bit=True,
+                    bnb_8bit_compute_dtype=torch.float16
+                )
+            else:
+                logger.info("🔧 No quantization - using full precision")
+                quantization_config = None
+            
+            # RTX 4060 Memory Optimization with Guide's Strategic Layer Management
+            # Reserve some layers for CPU to prevent quantization drift (guide principle)
+            if self.device == "cuda":
+                # Guide principle: Keep some layers on CPU for accuracy
+                # Reserve 0.5GB for CPU layers to prevent quantization drift
+                cpu_memory = 0.5
+                gpu_memory = settings.ai_max_memory_gb - cpu_memory
+                max_memory = {
+                    0: f"{gpu_memory}GB",      # GPU memory
+                    "cpu": f"{cpu_memory}GB"    # CPU memory for some layers
+                }
+                logger.info(f"🔧 Strategic layer management: GPU {gpu_memory}GB, CPU {cpu_memory}GB")
+            else:
+                max_memory = None
+            
+            # Load model with RTX 4060 optimizations + Guide's accuracy principles
+            logger.info("📥 Loading 7B model with RTX 4060 + Guide optimization...")
+            self.model = AutoModelForCausalLM.from_pretrained(
+                settings.ai_model_name,
+                cache_dir=settings.ai_model_cache_dir,
+                quantization_config=quantization_config,
+                device_map="auto" if quantization_config else None,
+                torch_dtype=torch.float16,
+                low_cpu_mem_usage=True,
+                trust_remote_code=True,
+                max_memory=max_memory,
+                offload_folder=settings.ai_offload_folder,
+                offload_state_dict=True,
+            )
+            
+            # Move to device if not using device_map
+            if not quantization_config:
+                self.model = self.model.to(self.device)
+            
+            # Test model loading with memory constraints
+            logger.info("🧪 Testing model with memory constraints...")
+            test_inputs = self.tokenizer("Hello", return_tensors="pt", max_length=64).to(self.device)
+            
+            with torch.no_grad():
+                test_outputs = self.model.generate(
+                    **test_inputs,
+                    max_new_tokens=10,
+                    do_sample=False,
+                    pad_token_id=self.tokenizer.eos_token_id,
+                    use_cache=True
+                )
+            
+            test_response = self.tokenizer.decode(test_outputs[0], skip_special_tokens=True)
+            
+            if test_response and len(test_response) > 0:
                 logger.info("✅ Model test successful!")
                 self.model_loaded = True
-                logger.info("✅ GGUF AI Model loaded successfully with GPU acceleration!")
+                logger.info("✅ 7B AI Model loaded successfully with RTX 4060 optimization!")
                 
-                # Log model info
-                logger.info(f"📊 Model context: {self.model.n_ctx} tokens")
-                logger.info(f"🚀 GPU layers: {model_kwargs['n_gpu_layers']}")
-                logger.info(f"⚙️ CPU threads: {model_kwargs['n_threads']}")
+                # Log model info and memory usage
+                logger.info(f"📊 Model device: {self.device}")
+                logger.info(f"🔧 Quantization: {'4-bit' if settings.ai_use_4bit else '8-bit' if settings.ai_use_8bit else 'None'}")
+                if self.device == "cuda":
+                    total_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3
+                    allocated_memory = torch.cuda.memory_allocated(0) / 1024**3
+                    reserved_memory = torch.cuda.memory_reserved(0) / 1024**3
+                    logger.info(f"💾 Total VRAM: {total_memory:.1f} GB")
+                    logger.info(f"💾 Allocated: {allocated_memory:.1f} GB")
+                    logger.info(f"💾 Reserved: {reserved_memory:.1f} GB")
+                    logger.info(f"💾 Available: {total_memory - allocated_memory:.1f} GB")
                 
             else:
                 raise RuntimeError("Model test failed - no output generated")
             
         except Exception as e:
-            logger.error(f"❌ Failed to load GGUF AI model: {e}")
+            logger.error(f"❌ Failed to load 7B AI model: {e}")
             logger.error(f"❌ Error type: {type(e).__name__}")
             self.model_loaded = False
             
-            # Provide specific error guidance
+            # Provide specific error guidance for RTX 4060
             if "CUDA" in str(e):
                 logger.error("💡 CUDA Error: Check GPU drivers and CUDA installation")
             elif "out of memory" in str(e).lower():
-                logger.error("💡 Memory Error: Reduce n_gpu_layers or use smaller quantization")
-            elif "file not found" in str(e).lower():
-                logger.error("💡 File Error: Download the GGUF model file first")
+                logger.error("💡 Memory Error: RTX 4060 memory exceeded")
+                logger.error("💡 Try: Reduce ai_max_memory_gb or ai_max_context_length")
+                logger.error("💡 Or: Use GGUF model instead")
+            elif "transformers" in str(e).lower():
+                logger.error("💡 Transformers Error: Check model name and cache directory")
             
             raise
     
@@ -151,12 +208,13 @@ class AIModelManager:
             session["message_roles"].append("user")
             session["last_updated"] = time.time()
             
-            # Enhanced history management to prevent system prompt dilution
-            # Keep only last 6 messages to maintain system prompt impact
-            if len(session["history"]) > 6:
-                session["history"] = session["history"][-6:]
-                session["message_roles"] = session["message_roles"][-6:]
-                logger.info(f"📝 Trimmed history to last 6 messages for session {session_id}")
+            # Enhanced history management for RTX 4060 memory efficiency
+            # Keep only last 4 messages to maintain system prompt impact and save memory
+            max_history = 4 if self.device == "cuda" else 6
+            if len(session["history"]) > max_history:
+                session["history"] = session["history"][-max_history:]
+                session["message_roles"] = session["message_roles"][-max_history:]
+                logger.info(f"📝 Trimmed history to last {max_history} messages for session {session_id} (RTX 4060 optimized)")
     
     def add_assistant_message(self, session_id: str, message: str):
         """Add an assistant message to session history"""
@@ -169,19 +227,27 @@ class AIModelManager:
     def build_chatml_prompt(self, system_prompt: str, history: List[str], message_roles: List[str]) -> str:
         """Build enhanced ChatML format prompt for better accuracy"""
         
-        # Enhanced system prompt with reinforcement
+        # Enhanced system prompt applying guide principles: Accuracy-First + Speed
         enhanced_system = f"""<|im_start|>system
-{system_prompt.strip()}
-
-**CRITICAL REMINDER:**
-- Stay in character at all times
-- Respond as the specified person
-- Answer the user's question directly
-- Use first person dialogue only
-- Keep responses under 140 characters
-<|im_end|>
-
-"""
+        {system_prompt.strip()}
+        
+        **ACCURACY-FIRST INSTRUCTIONS (Guide Principles):**
+        - Prioritize factual accuracy over speed
+        - If uncertain, say "I need to verify" rather than guessing
+        - Always double-check technical details
+        - Stay in character at all times
+        - Respond as the specified person
+        - Answer the user's question directly
+        - Use first person dialogue only
+        - Keep responses under 140 characters
+        
+        **QUALITY ASSURANCE:**
+        - Verify information before responding
+        - Maintain character consistency
+        - Avoid generic or off-topic responses
+        <|im_end|>
+        
+        """
         
         parts = [enhanced_system]
         
@@ -227,45 +293,68 @@ class AIModelManager:
             logger.info(f"🚀 Generating response for session {session_id}")
             logger.info(f"📝 Prompt length: {len(prompt)} characters")
             
-            # Generate response with GGUF model
+            # Generate response with 7B transformers model
             start_time = time.time()
             
-            # Optimized parameters for better instruction following and accuracy
-            output = self.model(
-                prompt=prompt,
-                max_tokens=200,          # Shorter responses for better focus (140 char limit)
-                temperature=0.3,         # Lower temperature for more consistent responses
-                top_p=0.85,             # Tighter nucleus sampling for focused generation
-                top_k=25,               # Lower top-k for more focused selection
-                stop=["<|im_end|>", "\n\n", "User:", "Human:"],  # Better stop tokens
-                stream=False,            # No streaming for now
-                repeat_penalty=1.2,     # Higher repetition penalty to prevent generic responses
-                frequency_penalty=0.1,   # Slight frequency penalty for variety
-                presence_penalty=0.1,   # Slight presence penalty for engagement
-            )
+            # Tokenize the prompt with RTX 4060 memory limits
+            inputs = self.tokenizer(
+                prompt, 
+                return_tensors="pt", 
+                truncation=True, 
+                max_length=settings.ai_max_context_length
+            ).to(self.device)
+            
+            # Optimized parameters applying guide principles: Accuracy-First + Speed Optimization
+            with torch.no_grad():
+                outputs = self.model.generate(
+                    **inputs,
+                    max_new_tokens=70,           # Optimized for 140 char limit + speed
+                    temperature=0.28,            # Slightly lower for accuracy compensation (guide principle)
+                    top_p=0.9,                  # More flexible than 0.85 for better accuracy (guide principle)
+                    top_k=30,                   # Better than 25 for accuracy (guide principle)
+                    do_sample=True,              # Enable sampling for better quality
+                    pad_token_id=self.tokenizer.eos_token_id,
+                    eos_token_id=self.tokenizer.eos_token_id,
+                    repetition_penalty=1.15,    # Optimized for accuracy (guide principle)
+                    length_penalty=0.85,        # Balanced for accuracy and speed
+                    early_stopping=True,        # Stop when EOS token is generated
+                    use_cache=True,             # Enable KV cache for memory efficiency
+                    num_beams=1,                # Single beam for memory efficiency
+                    # New guide-based parameters for accuracy preservation
+                    typical_p=0.9,              # Filters atypical tokens (guide principle)
+                    tfs_z=0.95,                 # Tail-free sampling (guide principle)
+                    # Memory optimization for RTX 4060
+                    max_memory={0: f"{settings.ai_max_memory_gb}GB"} if self.device == "cuda" else None,
+                )
             
             generation_time = time.time() - start_time
             
-            if output and "choices" in output and len(output["choices"]) > 0:
-                response = output["choices"][0]["text"].strip()
-                
-                # Validate and enhance response for better accuracy
-                validated_response = self._validate_response(response, session_id)
-                
-                # Add validated assistant message to history
-                self.add_assistant_message(session_id, validated_response)
-                
-                # Log performance metrics
-                tokens_generated = len(validated_response.split())  # Approximate
-                tokens_per_second = tokens_generated / generation_time if generation_time > 0 else 0
-                
-                logger.info(f"✅ Response generated in {generation_time:.2f}s")
-                logger.info(f"📊 Tokens: {tokens_generated}, Speed: {tokens_per_second:.1f} tokens/s")
-                logger.info(f"🎯 Response validation: {len(response)} -> {len(validated_response)} chars")
-                
-                return validated_response
-            else:
-                raise RuntimeError("No response generated from model")
+            # Decode the response
+            response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            
+            # Extract only the new tokens (remove the input prompt)
+            input_length = inputs["input_ids"].shape[1]
+            response = response[input_length:].strip()
+            
+            # Validate and enhance response for better accuracy
+            validated_response = self._validate_response(response, session_id)
+            
+            # Add validated assistant message to history
+            self.add_assistant_message(session_id, validated_response)
+            
+            # Log performance metrics with Guide's quality monitoring
+            tokens_generated = len(validated_response.split())  # Approximate
+            tokens_per_second = tokens_generated / generation_time if generation_time > 0 else 0
+            
+            # Guide principle: Monitor accuracy indicators
+            accuracy_indicators = self._assess_response_quality(validated_response, session_id)
+            
+            logger.info(f"✅ Response generated in {generation_time:.2f}s")
+            logger.info(f"📊 Tokens: {tokens_generated}, Speed: {tokens_per_second:.1f} tokens/s")
+            logger.info(f"🎯 Response validation: {len(response)} -> {len(validated_response)} chars")
+            logger.info(f"🎯 Quality assessment: {accuracy_indicators}")
+            
+            return validated_response
                 
         except Exception as e:
             logger.error(f"❌ Failed to generate response: {e}")
@@ -302,6 +391,41 @@ class AIModelManager:
             logger.error(f"❌ Response validation failed: {e}")
             return response  # Return original if validation fails
     
+    def _assess_response_quality(self, response: str, session_id: str) -> Dict[str, str]:
+        """Assess response quality using Guide's accuracy principles"""
+        try:
+            session = self.user_sessions.get(session_id, {})
+            system_prompt = session.get("system_prompt", "").lower()
+            
+            quality_indicators = {
+                "character_consistency": "✅",
+                "factual_accuracy": "✅",
+                "response_relevance": "✅",
+                "length_appropriate": "✅"
+            }
+            
+            # Check character consistency
+            if "i am an ai" in response.lower() or "as an ai" in response.lower():
+                quality_indicators["character_consistency"] = "❌"
+            
+            # Check factual accuracy indicators
+            if "i need to verify" in response.lower() or "i'm not sure" in response.lower():
+                quality_indicators["factual_accuracy"] = "⚠️"  # Good - shows honesty
+            
+            # Check response relevance
+            if len(response.strip()) < 10:
+                quality_indicators["response_relevance"] = "❌"
+            
+            # Check length appropriateness
+            if len(response) > 140:
+                quality_indicators["length_appropriate"] = "❌"
+            
+            return quality_indicators
+            
+        except Exception as e:
+            logger.error(f"❌ Quality assessment failed: {e}")
+            return {"error": "Assessment failed"}
+    
     def _regenerate_with_character_focus(self, session_id: str, original_response: str) -> str:
         """Regenerate response with stronger character focus"""
         try:
@@ -311,19 +435,41 @@ class AIModelManager:
             # Create a more focused prompt
             focused_prompt = f"{system_prompt}\n\n**URGENT: You MUST stay in character!**\n\nUser's question requires a response that stays true to your character."
             
-            # Regenerate with stricter parameters
-            output = self.model(
-                prompt=focused_prompt,
-                max_tokens=100,
-                temperature=0.1,  # Very low temperature for consistency
-                top_p=0.7,
-                top_k=15,
-                stop=["<|im_end|>", "\n\n"],
-                repeat_penalty=1.3,
-            )
+            # Regenerate with stricter parameters using transformers (RTX 4060 optimized)
+            inputs = self.tokenizer(
+                focused_prompt, 
+                return_tensors="pt", 
+                truncation=True, 
+                max_length=settings.ai_max_context_length
+            ).to(self.device)
             
-            if output and "choices" in output and len(output["choices"]) > 0:
-                new_response = output["choices"][0]["text"].strip()
+            with torch.no_grad():
+                outputs = self.model.generate(
+                    **inputs,
+                    max_new_tokens=70,           # Optimized for speed + accuracy
+                    temperature=0.08,            # Very low for character consistency (guide principle)
+                    top_p=0.8,                  # Balanced for accuracy
+                    top_k=20,                   # Better selection for accuracy
+                    do_sample=True,
+                    pad_token_id=self.tokenizer.eos_token_id,
+                    eos_token_id=self.tokenizer.eos_token_id,
+                    repetition_penalty=1.25,    # Optimized for character consistency
+                    early_stopping=True,
+                    # Guide-based accuracy parameters
+                    typical_p=0.95,             # High typical_p for character consistency
+                    tfs_z=0.98,                 # High tfs_z for quality
+                    use_cache=True,             # Memory efficiency
+                    max_memory={0: f"{settings.ai_max_memory_gb}GB"} if self.device == "cuda" else None,
+                )
+            
+            # Decode the response
+            new_response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            
+            # Extract only the new tokens
+            input_length = inputs["input_ids"].shape[1]
+            new_response = new_response[input_length:].strip()
+            
+            if new_response and len(new_response) > 0:
                 logger.info(f"🔄 Regenerated response with character focus for session {session_id}")
                 return new_response[:140]  # Ensure length limit
             
@@ -334,22 +480,49 @@ class AIModelManager:
             return original_response
     
     def optimize_memory_usage(self) -> Dict:
-        """Optimize memory usage for GGUF model"""
+        """Optimize memory usage for 7B transformers model on RTX 4060"""
         try:
-            logger.info("🧹 Optimizing memory usage...")
+            logger.info("🧹 Optimizing memory usage for RTX 4060...")
             
             # Force garbage collection
             gc.collect()
+            
+            # Clear CUDA cache if using GPU
+            if self.device == "cuda" and torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                logger.info("🧹 CUDA cache cleared")
+                
+                # Log memory before and after optimization
+                before_memory = torch.cuda.memory_allocated(0) / 1024**3
+                logger.info(f"💾 Memory before optimization: {before_memory:.2f} GB")
+                
+                # Force memory cleanup
+                torch.cuda.synchronize()
+                
+                after_memory = torch.cuda.memory_allocated(0) / 1024**3
+                logger.info(f"💾 Memory after optimization: {after_memory:.2f} GB")
+                logger.info(f"💾 Memory freed: {before_memory - after_memory:.2f} GB")
             
             # Clear any cached data
             if hasattr(self.model, 'reset'):
                 self.model.reset()
             
-            logger.info("✅ Memory optimization completed")
-            return {"status": "success", "message": "Memory optimized"}
+            # Clear session history if too many sessions
+            if len(self.user_sessions) > 10:
+                logger.info("🧹 Clearing old sessions to free memory...")
+                # Keep only recent sessions
+                current_time = time.time()
+                old_sessions = [sid for sid, session in self.user_sessions.items() 
+                              if current_time - session.get("last_updated", 0) > 3600]  # 1 hour
+                for sid in old_sessions:
+                    del self.user_sessions[sid]
+                logger.info(f"🧹 Cleared {len(old_sessions)} old sessions")
+            
+            logger.info("✅ RTX 4060 memory optimization completed")
+            return {"status": "success", "message": "RTX 4060 memory optimized"}
             
         except Exception as e:
-            logger.error(f"❌ Memory optimization failed: {e}")
+            logger.error(f"❌ RTX 4060 memory optimization failed: {e}")
             return {"status": "error", "message": str(e)}
     
     def get_health_status(self) -> Dict:
@@ -357,17 +530,32 @@ class AIModelManager:
         try:
             status = {
                 "model_loaded": self.model_loaded,
-                "model_type": "GGUF (llama-cpp-python)",
+                "model_type": "7B Transformers (4-bit quantization, RTX 4060 optimized)",
                 "active_sessions": len(self.user_sessions),
                 "total_sessions": len(self.user_sessions),
             }
             
             if self.model_loaded and self.model:
                 status.update({
-                    "context_window": getattr(self.model, 'n_ctx', 'Unknown'),
-                    "gpu_layers": getattr(self.model, 'n_gpu_layers', 'Unknown'),
-                    "cpu_threads": getattr(self.model, 'n_threads', 'Unknown'),
+                    "device": self.device,
+                    "quantization": "4-bit" if settings.ai_use_4bit else "8-bit" if settings.ai_use_8bit else "None",
+                    "model_name": settings.ai_model_name,
+                    "max_context_length": settings.ai_max_context_length,
+                    "max_memory_gb": settings.ai_max_memory_gb,
                 })
+                
+                # Add detailed GPU memory info for RTX 4060
+                if self.device == "cuda":
+                    total_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3
+                    allocated_memory = torch.cuda.memory_allocated(0) / 1024**3
+                    reserved_memory = torch.cuda.memory_reserved(0) / 1024**3
+                    status.update({
+                        "gpu_total_memory_gb": round(total_memory, 1),
+                        "gpu_allocated_memory_gb": round(allocated_memory, 1),
+                        "gpu_reserved_memory_gb": round(reserved_memory, 1),
+                        "gpu_available_memory_gb": round(total_memory - allocated_memory, 1),
+                        "memory_efficiency_percent": round((allocated_memory / total_memory) * 100, 1),
+                    })
             
             return status
             
