@@ -106,17 +106,11 @@ class AIModelManager:
             except Exception as e:
                 logger.warning(f"⚠️ Flash Attention 2 not available, using default: {e}")
             
-            # Use EXACT same pattern as working script
+            # Use EXACT same pattern as working script - NO EXTRA PARAMETERS
             self.model = AutoModelForCausalLM.from_pretrained(
                 settings.ai_model_name,
-                cache_dir=settings.ai_model_cache_dir,
                 quantization_config=quantization_config,
-                device_map="auto" if quantization_config else None,  # Simple auto mapping like working script
-                torch_dtype=torch.float16,
-                low_cpu_mem_usage=True,
-                trust_remote_code=True,
-                # Remove all complex memory management - let transformers handle it
-                **attn_kwargs
+                device_map="auto" if quantization_config else None
             )
             
             # Move to device if not using device_map
@@ -140,68 +134,18 @@ class AIModelManager:
             torch.set_grad_enabled(False)  # Ensure gradients are disabled
             logger.info("🔒 Gradients disabled for inference")
             
-            # Test model loading with memory constraints
-            logger.info("🧪 Testing model with memory constraints...")
-            test_inputs = self.tokenizer("Hello", return_tensors="pt", max_length=64).to(self.device)
+            # Simple model loading - NO TESTING, NO CALIBRATION (like working script)
+            self.model_loaded = True
+            logger.info("✅ 7B AI Model loaded successfully!")
             
-            # Use inference_mode() for stronger inference optimization
-            with torch.inference_mode():
-                test_outputs = self.model.generate(
-                    **test_inputs,
-                    max_new_tokens=10,
-                    do_sample=False,
-                    pad_token_id=self.tokenizer.eos_token_id,
-                    use_cache=True
-                )
-            
-            test_response = self.tokenizer.decode(test_outputs[0], skip_special_tokens=True)
-            
-            # Quantization calibration for better accuracy (guide recommendation)
-            if (settings.ai_use_4bit or settings.ai_use_8bit) and self.device == "cuda":
-                logger.info("🔧 Running quantization calibration for better accuracy...")
-                try:
-                    with torch.inference_mode():
-                        for _ in range(3):  # Warmup for better quantization accuracy
-                            self.model.generate(**test_inputs, max_new_tokens=10)
-                    logger.info("✅ Quantization calibration completed")
-                except Exception as e:
-                    logger.warning(f"⚠️ Quantization calibration failed: {e}")
-            
-            if test_response and len(test_response) > 0:
-                logger.info("✅ Model test successful!")
-                self.model_loaded = True
-                logger.info("✅ 7B AI Model loaded successfully with RTX 4060 optimization!")
-                
-                # Log model info and memory usage
-                logger.info(f"📊 Model device: {self.device}")
-                logger.info(f"🔧 Quantization: {'4-bit' if settings.ai_use_4bit else '8-bit' if settings.ai_use_8bit else 'None'}")
-                if self.device == "cuda":
-                    total_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3
-                    allocated_memory = torch.cuda.memory_allocated(0) / 1024**3
-                    reserved_memory = torch.cuda.memory_reserved(0) / 1024**3
-                    logger.info(f"💾 Total VRAM: {total_memory:.1f} GB")
-                    logger.info(f"💾 Allocated: {allocated_memory:.1f} GB")
-                    logger.info(f"💾 Reserved: {reserved_memory:.1f} GB")
-                    logger.info(f"💾 Available: {total_memory - allocated_memory:.1f} GB")
-                
-            else:
-                raise RuntimeError("Model test failed - no output generated")
+            # Simple memory check (like working script)
+            if self.device == "cuda":
+                allocated_memory = torch.cuda.memory_allocated(0) / 1024**3
+                logger.info(f"💾 VRAM used: {allocated_memory:.1f} GB")
             
         except Exception as e:
-            logger.error(f"❌ Failed to load 7B AI model: {e}")
-            logger.error(f"❌ Error type: {type(e).__name__}")
+            logger.error(f"❌ Failed to load AI model: {e}")
             self.model_loaded = False
-            
-            # Provide specific error guidance for RTX 4060
-            if "CUDA" in str(e):
-                logger.error("💡 CUDA Error: Check GPU drivers and CUDA installation")
-            elif "out of memory" in str(e).lower():
-                logger.error("💡 Memory Error: RTX 4060 memory exceeded")
-                logger.error("💡 Try: Reduce ai_max_memory_gb or ai_max_context_length")
-                logger.error("💡 Or: Use GGUF model instead")
-            elif "transformers" in str(e).lower():
-                logger.error("💡 Transformers Error: Check model name and cache directory")
-            
             raise
     
     def create_session(self, session_id: str, system_prompt: str) -> Dict:
