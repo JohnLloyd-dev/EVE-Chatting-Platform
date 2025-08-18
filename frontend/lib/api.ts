@@ -63,29 +63,14 @@ export const chatApi = {
     // Use the unified chat endpoint with integrated AI
     const response = await api.post(`/chat/message/${sessionId}`, {
       message,
-      max_tokens: maxTokens,
-      temperature,
+      // Optional parameters - backend will use defaults if not provided
+      ...(maxTokens !== 300 && { max_tokens: maxTokens }),
+      ...(temperature !== 0.7 && { temperature }),
     });
     return response.data;
   },
 
-  // Legacy Celery-based endpoint (fallback)
-  sendMessageLegacy: async (
-    sessionId: string,
-    message: string,
-    maxTokens: number = 300
-  ) => {
-    const response = await api.post(`/chat/message/${sessionId}`, {
-      message,
-      max_tokens: maxTokens,
-    });
-    return response.data;
-  },
-
-  getResponseStatus: async (taskId: string) => {
-    const response = await api.get(`/chat/response/${taskId}`);
-    return response.data;
-  },
+  // Legacy endpoints removed - AI is now integrated into chat flow
 
   createDeviceSession: async (deviceId: string, customPrompt: string) => {
     const response = await api.post("/user/device-session", {
@@ -95,11 +80,7 @@ export const chatApi = {
     return response.data;
   },
 
-  // AI Model Health Check
-  getAIHealth: async () => {
-    const response = await api.get("/ai/health");
-    return response.data;
-  },
+  // AI health check removed - AI is now integrated into backend
 };
 
 // Admin API

@@ -12,7 +12,7 @@ class TallyWebhookData(BaseModel):
 
 # Chat schemas
 class ChatMessageRequest(BaseModel):
-    session_id: str = Field(..., description="AI session ID")
+    # session_id is now in URL path, not in body
     message: str = Field(..., min_length=1, max_length=1000)
     max_tokens: int = Field(300, ge=50, le=1000)  # Increased for better sentence completion
     temperature: float = Field(0.7, ge=0.1, le=2.0, description="AI response creativity")

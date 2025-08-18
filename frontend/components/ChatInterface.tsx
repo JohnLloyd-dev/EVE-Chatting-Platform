@@ -11,7 +11,6 @@ interface ChatInterfaceProps {
 
 export default function ChatInterface({ userId }: ChatInterfaceProps) {
   const [message, setMessage] = useState("");
-  const [isProcessing, setIsProcessing] = useState(false);
   const [showLoadingAnimation, setShowLoadingAnimation] = useState(true);
   const [loadingStep, setLoadingStep] = useState(0);
   const [hasInitializedAI, setHasInitializedAI] = useState(false);
@@ -48,8 +47,20 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
         toast.success("Message sent!");
       },
       onError: (error: any) => {
-        toast.error(error.response?.data?.detail || "Failed to send message");
-        setIsProcessing(false);
+        // Safely extract error message
+        let errorMessage = "Failed to send message";
+        if (error?.response?.data?.detail) {
+          if (typeof error.response.data.detail === 'string') {
+            errorMessage = error.response.data.detail;
+          } else if (Array.isArray(error.response.data.detail)) {
+            // Handle validation error array
+            const firstError = error.response.data.detail[0];
+            if (firstError && typeof firstError === 'object' && 'msg' in firstError) {
+              errorMessage = firstError.msg;
+            }
+          }
+        }
+        toast.error(errorMessage);
       },
     }
   );
@@ -179,57 +190,29 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
     if (!message.trim() || !session || sendMessageMutation.isLoading) return;
 
     try {
-      // Try the new integrated AI endpoint first
+      // Use the integrated AI endpoint
       await sendMessageMutation.mutateAsync({
         sessionId: session.id,
         message: message.trim(),
       });
     } catch (error: any) {
-      // If the new endpoint fails, fall back to legacy Celery approach
-      console.warn("Integrated AI failed, falling back to legacy approach:", error);
+      // Log error for debugging
+      console.error("Failed to send message:", error);
       
-      try {
-        const legacyResponse = await chatApi.sendMessageLegacy(
-          session.id,
-          message.trim()
-        );
-        
-        setMessage("");
-        setIsProcessing(true);
-        
-        // Use legacy polling for fallback
-        const maxAttempts = 30;
-        let attempts = 0;
-        
-        const poll = async () => {
-          try {
-            const response = await chatApi.getResponseStatus(legacyResponse.task_id);
-            
-            if (response.status === "completed") {
-              setIsProcessing(false);
-              queryClient.invalidateQueries(["chatSession", userId]);
-            } else if (response.status === "failed") {
-              setIsProcessing(false);
-              toast.error("I'm having trouble thinking right now");
-            } else if (attempts < maxAttempts) {
-              attempts++;
-              setTimeout(poll, 1000);
-            } else {
-              setIsProcessing(false);
-              toast.error("give me a minute");
-            }
-          } catch (pollError) {
-            setIsProcessing(false);
-            toast.error("Let me check on that for you");
+      // Safely extract error message
+      let errorMessage = "Failed to send message";
+      if (error?.response?.data?.detail) {
+        if (typeof error.response.data.detail === 'string') {
+          errorMessage = error.response.data.detail;
+        } else if (Array.isArray(error.response.data.detail)) {
+          // Handle validation error array
+          const firstError = error.response.data.detail[0];
+          if (firstError && typeof firstError === 'object' && 'msg' in firstError) {
+            errorMessage = firstError.msg;
           }
-        };
-        
-        poll();
-        
-      } catch (legacyError) {
-        toast.error("Failed to send message. Please try again.");
-        setIsProcessing(false);
+        }
       }
+      toast.error(errorMessage);
     }
   };
 
@@ -244,8 +227,7 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
   const handleChatAreaClick = () => {
     if (
       textareaRef.current &&
-      !sendMessageMutation.isLoading &&
-      !isProcessing
+      !sendMessageMutation.isLoading
     ) {
       textareaRef.current.focus();
     }
@@ -380,7 +362,7 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
           ))
         )}
 
-        {isProcessing && (
+        {sendMessageMutation.isLoading && (
           <div className="flex justify-start">
             <div className="chat-message chat-message-ai">
               <div className="flex items-center space-x-2">
@@ -414,13 +396,13 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
             placeholder="Type your message..."
             className="flex-1 resize-none px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent text-white placeholder-gray-400 transition-all duration-200"
             rows={2}
-            disabled={sendMessageMutation.isLoading || isProcessing}
+            disabled={sendMessageMutation.isLoading}
             autoFocus
           />
           <button
             onClick={handleSendMessage}
             disabled={
-              !message.trim() || sendMessageMutation.isLoading || isProcessing
+              !message.trim() || sendMessageMutation.isLoading
             }
             className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
           >
