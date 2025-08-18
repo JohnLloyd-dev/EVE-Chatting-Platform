@@ -46,7 +46,10 @@ class AIModelManager:
                 trust_remote_code=True
             )
             
-            # Configure 4-bit quantization for RTX 4060 (8GB VRAM)
+            # Configure quantization for RTX 4060 (8GB VRAM) with conflict check
+            if settings.ai_use_4bit and settings.ai_use_8bit:
+                raise ValueError("❌ Cannot use both 4-bit and 8-bit quantization simultaneously")
+            
             if settings.ai_use_4bit and self.device == "cuda":
                 logger.info("🔧 Configuring 4-bit quantization...")
                 quantization_config = BitsAndBytesConfig(
@@ -82,6 +85,12 @@ class AIModelManager:
             
             # Load model with RTX 4060 optimizations + Guide's accuracy principles
             logger.info("📥 Loading 7B model with RTX 4060 + Guide optimization...")
+            
+            # Enable RTX 4060-specific optimizations
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32 = True
+            torch.set_float32_matmul_precision('high')
+            
             self.model = AutoModelForCausalLM.from_pretrained(
                 settings.ai_model_name,
                 cache_dir=settings.ai_model_cache_dir,
@@ -93,6 +102,9 @@ class AIModelManager:
                 max_memory=max_memory,
                 offload_folder=settings.ai_offload_folder,
                 offload_state_dict=True,
+                # RTX 4060 Flash Attention Support
+                use_flash_attention_2=True,
+                attn_implementation="flash_attention_2"
             )
             
             # Move to device if not using device_map
@@ -237,12 +249,31 @@ class AIModelManager:
             session["last_updated"] = time.time()
             
             # Enhanced history management for RTX 4060 memory efficiency
-            # Keep only last 4 messages to maintain system prompt impact and save memory
-            max_history = 4 if self.device == "cuda" else 6
-            if len(session["history"]) > max_history:
-                session["history"] = session["history"][-max_history:]
-                session["message_roles"] = session["message_roles"][-max_history:]
-                logger.info(f"📝 Trimmed history to last {max_history} messages for session {session_id} (RTX 4060 optimized)")
+            # Use token-based truncation instead of message count for better memory management
+            max_tokens = 512 if self.device == "cuda" else 1024  # RTX 4060 optimized
+            
+            # Calculate total tokens in history
+            total_tokens = sum(len(self.tokenizer.encode(msg, add_special_tokens=False)) for msg in session["history"])
+            
+            if total_tokens > max_tokens:
+                # Trim history to fit within token limit
+                trimmed_history = []
+                trimmed_roles = []
+                current_tokens = 0
+                
+                # Start from most recent messages and work backwards
+                for msg, role in zip(reversed(session["history"]), reversed(session["message_roles"])):
+                    msg_tokens = len(self.tokenizer.encode(msg, add_special_tokens=False))
+                    if current_tokens + msg_tokens <= max_tokens:
+                        trimmed_history.insert(0, msg)
+                        trimmed_roles.insert(0, role)
+                        current_tokens += msg_tokens
+                    else:
+                        break
+                
+                session["history"] = trimmed_history
+                session["message_roles"] = trimmed_roles
+                logger.info(f"📝 Trimmed history to {len(trimmed_history)} messages ({current_tokens} tokens) for session {session_id} (RTX 4060 optimized)")
     
     def add_assistant_message(self, session_id: str, message: str):
         """Add an assistant message to session history"""
@@ -255,12 +286,9 @@ class AIModelManager:
     def build_chatml_prompt(self, system_prompt: str, history: List[str], message_roles: List[str], user_message: str) -> str:
         """Build enhanced ChatML format prompt for better accuracy"""
         
-        # Clean, focused system prompt for better accuracy
+        # Use ONLY the user's system prompt without dilution
         enhanced_system = f"""<|im_start|>system
         {system_prompt.strip()}
-        
-        You are a helpful assistant. Stay in character and respond naturally to user questions.
-        Keep responses concise and relevant.
         <|im_end|>
         
         """
@@ -335,6 +363,8 @@ class AIModelManager:
                     repetition_penalty=1.15,    # Optimized for accuracy (guide principle)
                     use_cache=True,             # Enable KV cache for memory efficiency
                     num_beams=1,                # Single beam for memory efficiency
+                    # RTX 4060 Tensor Core Optimization
+                    batch_size=4,               # Optimal for 7B on 8GB VRAM
                     # New guide-based parameters for accuracy preservation
                     typical_p=0.9,              # Filters atypical tokens (guide principle)
                 )
@@ -345,14 +375,20 @@ class AIModelManager:
             response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
             
             # Extract only the new tokens (remove the input prompt)
-            # Use improved extraction logic for better accuracy
-            response = self._extract_ai_response(response, prompt)
+            # Use token-based extraction for better accuracy
+            response = self._extract_ai_response(response, inputs, self.tokenizer)
             
             # Validate and enhance response for better accuracy
             validated_response = self._validate_response(response, session_id)
             
             # Add validated assistant message to history
             self.add_assistant_message(session_id, validated_response)
+            
+            # Periodic memory optimization for RTX 4060 (every 5 responses)
+            session = self.user_sessions.get(session_id, {})
+            if len(session.get("history", [])) % 5 == 0:
+                logger.info(f"🧹 Running periodic memory optimization for session {session_id}")
+                self.optimize_memory_usage()
             
             # Log performance metrics with Guide's quality monitoring
             tokens_generated = len(validated_response.split())  # Approximate
@@ -372,22 +408,14 @@ class AIModelManager:
             logger.error(f"❌ Failed to generate response: {e}")
             raise
     
-    def _extract_ai_response(self, full_response: str, prompt: str) -> str:
-        """Extract only the AI-generated response, removing prompt contamination"""
+    def _extract_ai_response(self, full_response: str, inputs, tokenizer) -> str:
+        """Extract only the AI-generated response using token positions (more reliable)"""
         try:
-            # Method 1: Remove the input prompt completely
-            if prompt in full_response:
-                response = full_response.split(prompt)[-1].strip()
-                logger.info(f"📝 Extracted response using prompt removal method")
-            else:
-                # Method 2: Look for assistant tag
-                if "<|im_start|>assistant\n" in full_response:
-                    response = full_response.split("<|im_start|>assistant\n")[-1].strip()
-                    logger.info(f"📝 Extracted response using assistant tag method")
-                else:
-                    # Method 3: Use token-based extraction as fallback
-                    response = full_response
-                    logger.info(f"📝 Using full response as fallback")
+            # Use token position-based extraction (most reliable method)
+            input_length = inputs["input_ids"].shape[1]
+            response = tokenizer.decode(inputs["input_ids"][0][input_length:], skip_special_tokens=True)
+            
+            logger.info(f"📝 Extracted response using token position method: {len(response)} chars")
             
             # Clean up any system instructions that leaked through
             response = self._clean_system_instructions(response)
@@ -395,8 +423,21 @@ class AIModelManager:
             return response
             
         except Exception as e:
-            logger.error(f"❌ Response extraction failed: {e}")
-            return full_response  # Return original if extraction fails
+            logger.error(f"❌ Token-based response extraction failed: {e}")
+            # Fallback to string-based extraction
+            try:
+                if "<|im_start|>assistant\n" in full_response:
+                    response = full_response.split("<|im_start|>assistant\n")[-1].strip()
+                    logger.info(f"📝 Fallback: extracted response using assistant tag method")
+                else:
+                    response = full_response
+                    logger.info(f"📝 Fallback: using full response")
+                
+                response = self._clean_system_instructions(response)
+                return response
+            except Exception as fallback_error:
+                logger.error(f"❌ Fallback extraction also failed: {fallback_error}")
+                return full_response
     
     def _clean_system_instructions(self, response: str) -> str:
         """Remove system instructions and unwanted content from AI responses"""
@@ -437,7 +478,7 @@ class AIModelManager:
             return response
     
     def _validate_response(self, response: str, session_id: str) -> str:
-        """Validate and enhance response for better accuracy"""
+        """Consolidated response validation and quality assessment"""
         try:
             if not response or len(response.strip()) == 0:
                 return "I'm here, what would you like me to do?"
@@ -461,11 +502,33 @@ class AIModelManager:
                 # Try to regenerate with stronger character focus
                 return self._regenerate_with_character_focus(session_id, response)
             
+            # Log quality assessment inline (consolidated)
+            quality_score = self._quick_quality_check(cleaned)
+            logger.info(f"🎯 Response quality: {quality_score}/10 for session {session_id}")
+            
             return cleaned
             
         except Exception as e:
             logger.error(f"❌ Response validation failed: {e}")
             return response  # Return original if validation fails
+    
+    def _quick_quality_check(self, response: str) -> int:
+        """Quick quality assessment (1-10 scale)"""
+        score = 10
+        
+        # Deduct points for various issues
+        if len(response) < 10:
+            score -= 3  # Too short
+        if len(response) > 200:
+            score -= 2  # Too long
+        if "i am an ai" in response.lower():
+            score -= 5  # Generic AI response
+        if response.count(".") > 3:
+            score -= 1  # Too many sentences
+        if response.count("!") > 2:
+            score -= 1  # Too many exclamations
+            
+        return max(1, score)  # Minimum score of 1
     
     def _assess_response_quality(self, response: str, session_id: str) -> Dict[str, str]:
         """Assess response quality using Guide's accuracy principles"""
