@@ -10,7 +10,7 @@ import json
 import logging
 
 # Local imports
-from database import get_db, User, ChatSession, Message, TallySubmission, AdminUser, SystemPrompt, ActiveAITask, generate_user_code
+from database import get_db, User, ChatSession, Message, TallySubmission, AdminUser, SystemPrompt, generate_user_code
 from schemas import (
     TallyWebhookData, ChatMessageRequest, ChatMessageResponse, 
     ChatSessionResponse, UserResponse, AdminLoginRequest, AdminLoginResponse,
@@ -494,7 +494,7 @@ async def send_message(
     db: Session = Depends(get_db)
 ):
     """
-    Send a message in a chat session
+    Send a message in a chat session and get AI response directly
     """
     try:
         session_uuid = uuid.UUID(session_id)
@@ -515,33 +515,45 @@ async def send_message(
     
     # Handle special START_CONVERSATION message
     if message_request.message == "START_CONVERSATION":
-        # Don't save this as a user message, just trigger AI to send "hi"
         # Update session timestamp
         session.updated_at = datetime.now(timezone.utc)
         session.user.last_active = datetime.now(timezone.utc)
         db.commit()
         
-        # Queue AI response processing with "hi" as the message
-        task = process_ai_response.delay(
-            str(session_uuid), 
-            "hi", 
-            message_request.max_tokens,
-            True  # is_ai_initiated
-        )
-        
-        # Track the active AI task
-        active_task = ActiveAITask(
-            task_id=task.id,
-            session_id=session_uuid,
-            user_id=session.user.id
-        )
-        db.add(active_task)
-        db.commit()
-        
-        return {
-            "message": "AI conversation started",
-            "task_id": task.id
-        }
+        # Generate AI response directly
+        try:
+            # Get system prompt for this session
+            system_prompt = get_complete_system_prompt(db, str(session.user.id), session.scenario_prompt or "")
+            
+            # Create AI session if it doesn't exist
+            ai_session_id = str(session_uuid)
+            if not ai_model_manager.get_session(ai_session_id):
+                ai_model_manager.create_session(ai_session_id, system_prompt)
+            
+            # Generate AI response
+            ai_response = ai_model_manager.generate_response(ai_session_id, "Hello")
+            
+            # Save AI response to database
+            ai_message = Message(
+                session_id=session_uuid,
+                content=ai_response,
+                is_from_user=False
+            )
+            db.add(ai_message)
+            db.commit()
+            
+            return {
+                "message": "AI conversation started",
+                "ai_response": ai_response,
+                "ai_message_id": str(ai_message.id)
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to generate AI response: {e}")
+            return {
+                "message": "AI conversation started",
+                "error": "Failed to generate AI response"
+            }
     
     # Save user message
     user_message = Message(
@@ -557,46 +569,48 @@ async def send_message(
     
     db.commit()
     
-    # Queue AI response processing
-    task = process_ai_response.delay(
-        str(session_uuid), 
-        message_request.message, 
-        message_request.max_tokens
-    )
-    
-    # Track the active AI task
-    active_task = ActiveAITask(
-        task_id=task.id,
-        session_id=session_uuid,
-        user_id=session.user.id
-    )
-    db.add(active_task)
-    db.commit()
-    
-    return {
-        "message": "Message sent, AI response is being processed",
-        "user_message_id": str(user_message.id),
-        "task_id": task.id
-    }
+    # Generate AI response directly (no more Celery queuing)
+    try:
+        # Get system prompt for this session
+        system_prompt = get_complete_system_prompt(db, str(session.user.id), session.scenario_prompt or "")
+        
+        # Create AI session if it doesn't exist
+        ai_session_id = str(session_uuid)
+        if not ai_model_manager.get_session(ai_session_id):
+            ai_model_manager.create_session(ai_session_id, system_prompt)
+        
+        # Generate AI response
+        ai_response = ai_model_manager.generate_response(ai_session_id, message_request.message)
+        
+        # Save AI response to database
+        ai_message = Message(
+            session_id=session_uuid,
+            content=ai_response,
+            is_from_user=False
+        )
+        db.add(ai_message)
+        db.commit()
+        
+        logger.info(f"💬 AI response generated directly for session {session_id}")
+        
+        return {
+            "message": "Message sent and AI response generated",
+            "user_message_id": str(user_message.id),
+            "ai_response": ai_response,
+            "ai_message_id": str(ai_message.id)
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to generate AI response: {e}")
+        # Still save user message, but return error for AI
+        return {
+            "message": "Message sent, but AI response failed",
+            "user_message_id": str(user_message.id),
+            "error": f"AI response failed: {str(e)}"
+        }
 
-# Get AI response status
-@app.get("/chat/response/{task_id}")
-async def get_ai_response_status(task_id: str):
-    """
-    Check the status of AI response processing
-    """
-    from celery_app import celery_app
-    
-    task = celery_app.AsyncResult(task_id)
-    
-    if task.state == 'PENDING':
-        return {"status": "processing", "message": "AI is thinking..."}
-    elif task.state == 'SUCCESS':
-        return {"status": "completed", "result": task.result}
-    elif task.state == 'FAILURE':
-        return {"status": "failed", "error": str(task.info)}
-    else:
-        return {"status": task.state}
+# AI response status endpoint removed - responses are now immediate
+# No more Celery queuing needed
 
 # Admin login
 @app.post("/admin/login", response_model=AdminLoginResponse)
@@ -779,25 +793,9 @@ async def block_user(
     
     user.is_blocked = block_request.block
     
-    # If blocking the user, cancel any active AI tasks
-    if block_request.block:
-        from celery_app import celery_app
-        
-        # Find and cancel active AI tasks for this user
-        active_tasks = db.query(ActiveAITask).filter(
-            ActiveAITask.user_id == user.id,
-            ActiveAITask.is_cancelled == False
-        ).all()
-        
-        for active_task in active_tasks:
-            try:
-                # Cancel the Celery task
-                celery_app.control.revoke(active_task.task_id, terminate=True)
-                # Mark as cancelled in database
-                active_task.is_cancelled = True
-                logger.info(f"Cancelled AI task {active_task.task_id} for blocked user {user.user_code}")
-            except Exception as e:
-                logger.error(f"Failed to cancel task {active_task.task_id}: {str(e)}")
+    # If blocking the user, mark any active AI tasks as cancelled
+    # No more AI tasks to cancel since we're not using Celery
+    # Just block the user directly
     
     db.commit()
     
@@ -830,25 +828,9 @@ async def toggle_ai_responses(
     
     user.ai_responses_enabled = ai_toggle_request.ai_responses_enabled
     
-    # If disabling AI responses, cancel any active AI tasks
-    if not ai_toggle_request.ai_responses_enabled:
-        from celery_app import celery_app
-        
-        # Find and cancel active AI tasks for this user
-        active_tasks = db.query(ActiveAITask).filter(
-            ActiveAITask.user_id == user.id,
-            ActiveAITask.is_cancelled == False
-        ).all()
-        
-        for active_task in active_tasks:
-            try:
-                # Cancel the Celery task
-                celery_app.control.revoke(active_task.task_id, terminate=True)
-                # Mark as cancelled in database
-                active_task.is_cancelled = True
-                logger.info(f"Cancelled AI task {active_task.task_id} for user {user.user_code} (AI responses disabled)")
-            except Exception as e:
-                logger.error(f"Failed to cancel task {active_task.task_id}: {str(e)}")
+    # If disabling AI responses, mark any active AI tasks as cancelled
+    # No more AI tasks to cancel since we're not using Celery
+    # Just disable AI responses directly
     
     db.commit()
     
@@ -1278,103 +1260,8 @@ async def get_active_system_prompt(
 # AI MODEL ENDPOINTS (Integrated from AI Server)
 # ============================================================================
 
-@app.post("/ai/init-session")
-async def init_ai_session(session_data: dict, db: Session = Depends(get_db)):
-    """
-    Initialize an AI chat session with system prompt
-    This replaces the old AI server init-session endpoint
-    """
-    try:
-        session_id = session_data.get("session_id")
-        system_prompt = session_data.get("system_prompt", "")
-        
-        if not session_id:
-            raise HTTPException(400, "Missing session_id")
-        
-        if not system_prompt:
-            raise HTTPException(400, "Missing system_prompt")
-        
-        # Create session in AI model manager
-        ai_session = ai_model_manager.create_session(session_id, system_prompt)
-        
-        # Also create/update database session for tracking
-        db_session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
-        if not db_session:
-            # Create new database session
-            db_session = ChatSession(
-                id=session_id,
-                user_id=session_data.get("user_id"),  # Optional
-                scenario_prompt=system_prompt,
-                is_active=True
-            )
-            db.add(db_session)
-        else:
-            # Update existing session
-            db_session.scenario_prompt = system_prompt
-            db_session.is_active = True
-            db_session.updated_at = datetime.now(timezone.utc)
-        
-        db.commit()
-        
-        logger.info(f"🎯 AI Session {session_id} initialized successfully")
-        return {"message": "AI Session initialized successfully", "session_id": session_id}
-        
-    except Exception as e:
-        logger.error(f"❌ Failed to initialize AI session: {e}")
-        raise HTTPException(500, f"Failed to initialize AI session: {str(e)}")
-
-@app.post("/ai/chat")
-async def ai_chat(req: ChatMessageRequest, db: Session = Depends(get_db)):
-    """
-    Handle AI chat requests
-    This replaces the old AI server chat endpoint
-    """
-    try:
-        # Get session ID from request
-        session_id = req.session_id if hasattr(req, 'session_id') else None
-        if not session_id:
-            raise HTTPException(400, "Missing session_id")
-        
-        # Check if AI session exists
-        ai_session = ai_model_manager.get_session(session_id)
-        if not ai_session:
-            raise HTTPException(404, "AI session not found. Initialize with /ai/init-session first.")
-        
-        # Generate AI response
-        ai_response = ai_model_manager.generate_response(
-            session_id=session_id,
-            user_message=req.message,
-            max_tokens=req.max_tokens if hasattr(req, 'max_tokens') else 200,
-            temperature=req.temperature if hasattr(req, 'temperature') else 0.7
-        )
-        
-        # Save message to database
-        db_session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
-        if db_session:
-            # Save user message
-            user_message = Message(
-                session_id=db_session.id,
-                content=req.message,
-                is_from_user=True
-            )
-            db.add(user_message)
-            
-            # Save AI response
-            ai_message = Message(
-                session_id=db_session.id,
-                content=ai_response,
-                is_from_user=False
-            )
-            db.add(ai_message)
-            
-            db.commit()
-        
-        logger.info(f"💬 AI chat response generated for session {session_id}")
-        return {"response": ai_response}
-        
-    except Exception as e:
-        logger.error(f"❌ AI chat failed: {e}")
-        raise HTTPException(500, f"AI chat failed: {str(e)}")
+# AI endpoints removed - AI is now integrated directly into chat flow
+# No more separate /ai/init-session or /ai/chat needed
 
 @app.get("/ai/health")
 async def ai_health_check():
