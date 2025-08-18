@@ -255,24 +255,12 @@ class AIModelManager:
     def build_chatml_prompt(self, system_prompt: str, history: List[str], message_roles: List[str], user_message: str) -> str:
         """Build enhanced ChatML format prompt for better accuracy"""
         
-        # Enhanced system prompt applying guide principles: Accuracy-First + Speed
+        # Clean, focused system prompt for better accuracy
         enhanced_system = f"""<|im_start|>system
         {system_prompt.strip()}
         
-        **ACCURACY-FIRST INSTRUCTIONS (Guide Principles):**
-        - Prioritize factual accuracy over speed
-        - If uncertain, say "I need to verify" rather than guessing
-        - Always double-check technical details
-        - Stay in character at all times
-        - Respond as the specified person
-        - Answer the user's question directly
-        - Use first person dialogue only
-        - Keep responses under 500 characters for meaningful conversation
-        
-        **QUALITY ASSURANCE:**
-        - Verify information before responding
-        - Maintain character consistency
-        - Avoid generic or off-topic responses
+        You are a helpful assistant. Stay in character and respond naturally to user questions.
+        Keep responses concise and relevant.
         <|im_end|>
         
         """
@@ -337,7 +325,7 @@ class AIModelManager:
             with torch.no_grad():
                 outputs = self.model.generate(
                     **inputs,
-                    max_new_tokens=200,          # Optimized for 500 char limit + meaningful responses
+                    max_new_tokens=100,          # Optimized for 200 char limit + concise responses
                     temperature=0.28,            # Slightly lower for accuracy compensation (guide principle)
                     top_p=0.9,                  # More flexible than 0.85 for better accuracy (guide principle)
                     top_k=30,                   # Better than 25 for accuracy (guide principle)
@@ -357,13 +345,8 @@ class AIModelManager:
             response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
             
             # Extract only the new tokens (remove the input prompt)
-            # Look for the last assistant tag and extract from there
-            if "<|im_start|>assistant\n" in response:
-                response = response.split("<|im_start|>assistant\n")[-1].strip()
-            else:
-                # Fallback: use token-based extraction
-                input_length = inputs["input_ids"].shape[1]
-                response = response[input_length:].strip()
+            # Use improved extraction logic for better accuracy
+            response = self._extract_ai_response(response, prompt)
             
             # Validate and enhance response for better accuracy
             validated_response = self._validate_response(response, session_id)
@@ -389,6 +372,70 @@ class AIModelManager:
             logger.error(f"❌ Failed to generate response: {e}")
             raise
     
+    def _extract_ai_response(self, full_response: str, prompt: str) -> str:
+        """Extract only the AI-generated response, removing prompt contamination"""
+        try:
+            # Method 1: Remove the input prompt completely
+            if prompt in full_response:
+                response = full_response.split(prompt)[-1].strip()
+                logger.info(f"📝 Extracted response using prompt removal method")
+            else:
+                # Method 2: Look for assistant tag
+                if "<|im_start|>assistant\n" in full_response:
+                    response = full_response.split("<|im_start|>assistant\n")[-1].strip()
+                    logger.info(f"📝 Extracted response using assistant tag method")
+                else:
+                    # Method 3: Use token-based extraction as fallback
+                    response = full_response
+                    logger.info(f"📝 Using full response as fallback")
+            
+            # Clean up any system instructions that leaked through
+            response = self._clean_system_instructions(response)
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"❌ Response extraction failed: {e}")
+            return full_response  # Return original if extraction fails
+    
+    def _clean_system_instructions(self, response: str) -> str:
+        """Remove system instructions and unwanted content from AI responses"""
+        try:
+            # Remove system instruction patterns
+            unwanted_patterns = [
+                "**REMEMBER:**",
+                "**CHARACTER CONSISTENCY CHECK:**",
+                "You MUST stay in character",
+                "You MUST respond in first person",
+                "You MUST keep responses under 140 characters",
+                "You MUST never break character",
+                "You MUST respond to the user's specific questions",
+                "You MUST maintain the exact personality",
+                "Before responding, ask yourself:",
+                "If not, adjust your response",
+                "Start the conversation like you normally would",
+                "**CRITICAL INSTRUCTIONS - YOU MUST FOLLOW THESE EXACTLY:**"
+            ]
+            
+            cleaned_response = response
+            for pattern in unwanted_patterns:
+                if pattern in cleaned_response:
+                    # Remove everything from the pattern onwards
+                    cleaned_response = cleaned_response.split(pattern)[0].strip()
+                    logger.info(f"🧹 Cleaned response: removed '{pattern}'")
+            
+            # Remove any remaining markdown formatting
+            cleaned_response = cleaned_response.replace("**", "").replace("*", "")
+            
+            # Remove excessive newlines and spaces
+            cleaned_response = " ".join(cleaned_response.split())
+            
+            return cleaned_response
+            
+        except Exception as e:
+            logger.error(f"❌ System instruction cleaning failed: {e}")
+            return response
+    
     def _validate_response(self, response: str, session_id: str) -> str:
         """Validate and enhance response for better accuracy"""
         try:
@@ -398,10 +445,10 @@ class AIModelManager:
             # Clean up response
             cleaned = response.strip()
             
-            # Ensure response is under 500 characters for meaningful conversation
-            if len(cleaned) > 500:
-                cleaned = cleaned[:497] + "..."
-                logger.info(f"📝 Truncated response to 500 chars for session {session_id}")
+            # Ensure response is under 200 characters for concise, focused responses
+            if len(cleaned) > 200:
+                cleaned = cleaned[:197] + "..."
+                logger.info(f"📝 Truncated response to 200 chars for session {session_id}")
             
             # Check for character consistency indicators
             session = self.user_sessions.get(session_id, {})
