@@ -316,15 +316,10 @@ class AIModelManager:
                     pad_token_id=self.tokenizer.eos_token_id,
                     eos_token_id=self.tokenizer.eos_token_id,
                     repetition_penalty=1.15,    # Optimized for accuracy (guide principle)
-                    length_penalty=0.85,        # Balanced for accuracy and speed
-                    early_stopping=True,        # Stop when EOS token is generated
                     use_cache=True,             # Enable KV cache for memory efficiency
                     num_beams=1,                # Single beam for memory efficiency
                     # New guide-based parameters for accuracy preservation
                     typical_p=0.9,              # Filters atypical tokens (guide principle)
-                    tfs_z=0.95,                 # Tail-free sampling (guide principle)
-                    # Memory optimization for RTX 4060
-                    max_memory={0: f"{settings.ai_max_memory_gb}GB"} if self.device == "cuda" else None,
                 )
             
             generation_time = time.time() - start_time
