@@ -56,13 +56,10 @@ class AIModelManager:
                 raise ValueError("❌ Cannot use both 4-bit and 8-bit quantization simultaneously")
             
             if settings.ai_use_4bit and self.device == "cuda":
-                logger.info("🔧 Configuring 4-bit quantization for 8GB RTX 4060...")
+                logger.info("🔧 Using simple 4-bit quantization (like working script)...")
                 quantization_config = BitsAndBytesConfig(
                     load_in_4bit=True,
-                    bnb_4bit_compute_dtype=torch.float16,  # Better VRAM efficiency
-                    bnb_4bit_use_double_quant=True,
-                    bnb_4bit_quant_type="nf4",
-                    llm_int8_skip_modules=["lm_head", "embed_tokens"]  # Skip more layers for VRAM
+                    bnb_4bit_compute_dtype=torch.float16  # Only 2 parameters like working script
                 )
             elif settings.ai_use_8bit and self.device == "cuda":
                 logger.info("🔧 Configuring 8-bit quantization...")
@@ -74,20 +71,10 @@ class AIModelManager:
                 logger.info("🔧 No quantization - using full precision")
                 quantization_config = None
             
-            # AGGRESSIVE VRAM REDUCTION for 8GB RTX 4060 (Emergency Mode)
-            if self.device == "cuda":
-                # CRITICAL: Reduce to absolute minimum for 8GB VRAM
-                gpu_memory = 4.5  # Reduced from 6.0GB to 4.5GB
-                cpu_memory = 3.5  # Increased CPU offloading
-                
-                max_memory = {
-                    0: f"{gpu_memory}GB",      # GPU memory (4.5GB - CRITICAL)
-                    "cpu": f"{cpu_memory}GB"    # CPU memory for heavy offloading
-                }
-                logger.warning(f"🚨 EMERGENCY VRAM MODE: GPU {gpu_memory}GB, CPU {cpu_memory}GB")
-                logger.warning(f"📏 Context reduced to {settings.ai_max_context_length} tokens")
-            else:
-                max_memory = None
+            # SIMPLE APPROACH - Use working pattern from user's script
+            # No complex memory management - let transformers handle it automatically
+            max_memory = None  # Let device_map="auto" handle memory
+            logger.info("🔧 Using simple auto memory management (like working script)")
             
             # Load model with RTX 4060 optimizations + Guide's accuracy principles
             logger.info("📥 Loading 7B model with RTX 4060 + Guide optimization...")
@@ -119,17 +106,16 @@ class AIModelManager:
             except Exception as e:
                 logger.warning(f"⚠️ Flash Attention 2 not available, using default: {e}")
             
+            # Use EXACT same pattern as working script
             self.model = AutoModelForCausalLM.from_pretrained(
                 settings.ai_model_name,
                 cache_dir=settings.ai_model_cache_dir,
                 quantization_config=quantization_config,
-                device_map="balanced_low_0" if quantization_config else None,  # Optimized for low VRAM
+                device_map="auto" if quantization_config else None,  # Simple auto mapping like working script
                 torch_dtype=torch.float16,
                 low_cpu_mem_usage=True,
                 trust_remote_code=True,
-                max_memory=max_memory,
-                offload_folder=settings.ai_offload_folder,
-                offload_state_dict=True,
+                # Remove all complex memory management - let transformers handle it
                 **attn_kwargs
             )
             
@@ -145,15 +131,10 @@ class AIModelManager:
             gc.collect()
             torch.cuda.empty_cache()
             
-            # Memory monitoring after model loading
+            # Simple memory check (like working script)
             if self.device == "cuda":
                 allocated = torch.cuda.memory_allocated() / 1024**3
-                reserved = torch.cuda.memory_reserved() / 1024**3
-                logger.info(f"📉 Post-load VRAM: Allocated={allocated:.2f}GB, Reserved={reserved:.2f}GB")
-                
-                if allocated > 7.0:
-                    logger.warning("⚠️ High VRAM usage - activating emergency measures")
-                    self._activate_low_memory_mode()
+                logger.info(f"📉 VRAM used: {allocated:.2f}GB")
             
             # Precision consistency for inference (guide recommendation)
             torch.set_grad_enabled(False)  # Ensure gradients are disabled
@@ -436,34 +417,26 @@ class AIModelManager:
                     max_length=settings.ai_max_context_length
                 ).to(self.device)
                 
-            # Pre-generation VRAM monitoring for 8GB RTX 4060
-            if self.device == "cuda":
-                current_mem = torch.cuda.memory_allocated() / 1024**3
-                if current_mem > 6.5:  # 6.5GB threshold
-                    logger.warning("⚠️ Pre-generation VRAM high ({:.2f}GB) - clearing cache".format(current_mem))
-                    torch.cuda.empty_cache()
-                    gc.collect()
+            # Simple pre-generation check (like working script)
+            pass
             
             # Setup inference precision for maximum accuracy
             self._setup_inference_precision()
             
             # Optimized parameters applying guide principles: Accuracy-First + Speed Optimization
             with torch.inference_mode():  # Stronger than no_grad for inference accuracy
+                                # Use generation parameters like working script
                 outputs = self.model.generate(
-                        **inputs,
-                        max_new_tokens=100,          # Optimized for 200 char limit + concise responses
-                        temperature=0.28,            # Slightly lower for accuracy compensation (guide principle)
-                        top_p=0.9,                  # More flexible than 0.85 for better accuracy (guide principle)
-                        top_k=30,                   # Better than 25 for accuracy (guide principle)
-                        do_sample=True,              # Enable sampling for better quality
-                        pad_token_id=self.tokenizer.eos_token_id,
-                        eos_token_id=self.tokenizer.eos_token_id,
-                        repetition_penalty=1.15,    # Optimized for accuracy (guide principle)
-                        use_cache=True,             # Enable KV cache for memory efficiency
-                        num_beams=1,                # Single beam for memory efficiency
-                        # New guide-based parameters for accuracy preservation
-                        typical_p=0.9,              # Filters atypical tokens (guide principle)
-                    )
+                    **inputs,
+                    max_new_tokens=100,
+                    temperature=0.8,            # Like working script
+                    do_sample=True,
+                    top_p=0.95,                # Like working script
+                    pad_token_id=self.tokenizer.eos_token_id,
+                    eos_token_id=self.tokenizer.eos_token_id,
+                    repetition_penalty=1.2,    # Like working script
+                    no_repeat_ngram_size=3     # Like working script
+                )
                 
                 generation_time = time.time() - start_time
                 
