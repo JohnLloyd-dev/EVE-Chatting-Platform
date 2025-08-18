@@ -172,10 +172,38 @@ class AIModelManager:
     def rebuild_session_from_database(self, session_id: str, db_session, db) -> bool:
         """Rebuild AI session from database data"""
         try:
-            from main import get_complete_system_prompt
+            # Avoid circular import by getting system prompt directly
+            # Get the complete system prompt from database
+            from database import SystemPrompt
             
-            # Get the complete system prompt
-            system_prompt = get_complete_system_prompt(db, str(db_session.user.id), db_session.scenario_prompt or "")
+            # Get user-specific or global system prompt
+            if db_session.user and db_session.user.id:
+                user_prompt = db.query(SystemPrompt).filter(
+                    SystemPrompt.user_id == str(db_session.user.id),
+                    SystemPrompt.is_active == True
+                ).first()
+                if user_prompt:
+                    system_prompt = f"{user_prompt.head_prompt}\n\n{user_prompt.rule_prompt}"
+                else:
+                    # Fall back to global prompt
+                    global_prompt = db.query(SystemPrompt).filter(
+                        SystemPrompt.user_id.is_(None),
+                        SystemPrompt.is_active == True
+                    ).first()
+                    if global_prompt:
+                        system_prompt = f"{global_prompt.head_prompt}\n\n{global_prompt.rule_prompt}"
+                    else:
+                        system_prompt = "You are a helpful assistant."
+            else:
+                # Get global active prompt
+                active_prompt = db.query(SystemPrompt).filter(
+                    SystemPrompt.user_id.is_(None),
+                    SystemPrompt.is_active == True
+                ).first()
+                if active_prompt:
+                    system_prompt = f"{active_prompt.head_prompt}\n\n{active_prompt.rule_prompt}"
+                else:
+                    system_prompt = "You are a helpful assistant."
             
             # Create new AI session with correct system prompt
             self.create_session(session_id, system_prompt)
