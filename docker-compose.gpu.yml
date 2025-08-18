@@ -61,38 +61,8 @@ services:
       redis:
         condition: service_healthy
 
-  # Celery Worker (with GPU-optimized AI model)
-  celery-worker:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile.gpu
-    environment:
-      - DATABASE_URL=postgresql://adam2025man:adam2025@postgres:5432/chatting_platform
-      - REDIS_URL=redis://redis:6379/0
-      - TRANSFORMERS_CACHE=/app/.cache/huggingface
-      - HF_HOME=/app/.cache/huggingface
-      - CUDA_VISIBLE_DEVICES=0
-      - PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
-      - TOKENIZERS_PARALLELISM=false
-      - TRANSFORMERS_OFFLINE=0
-      - TORCH_CUDA_ARCH_LIST=8.6
-      - FORCE_CUDA=1
-    volumes:
-      - ./backend:/app
-      - ai_model_cache:/app/.cache/huggingface
-    command: celery -A celery_app worker --loglevel=info
-    deploy:
-      resources:
-        limits:
-          memory: 16G
-        reservations:
-          memory: 12G
-    runtime: nvidia
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+  # Celery Worker removed - AI model now integrated into backend
+  # No separate worker needed for real-time chat
 
   # Next.js Frontend
   frontend:

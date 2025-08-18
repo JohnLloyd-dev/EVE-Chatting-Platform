@@ -59,25 +59,8 @@ services:
       redis:
         condition: service_healthy
 
-  # Celery Worker (with integrated AI model)
-  celery-worker:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    environment:
-      - DATABASE_URL=postgresql://adam2025man:adam2025@postgres:5432/chatting_platform
-      - REDIS_URL=redis://redis:6379/0
-      - TRANSFORMERS_CACHE=/app/.cache/huggingface
-      - HF_HOME=/app/.cache/huggingface
-    volumes:
-      - ./backend:/app
-      - ai_model_cache:/app/.cache/huggingface
-    command: celery -A celery_app worker --loglevel=info
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+  # Celery Worker removed - AI model now integrated into backend
+  # No separate worker needed for real-time chat
 
   # AI Server functionality now integrated into backend
 
