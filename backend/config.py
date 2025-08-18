@@ -35,9 +35,9 @@ class Settings(BaseSettings):
     ai_use_4bit: bool = os.getenv("AI_USE_4BIT", "true").lower() == "true"
     ai_use_8bit: bool = os.getenv("AI_USE_8BIT", "false").lower() == "true"
     
-    # RTX 4060 Memory Optimization Settings (Guide-Based)
-    ai_max_context_length: int = int(os.getenv("AI_MAX_CONTEXT_LENGTH", "1024"))  # Reduced from 2048
-    ai_max_memory_gb: float = float(os.getenv("AI_MAX_MEMORY_GB", "7.0"))  # Reserve 1GB for system
+    # RTX 4060 Memory Optimization Settings (Emergency VRAM Mode)
+    ai_max_context_length: int = int(os.getenv("AI_MAX_CONTEXT_LENGTH", "512"))  # CRITICAL: Reduced to 512 for 8GB VRAM
+    ai_max_memory_gb: float = float(os.getenv("AI_MAX_MEMORY_GB", "4.5"))  # CRITICAL: Reduced to 4.5GB for 8GB VRAM
     ai_offload_folder: str = os.getenv("AI_OFFLOAD_FOLDER", "/app/offload")  # Disk offloading
     ai_batch_size: int = int(os.getenv("AI_BATCH_SIZE", "1"))  # Single batch for memory efficiency
     

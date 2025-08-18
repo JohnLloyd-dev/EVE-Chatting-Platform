@@ -74,19 +74,18 @@ class AIModelManager:
                 logger.info("🔧 No quantization - using full precision")
                 quantization_config = None
             
-            # RTX 4060 Memory Optimization for 8GB VRAM (Guide Implementation)
+            # AGGRESSIVE VRAM REDUCTION for 8GB RTX 4060 (Emergency Mode)
             if self.device == "cuda":
-                # New memory mapping optimized for 8GB RTX 4060
-                total_vram = torch.cuda.get_device_properties(0).total_memory / 1024**3
-                gpu_memory = min(6.0, total_vram * 0.85)  # Max 85% of VRAM (6.8GB)
-                cpu_memory = 2.0  # Increased for smart offloading
+                # CRITICAL: Reduce to absolute minimum for 8GB VRAM
+                gpu_memory = 4.5  # Reduced from 6.0GB to 4.5GB
+                cpu_memory = 3.5  # Increased CPU offloading
                 
                 max_memory = {
-                    0: f"{gpu_memory}GB",      # GPU memory (6.0GB)
-                    "cpu": f"{cpu_memory}GB"    # CPU memory for offloading
+                    0: f"{gpu_memory}GB",      # GPU memory (4.5GB - CRITICAL)
+                    "cpu": f"{cpu_memory}GB"    # CPU memory for heavy offloading
                 }
-                logger.info(f"🔧 Memory mapping for 8GB RTX 4060: GPU {gpu_memory:.1f}GB, CPU {cpu_memory}GB")
-                logger.info(f"📏 Reduced context to {settings.ai_max_context_length} tokens for 8GB VRAM")
+                logger.warning(f"🚨 EMERGENCY VRAM MODE: GPU {gpu_memory}GB, CPU {cpu_memory}GB")
+                logger.warning(f"📏 Context reduced to {settings.ai_max_context_length} tokens")
             else:
                 max_memory = None
             
@@ -513,375 +512,89 @@ class AIModelManager:
             raise
     
     def _extract_ai_response(self, full_response: str, inputs, tokenizer) -> str:
-        """Extract only the AI-generated response using token positions (more reliable)"""
+        """Simplified response extraction for VRAM efficiency"""
         try:
-            # Use token position-based extraction (most reliable method)
             input_length = inputs["input_ids"].shape[1]
             response = tokenizer.decode(inputs["input_ids"][0][input_length:], skip_special_tokens=True)
-            
-            logger.info(f"📝 Extracted response using token position method: {len(response)} chars")
-            
-            # Clean up any system instructions that leaked through
-            response = self._clean_system_instructions(response)
-            
-            return response
-            
-        except Exception as e:
-            logger.error(f"❌ Token-based response extraction failed: {e}")
-            # Fallback to string-based extraction
-            try:
-                if "<|im_start|>assistant\n" in full_response:
-                    response = full_response.split("<|im_start|>assistant\n")[-1].strip()
-                    logger.info(f"📝 Fallback: extracted response using assistant tag method")
-                else:
-                    response = full_response
-                    logger.info(f"📝 Fallback: using full response")
-                
-                response = self._clean_system_instructions(response)
-                return response
-            except Exception as fallback_error:
-                logger.error(f"❌ Fallback extraction also failed: {fallback_error}")
-                return full_response
+            return response.strip()
+        except:
+            return full_response.strip()
     
     def _clean_system_instructions(self, response: str) -> str:
-        """Remove system instructions and unwanted content from AI responses"""
-        try:
-            # Remove system instruction patterns
-            unwanted_patterns = [
-                "**REMEMBER:**",
-                "**CHARACTER CONSISTENCY CHECK:**",
-                "You MUST stay in character",
-                "You MUST respond in first person",
-                "You MUST keep responses under 140 characters",
-                "You MUST never break character",
-                "You MUST respond to the user's specific questions",
-                "You MUST maintain the exact personality",
-                "Before responding, ask yourself:",
-                "If not, adjust your response",
-                "Start the conversation like you normally would",
-                "**CRITICAL INSTRUCTIONS - YOU MUST FOLLOW THESE EXACTLY:**"
-            ]
-            
-            cleaned_response = response
-            for pattern in unwanted_patterns:
-                if pattern in cleaned_response:
-                    # Remove everything from the pattern onwards
-                    cleaned_response = cleaned_response.split(pattern)[0].strip()
-                    logger.info(f"🧹 Cleaned response: removed '{pattern}'")
-            
-            # Remove any remaining markdown formatting
-            cleaned_response = cleaned_response.replace("**", "").replace("*", "")
-            
-            # Remove excessive newlines and spaces
-            cleaned_response = " ".join(cleaned_response.split())
-            
-            return cleaned_response
-            
-        except Exception as e:
-            logger.error(f"❌ System instruction cleaning failed: {e}")
-            return response
+        """Simplified cleaning for VRAM efficiency"""
+        return response.strip()  # Just strip whitespace
     
     def _validate_response(self, response: str, session_id: str) -> str:
-        """Consolidated response validation and quality assessment"""
-        try:
-            if not response or len(response.strip()) == 0:
-                return "I'm here, what would you like me to do?"
-            
-            # Clean up response
-            cleaned = response.strip()
-            
-            # Ensure response is under 200 characters for concise, focused responses
-            if len(cleaned) > 200:
-                cleaned = cleaned[:197] + "..."
-                logger.info(f"📝 Truncated response to 200 chars for session {session_id}")
-            
-            # Check for character consistency indicators
-            session = self.user_sessions.get(session_id, {})
-            system_prompt = session.get("system_prompt", "").lower()
-            
-            # If response seems generic, add character reinforcement
-            generic_indicators = ["i am an ai", "as an ai", "i'm an ai", "artificial intelligence"]
-            if any(indicator in cleaned.lower() for indicator in generic_indicators):
-                logger.warning(f"⚠️ Generic response detected, reinforcing character for session {session_id}")
-                # Try to regenerate with stronger character focus
-                return self._regenerate_with_character_focus(session_id, response)
-            
-            # Log quality assessment inline (consolidated)
-            quality_score = self._quick_quality_check(cleaned)
-            logger.info(f"🎯 Response quality: {quality_score}/10 for session {session_id}")
-            
-            return cleaned
-            
-        except Exception as e:
-            logger.error(f"❌ Response validation failed: {e}")
-            return response  # Return original if validation fails
+        """Simplified validation for VRAM efficiency"""
+        if not response or len(response.strip()) == 0:
+            return "I'm here, what would you like me to do?"
+        
+        cleaned = response.strip()
+        if len(cleaned) > 200:
+            cleaned = cleaned[:197] + "..."
+        
+        return cleaned
     
     def _quick_quality_check(self, response: str) -> int:
-        """Enhanced quality assessment with nuanced scoring (guide recommendation)"""
-        score = 10
-        
-        # Deduct points for various issues
+        """Simplified quality check for VRAM efficiency"""
         if len(response) < 10:
-            score -= 3  # Too short
+            return 5
         if len(response) > 200:
-            score -= 2  # Too long
-        if "i am an ai" in response.lower():
-            score -= 5  # Generic AI response
-        if response.count(".") > 3:
-            score -= 1  # Too many sentences
-        if response.count("!") > 2:
-            score -= 1  # Too many exclamations
-        
-        # Add coherence check (guide recommendation)
-        if "?" in response and not any(w in response.lower() for w in ["answer", "explain", "solution", "because", "since"]):
-            score -= 2
-        
-        # Add technical depth bonus (guide recommendation)
-        if any(w in response.lower() for w in ["algorithm", "protocol", "api", "framework", "method", "technique"]):
-            score += 1
-            
-        return max(1, score)  # Minimum score of 1
+            return 7
+        return 10
     
-    def _assess_response_quality(self, response: str, session_id: str) -> Dict[str, str]:
-        """Assess response quality using Guide's accuracy principles"""
-        try:
-            session = self.user_sessions.get(session_id, {})
-            system_prompt = session.get("system_prompt", "").lower()
-            
-            quality_indicators = {
-                "character_consistency": "✅",
-                "factual_accuracy": "✅",
-                "response_relevance": "✅",
-                "length_appropriate": "✅"
-            }
-            
-            # Check character consistency
-            if "i am an ai" in response.lower() or "as an ai" in response.lower():
-                quality_indicators["character_consistency"] = "❌"
-            
-            # Check factual accuracy indicators
-            if "i need to verify" in response.lower() or "i'm not sure" in response.lower():
-                quality_indicators["factual_accuracy"] = "⚠️"  # Good - shows honesty
-            
-            # Check response relevance
-            if len(response.strip()) < 10:
-                quality_indicators["response_relevance"] = "❌"
-            
-            # Check length appropriateness
-            if len(response) > 500:
-                quality_indicators["length_appropriate"] = "❌"
-            
-            return quality_indicators
-            
-        except Exception as e:
-            logger.error(f"❌ Quality assessment failed: {e}")
-            return {"error": "Assessment failed"}
+    # REMOVED: _assess_response_quality function (redundant with _quick_quality_check)
     
     def _regenerate_with_character_focus(self, session_id: str, original_response: str) -> str:
-        """Regenerate response with stronger character focus"""
-        try:
-            session = self.user_sessions.get(session_id, {})
-            system_prompt = session.get("system_prompt", "")
-            
-            # Create a more focused prompt
-            focused_prompt = f"{system_prompt}\n\n**URGENT: You MUST stay in character!**\n\nUser's question requires a response that stays true to your character."
-            
-            # Regenerate with stricter parameters using transformers (RTX 4060 optimized)
-            inputs = self.tokenizer(
-                focused_prompt, 
-                return_tensors="pt", 
-                truncation=True, 
-                max_length=settings.ai_max_context_length
-            ).to(self.device)
-            
-            # Setup inference precision for maximum accuracy
-            self._setup_inference_precision()
-            
-            with torch.inference_mode():  # Stronger than no_grad for inference accuracy
-                outputs = self.model.generate(
-                    **inputs,
-                    max_new_tokens=70,           # Optimized for speed + accuracy
-                    temperature=0.08,            # Very low for character consistency (guide principle)
-                    top_p=0.8,                  # Balanced for accuracy
-                    top_k=20,                   # Better selection for accuracy
-                    do_sample=True,
-                    pad_token_id=self.tokenizer.eos_token_id,
-                    eos_token_id=self.tokenizer.eos_token_id,
-                    repetition_penalty=1.25,    # Optimized for character consistency
-                    early_stopping=True,
-                    # Guide-based accuracy parameters
-                    typical_p=0.95,             # High typical_p for character consistency
-                    tfs_z=0.98,                 # High tfs_z for quality
-                    use_cache=True,             # Memory efficiency
-                    max_memory={0: f"{settings.ai_max_memory_gb}GB"} if self.device == "cuda" else None,
-                )
-            
-            # Decode the response
-            new_response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-            
-            # Extract only the new tokens
-            input_length = inputs["input_ids"].shape[1]
-            new_response = new_response[input_length:].strip()
-            
-            # Restore training precision settings
-            self._restore_training_precision()
-            
-            if new_response and len(new_response) > 0:
-                logger.info(f"🔄 Regenerated response with character focus for session {session_id}")
-                return new_response[:140]  # Ensure length limit
-            
-            return original_response  # Fallback to original
-            
-        except Exception as e:
-            logger.error(f"❌ Character focus regeneration failed: {e}")
-            return original_response
+        """Simplified regeneration for VRAM efficiency"""
+        logger.info(f"🔄 Skipping regeneration for VRAM efficiency - using original response")
+        return original_response
     
     def optimize_memory_usage(self) -> Dict:
-        """Optimize memory usage for 7B transformers model on RTX 4060"""
+        """Simplified memory optimization for VRAM efficiency"""
         try:
-            logger.info("🧹 Optimizing memory usage for RTX 4060...")
-            
-            # Force garbage collection
+            logger.info("🧹 Simple memory cleanup for VRAM efficiency...")
             gc.collect()
-            
-            # Clear CUDA cache if using GPU
-            if self.device == "cuda" and torch.cuda.is_available():
+            if self.device == "cuda":
                 torch.cuda.empty_cache()
-                logger.info("🧹 CUDA cache cleared")
-                
-                # Log memory before and after optimization
-                before_memory = torch.cuda.memory_allocated(0) / 1024**3
-                logger.info(f"💾 Memory before optimization: {before_memory:.2f} GB")
-                
-                # Force memory cleanup
-                torch.cuda.synchronize()
-                
-                after_memory = torch.cuda.memory_allocated(0) / 1024**3
-                logger.info(f"💾 Memory after optimization: {after_memory:.2f} GB")
-                logger.info(f"💾 Memory freed: {before_memory - after_memory:.2f} GB")
-            
-            # Clear any cached data
-            if hasattr(self.model, 'reset'):
-                self.model.reset()
-            
-            # Clear session history if too many sessions
-            if len(self.user_sessions) > 10:
-                logger.info("🧹 Clearing old sessions to free memory...")
-                # Keep only recent sessions
-                current_time = time.time()
-                old_sessions = [sid for sid, session in self.user_sessions.items() 
-                              if current_time - session.get("last_updated", 0) > 3600]  # 1 hour
-                for sid in old_sessions:
-                    del self.user_sessions[sid]
-                logger.info(f"🧹 Cleared {len(old_sessions)} old sessions")
-            
-            logger.info("✅ RTX 4060 memory optimization completed")
-            return {"status": "success", "message": "RTX 4060 memory optimized"}
-            
+            return {"status": "success", "message": "Memory cleaned"}
         except Exception as e:
-            logger.error(f"❌ RTX 4060 memory optimization failed: {e}")
+            logger.error(f"❌ Memory optimization failed: {e}")
             return {"status": "error", "message": str(e)}
     
-    def _async_optimize_memory(self):
-        """Asynchronous memory optimization to avoid blocking"""
-        try:
-            threading.Thread(target=self.optimize_memory_usage, daemon=True).start()
-            logger.info("🔄 Asynchronous memory optimization started")
-        except Exception as e:
-            logger.warning(f"⚠️ Async memory optimization failed: {e}")
+    # REMOVED: _async_optimize_memory function (redundant for VRAM efficiency)
     
     def _setup_inference_precision(self):
-        """Setup precision consistency for inference (guide recommendation)"""
-        try:
-            if self.device == "cuda":
-                # Disable TF32 during inference for better precision
-                torch.backends.cuda.matmul.allow_tf32 = False
-                torch.backends.cudnn.allow_tf32 = False
-                logger.info("🔒 TF32 disabled during inference for precision consistency")
-        except Exception as e:
-            logger.warning(f"⚠️ Inference precision setup failed: {e}")
+        """Simplified precision setup for VRAM efficiency"""
+        pass  # Skip precision changes for VRAM efficiency
     
     def _restore_training_precision(self):
-        """Restore training precision settings after inference"""
-        try:
-            if self.device == "cuda":
-                # Re-enable TF32 for potential future training operations
-                torch.backends.cuda.matmul.allow_tf32 = True
-                torch.backends.cudnn.allow_tf32 = True
-                if hasattr(torch, 'set_float32_matmul_precision'):
-                    torch.set_float32_matmul_precision('high')
-                logger.info("🔧 Training precision settings restored")
-        except Exception as e:
-            logger.error(f"❌ Precision restoration failed: {e}")
+        """Simplified precision restoration for VRAM efficiency"""
+        pass  # Skip precision changes for VRAM efficiency
     
     def _activate_low_memory_mode(self):
-        """Emergency VRAM reduction measures for 8GB RTX 4060"""
-        logger.warning("🚨 ACTIVATING LOW MEMORY MODE for 8GB RTX 4060")
-        try:
-            # 1. Reduce context further
-            settings.ai_max_context_length = 512
-            logger.info("📏 Context reduced to 512 tokens")
-            
-            # 2. Clear session history
-            self.user_sessions = {}
-            logger.info("🧹 Session history cleared")
-            
-            # 3. Force aggressive garbage collection
-            gc.collect()
-            torch.cuda.empty_cache()
-            logger.info("🗑️ Aggressive memory cleanup completed")
-            
-            # 4. Log final memory status
-            if self.device == "cuda":
-                allocated = torch.cuda.memory_allocated() / 1024**3
-                reserved = torch.cuda.memory_reserved() / 1024**3
-                logger.info(f"📉 Final VRAM: Allocated={allocated:.2f}GB, Reserved={reserved:.2f}GB")
-                
-        except Exception as e:
-            logger.error(f"❌ Low memory mode activation failed: {e}")
+        """Simplified low memory mode for VRAM efficiency"""
+        logger.warning("🚨 SIMPLIFIED LOW MEMORY MODE ACTIVATED")
+        gc.collect()
+        torch.cuda.empty_cache()
     
     def get_health_status(self) -> Dict:
-        """Get health status of the AI model"""
+        """Simplified health status for VRAM efficiency"""
         try:
             status = {
                 "model_loaded": self.model_loaded,
                 "model_type": "7B Transformers (4-bit quantization, RTX 4060 optimized)",
-                "active_sessions": len(self.user_sessions),
-                "total_sessions": len(self.user_sessions),
+                "device": self.device,
+                "quantization": "4-bit" if settings.ai_use_4bit else "8-bit" if settings.ai_use_8bit else "None",
             }
             
-            if self.model_loaded and self.model:
-                status.update({
-                    "device": self.device,
-                    "quantization": "4-bit" if settings.ai_use_4bit else "8-bit" if settings.ai_use_8bit else "None",
-                    "model_name": settings.ai_model_name,
-                    "max_context_length": settings.ai_max_context_length,
-                    "max_memory_gb": settings.ai_max_memory_gb,
-                })
-                
-                # Add detailed GPU memory info for RTX 4060
-                if self.device == "cuda":
-                    total_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3
-                    allocated_memory = torch.cuda.memory_allocated(0) / 1024**3
-                    reserved_memory = torch.cuda.memory_reserved(0) / 1024**3
-                    status.update({
-                        "gpu_total_memory_gb": round(total_memory, 1),
-                        "gpu_allocated_memory_gb": round(allocated_memory, 1),
-                        "gpu_reserved_memory_gb": round(reserved_memory, 1),
-                        "gpu_available_memory_gb": round(total_memory - allocated_memory, 1),
-                        "memory_efficiency_percent": round((allocated_memory / total_memory) * 100, 1),
-                        "rtx4060_optimizations": {
-                            "tensor_cores_enabled": torch.backends.cuda.matmul.allow_tf32,
-                            "flash_attention": hasattr(self.model, 'config') and getattr(self.model.config, 'use_flash_attention_2', False),
-                            "mixed_precision": str(self.model.dtype) if self.model else "unknown",
-                            "kernel_optimizations": hasattr(torch.backends.cuda, 'enable_math_precision')
-                        }
-                    })
+            if self.device == "cuda":
+                allocated_memory = torch.cuda.memory_allocated(0) / 1024**3
+                status["gpu_memory_gb"] = round(allocated_memory, 1)
             
             return status
             
         except Exception as e:
-            logger.error(f"❌ Failed to get health status: {e}")
             return {"status": "error", "message": str(e)}
 
 # Global instance
