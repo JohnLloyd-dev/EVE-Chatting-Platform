@@ -4,7 +4,7 @@ import os
 
 class Settings(BaseSettings):
     # Database - Read from environment variable
-    database_url: str = os.getenv("DATABASE_URL", "postgresql://adam2025man:adam2025@postgres:5432/chatting_platform")
+    database_url: str = "postgresql://adam2025man:adam2025@postgres:5432/chatting_platform"
     
     # Redis
     redis_url: str = os.getenv("REDIS_URL", "redis://redis:6379/0")
