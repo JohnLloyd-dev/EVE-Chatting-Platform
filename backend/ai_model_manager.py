@@ -112,6 +112,37 @@ class AIModelManager:
         """Get an existing session"""
         return self.user_sessions.get(session_id)
     
+    def rebuild_session_from_database(self, session_id: str, db_session, db) -> bool:
+        """Rebuild AI session from database data"""
+        try:
+            from main import get_complete_system_prompt
+            
+            # Get the complete system prompt
+            system_prompt = get_complete_system_prompt(db, str(db_session.user.id), db_session.scenario_prompt or "")
+            
+            # Create new AI session with correct system prompt
+            self.create_session(session_id, system_prompt)
+            
+            # Get conversation history from database
+            from database import Message
+            messages = db.query(Message).filter(
+                Message.session_id == db_session.id
+            ).order_by(Message.created_at).all()
+            
+            # Rebuild conversation history
+            for message in messages:
+                if message.is_from_user:
+                    self.add_user_message(session_id, message.content)
+                else:
+                    self.add_assistant_message(session_id, message.content)
+            
+            logger.info(f"🔄 Rebuilt AI session {session_id} from database with {len(messages)} messages")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to rebuild session from database: {e}")
+            return False
+    
     def add_user_message(self, session_id: str, message: str):
         """Add a user message to session history"""
         if session_id in self.user_sessions:
@@ -149,7 +180,7 @@ class AIModelManager:
         
         return "".join(parts)
     
-    def generate_response(self, session_id: str, user_message: str) -> str:
+    def generate_response(self, session_id: str, user_message: str, db_session=None, db=None) -> str:
         """Generate AI response using GGUF model"""
         if not self.model_loaded:
             raise RuntimeError("AI model not loaded")
@@ -157,7 +188,12 @@ class AIModelManager:
         try:
             # Get or create session
             if session_id not in self.user_sessions:
-                self.create_session(session_id, "You are a helpful assistant.")
+                # Try to rebuild session from database if available
+                if db_session and db:
+                    self.rebuild_session_from_database(session_id, db_session, db)
+                else:
+                    # Fallback to generic prompt if no database access
+                    self.create_session(session_id, "You are a helpful assistant.")
             
             # Add user message to history
             self.add_user_message(session_id, user_message)

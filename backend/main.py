@@ -285,6 +285,11 @@ async def find_user_by_tally_response(request_data: dict, db: Session = Depends(
         logger.warning(f"Blocked user {user.user_code} attempted to access chat")
         raise HTTPException(403, detail="User is blocked")
     
+    # Check if AI responses are enabled for this user
+    if not user.ai_responses_enabled:
+        logger.warning(f"User {user.user_code} has AI responses disabled")
+        raise HTTPException(403, detail="AI responses are disabled for this user")
+    
     # Get active session
     session = db.query(ChatSession).filter(
         ChatSession.user_id == user.id,
@@ -376,6 +381,10 @@ async def create_device_session(request_data: dict, db: Session = Depends(get_db
         if existing_user.is_blocked:
             raise HTTPException(403, detail="User is blocked")
         
+        # Check if AI responses are enabled for this user
+        if not existing_user.ai_responses_enabled:
+            raise HTTPException(403, detail="AI responses are disabled for this user")
+        
         # Deactivate old sessions
         db.query(ChatSession).filter(
             ChatSession.user_id == existing_user.id,
@@ -453,6 +462,10 @@ async def get_user_session(user_id: str, db: Session = Depends(get_db)):
     if user.is_blocked:
         raise HTTPException(403, detail="User is blocked")
     
+    # Check if AI responses are enabled for this user
+    if not user.ai_responses_enabled:
+        raise HTTPException(403, detail="AI responses are disabled for this user")
+    
     # Get active session
     session = db.query(ChatSession).filter(
         ChatSession.user_id == user.id,
@@ -513,6 +526,10 @@ async def send_message(
     if session.user.is_blocked:
         raise HTTPException(403, detail="User is blocked")
     
+    # Check if AI responses are enabled for this user
+    if not session.user.ai_responses_enabled:
+        raise HTTPException(403, detail="AI responses are disabled for this user")
+    
     # Handle special START_CONVERSATION message
     if message_request.message == "START_CONVERSATION":
         # Update session timestamp
@@ -530,8 +547,8 @@ async def send_message(
             if not ai_model_manager.get_session(ai_session_id):
                 ai_model_manager.create_session(ai_session_id, system_prompt)
             
-            # Generate AI response
-            ai_response = ai_model_manager.generate_response(ai_session_id, "Hello")
+            # Generate AI response with database context for session rebuilding
+            ai_response = ai_model_manager.generate_response(ai_session_id, "Hello", session, db)
             
             # Save AI response to database
             ai_message = Message(
@@ -579,8 +596,8 @@ async def send_message(
         if not ai_model_manager.get_session(ai_session_id):
             ai_model_manager.create_session(ai_session_id, system_prompt)
         
-        # Generate AI response
-        ai_response = ai_model_manager.generate_response(ai_session_id, message_request.message)
+        # Generate AI response with database context for session rebuilding
+        ai_response = ai_model_manager.generate_response(ai_session_id, message_request.message, session, db)
         
         # Save AI response to database
         ai_message = Message(
