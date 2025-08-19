@@ -382,7 +382,6 @@ IMPORTANT INSTRUCTIONS:
                         pad_token_id=self.tokenizer.eos_token_id,
                         eos_token_id=self.tokenizer.eos_token_id,
                         # Advanced sampling for better quality
-                        do_sample=True,
                         num_beams=1,              # Single beam for speed
                         early_stopping=True,      # Stop when EOS is generated
                         # Memory optimizations
