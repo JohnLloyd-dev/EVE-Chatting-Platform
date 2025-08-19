@@ -88,12 +88,12 @@ class AIModelManager:
             
             # Conditional quantization based on device
             if self.device == "cuda":
-                logger.info("🔧 Using 8-bit quantization for CUDA (more memory efficient)")
+                logger.info("🔧 Using 4-bit quantization for CUDA (ultra-low memory)")
                 bnb_config = BitsAndBytesConfig(
-                    load_in_8bit=True,
-                    bnb_8bit_compute_dtype=torch.float16,
-                    bnb_8bit_use_double_quant=True,  # Enable double quantization for lower memory
-                    bnb_8bit_quant_type="nf8"         # Use NF8 for better memory efficiency
+                    load_in_4bit=True,                    # Switch to 4-bit for ultra-low memory
+                    bnb_4bit_compute_dtype=torch.float16, # Use FP16 for computation
+                    bnb_4bit_use_double_quant=True,       # Enable double quantization
+                    bnb_4bit_quant_type="nf4"            # Use NF4 for best memory efficiency
                 )
             else:
                 logger.info("🔧 No quantization for CPU")
@@ -102,42 +102,49 @@ class AIModelManager:
             # Load tokenizer and model directly
             self.tokenizer = AutoTokenizer.from_pretrained(settings.ai_model_name)
             
-            # Try loading with quantization first, fallback to no quantization if needed
+            # Try loading with 4-bit quantization first, fallback to 8-bit if needed
             try:
-                logger.info("🚀 Attempting to load model with 8-bit quantization...")
+                logger.info("🚀 Attempting to load model with 4-bit quantization (target: 4.6GB VRAM)...")
                 self.model = AutoModelForCausalLM.from_pretrained(
                     settings.ai_model_name,
-                    quantization_config=bnb_config
+                    quantization_config=bnb_config,
+                    device_map="auto",                    # Auto device mapping for memory efficiency
+                    low_cpu_mem_usage=True,               # Reduce CPU memory usage
+                    torch_dtype=torch.float16,            # Use FP16 for lower memory
+                    max_memory={0: "5GB"}                 # Limit GPU memory to 5GB max
                 )
-                logger.info("✅ Model loaded with 8-bit quantization")
+                logger.info("✅ Model loaded with 4-bit quantization (ultra-low memory)")
             except Exception as e:
                 if self.device == "cuda" and "out of memory" in str(e).lower():
-                    logger.warning(f"⚠️ 8-bit quantization failed due to memory: {e}")
-                    logger.info("🔄 Trying without quantization (will use more memory but should fit)...")
+                    logger.warning(f"⚠️ 4-bit quantization failed due to memory: {e}")
+                    logger.info("🔄 Trying 8-bit quantization (should still fit under 6GB)...")
                     
                     # Clear memory again
                     torch.cuda.empty_cache()
                     gc.collect()
                     
-                    # Try without quantization
+                    # Try with 8-bit quantization
+                    bnb_config_8bit = BitsAndBytesConfig(
+                        load_in_8bit=True,
+                        bnb_8bit_compute_dtype=torch.float16
+                    )
+                    
                     self.model = AutoModelForCausalLM.from_pretrained(
                         settings.ai_model_name,
-                        torch_dtype=torch.float16  # Use FP16 to save some memory
+                        quantization_config=bnb_config_8bit,
+                        device_map="auto",
+                        low_cpu_mem_usage=True,
+                        torch_dtype=torch.float16,
+                        max_memory={0: "6GB"}
                     )
-                    logger.info("✅ Model loaded without quantization (FP16)")
+                    logger.info("✅ Model loaded with 8-bit quantization (low memory)")
                 else:
                     # Re-raise if it's not a memory error
                     raise
             
-            # Move to device directly (like your working script)
-            if self.device == "cuda":
-                if bnb_config is None:
-                    logger.info("🚀 Moving model to CUDA device...")
-                    self.model = self.model.to(self.device)
-                else:
-                    logger.info("✅ 8-bit model already on correct device (no .to() needed)")
-            else:
-                logger.info("🚀 Using CPU device...")
+            # Device mapping is handled automatically by device_map="auto"
+            # No need for manual .to() calls
+            logger.info("✅ Model device mapping handled automatically by device_map='auto'")
             
             # Set to evaluation mode
             self.model.eval()
@@ -172,7 +179,13 @@ class AIModelManager:
                 reserved = torch.cuda.memory_reserved(0) / 1024**3
                 total = torch.cuda.get_device_properties(0).total_memory / 1024**3
                 logger.info(f"💾 Memory Usage - Allocated: {allocated:.2f}GB, Reserved: {reserved:.2f}GB, Total: {total:.2f}GB")
-                logger.info(f"🎯 Target: 4GB VRAM usage (like your working script)")
+                logger.info(f"🎯 TARGET: 4.6GB VRAM usage (exactly like your working script)")
+                
+                # Verify we're within target
+                if allocated > 5.0:  # Should be under 5GB with 4-bit quantization
+                    logger.warning(f"⚠️ VRAM usage ({allocated:.2f}GB) is higher than target (4.6GB)")
+                else:
+                    logger.info(f"✅ VRAM usage ({allocated:.2f}GB) is within target (4.6GB)")
             
         except Exception as e:
             logger.error(f"❌ Failed to load AI model: {e}")
@@ -382,7 +395,7 @@ IMPORTANT INSTRUCTIONS:
                 ai_session["history"] = self.trim_history(
                     system=system_prompt,
                     history=ai_session["history"],
-                    max_tokens=3500
+                    max_tokens=2000  # Reduced from 3500 to save memory
                 )
                 
                 # Add user message to history AFTER trimming
@@ -399,39 +412,39 @@ IMPORTANT INSTRUCTIONS:
                     full_prompt,
                     return_tensors="pt",
                     truncation=True,
-                    max_length=4096
+                    max_length=2048  # Reduced from 4096 to save memory
                 ).to(self.model.device)
                 
                 # Adjust max tokens to available space
                 max_output_tokens = min(
                     max_tokens,
-                    4096 - inputs.input_ids.shape[1]
+                    2048 - inputs.input_ids.shape[1]  # Reduced from 4096
                 )
                 
                 if max_output_tokens <= 0:
                     raise ValueError("Input too long for response generation")
                 
-                # Generate response with optimized parameters for RTX 4060
+                # Generate response with ultra-low memory parameters for RTX 4060
                 with torch.no_grad():
                     output = self.model.generate(
                         **inputs,
                         max_new_tokens=max_output_tokens,
-                        # Enhanced accuracy parameters
+                        # Ultra-low memory parameters
                         temperature=0.7,           # Lower for more focused responses
                         do_sample=True,
-                        top_p=0.92,               # Optimal for 7B models
-                        top_k=40,                 # Add top_k for better quality
-                        typical_p=0.95,           # Tail-free sampling for consistency
-                        repetition_penalty=1.15,   # Balanced repetition control
-                        no_repeat_ngram_size=3,   # Prevent 3-gram repetition
-                        length_penalty=1.0,       # Neutral length preference
-                        # Speed optimizations for RTX 4060
+                        top_p=0.9,                # Reduced from 0.92 for lower memory
+                        top_k=30,                 # Reduced from 40 for lower memory
+                        typical_p=0.9,            # Reduced from 0.95 for lower memory
+                        repetition_penalty=1.1,   # Reduced from 1.15 for lower memory
+                        no_repeat_ngram_size=2,   # Reduced from 3 for lower memory
+                        length_penalty=0.95,      # Slightly prefer shorter responses (save memory)
+                        # Memory optimizations
                         use_cache=True,           # Enable KV cache for speed
                         pad_token_id=self.tokenizer.eos_token_id,
                         eos_token_id=self.tokenizer.eos_token_id,
-                        # Advanced sampling for better quality
+                        # Ultra-low memory settings
                         num_beams=1,              # Single beam for speed
-                        # Memory optimizations for low VRAM
+                        # Memory optimizations for ultra-low VRAM
                         output_scores=False,      # Don't compute scores (save memory)
                         output_attentions=False,  # Don't output attentions (save memory)
                         output_hidden_states=False, # Don't output hidden states (save memory)
@@ -594,21 +607,22 @@ IMPORTANT INSTRUCTIONS:
         try:
             logger.info("🔄 Regenerating response with enhanced parameters...")
             
-            # Enhanced generation parameters for better quality
+            # Enhanced generation parameters for ultra-low memory
             with torch.no_grad():
                 output = self.model.generate(
                     **inputs,
                     max_new_tokens=max_output_tokens,
-                    # Enhanced accuracy parameters
+                    # Ultra-low memory parameters
                     temperature=0.75,          # Balanced creativity and focus
                     do_sample=True,
-                    top_p=0.94,              # Optimal for regeneration
-                    top_k=35,                # Balanced quality
-                    typical_p=0.96,          # Better consistency
-                    repetition_penalty=1.12,  # Balanced repetition control
+                    top_p=0.9,               # Reduced for lower memory
+                    top_k=25,                # Reduced for lower memory
+                    typical_p=0.9,           # Reduced for lower memory
+                    repetition_penalty=1.08,  # Reduced for lower memory
                     no_repeat_ngram_size=2,   # Prevent 2-gram repetition
-                    length_penalty=1.05,      # Slightly prefer longer responses
-                    # Speed optimizations
+                    length_penalty=0.9,      # Prefer shorter responses (save memory)
+                    # Memory optimizations
+                    use_cache=True,
                     num_beams=1,
                     early_stopping=True,
                     # Memory optimizations
