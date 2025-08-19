@@ -13,6 +13,15 @@ from typing import Dict, List, Optional, Tuple
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from config import settings
 
+# Database imports moved to top level to prevent circular imports
+try:
+    from database import SystemPrompt, Message
+    DATABASE_AVAILABLE = True
+except ImportError:
+    DATABASE_AVAILABLE = False
+    logger = logging.getLogger(__name__)
+    logger.warning("⚠️ Database imports not available - running in standalone mode")
+
 logger = logging.getLogger(__name__)
 
 class AIModelManager:
@@ -166,10 +175,12 @@ class AIModelManager:
     
     def rebuild_session_from_database(self, session_id: str, db_session, db) -> bool:
         """Rebuild AI session from database data"""
+        if not DATABASE_AVAILABLE:
+            logger.warning("⚠️ Database not available - cannot rebuild session")
+            return False
+            
         try:
             # Get the complete system prompt from database
-            from database import SystemPrompt
-            
             # Get user-specific or global system prompt
             if db_session.user and db_session.user.id:
                 user_prompt = db.query(SystemPrompt).filter(
@@ -203,7 +214,6 @@ class AIModelManager:
             self.create_session(session_id, system_prompt)
             
             # Get conversation history from database
-            from database import Message
             messages = db.query(Message).filter(
                 Message.session_id == db_session.id
             ).order_by(Message.created_at).all()
@@ -254,14 +264,16 @@ class AIModelManager:
         return list(reversed(keep_messages))
     
     def build_chatml_prompt(self, system: str, history: list) -> str:
-        """Build ChatML format prompt"""
-        prompt = f"<|system|>\n{system.strip()}\n"
+        """Build ChatML format prompt for OpenHermes model"""
+        prompt = f"<|im_start|>system\n{system.strip()}<|im_end|>\n"
         for entry in history:
             if entry.startswith("User:"):
-                prompt += f"<|user|>\n{entry[5:].strip()}\n"
+                user_message = entry[5:].strip()  # Remove "User: " prefix
+                prompt += f"<|im_start|>user\n{user_message}<|im_end|>\n"
             elif entry.startswith("AI:"):
-                prompt += f"<|assistant|>\n{entry[3:].strip()}\n"
-        prompt += "<|assistant|>\n"
+                ai_message = entry[3:].strip()  # Remove "AI: " prefix
+                prompt += f"<|im_start|>assistant\n{ai_message}<|im_end|>\n"
+        prompt += "<|im_start|>assistant\n"
         return prompt
     
     def generate_response(self, session_id: str, user_message: str, session=None, db=None, max_tokens: int = 150) -> str:
@@ -283,19 +295,18 @@ class AIModelManager:
             # Get session data
             ai_session = self.user_sessions[session_id]
             system_prompt = ai_session["system_prompt"]
-            history = ai_session["history"][:-1]  # Exclude the current user message
             
-            # Add user message to history
-            self.add_user_message(session_id, user_message)
-            
-            # Trim history to fit context window
+            # Trim existing history to fit context window (before adding new message)
             ai_session["history"] = self.trim_history(
                 system=system_prompt,
                 history=ai_session["history"],
                 max_tokens=3500
             )
             
-            # Build prompt
+            # Add user message to history AFTER trimming
+            self.add_user_message(session_id, user_message)
+            
+            # Build prompt with current history (including the new user message)
             full_prompt = self.build_chatml_prompt(
                 system_prompt,
                 ai_session["history"]
