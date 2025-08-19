@@ -52,12 +52,50 @@ class AIModelManager:
             
             # Conditional quantization based on device
             if self.device == "cuda":
-                logger.info("🔧 Using 4-bit quantization for CUDA")
+                logger.info("🔧 Using 4-bit quantization for CUDA with CPU offloading")
                 bnb_config = BitsAndBytesConfig(
                     load_in_4bit=True,
-                    bnb_4bit_compute_dtype=torch.float16
+                    bnb_4bit_compute_dtype=torch.float16,
+                    llm_int8_enable_fp32_cpu_offload=True  # Enable CPU offloading
                 )
-                device_map = "auto"
+                # Custom device map to handle memory constraints
+                device_map = {
+                    "model.embed_tokens": 0,      # GPU
+                    "model.norm": 0,              # GPU
+                    "lm_head": 0,                 # GPU
+                    "model.layers.0": 0,          # GPU
+                    "model.layers.1": 0,          # GPU
+                    "model.layers.2": 0,          # GPU
+                    "model.layers.3": 0,          # GPU
+                    "model.layers.4": 0,          # GPU
+                    "model.layers.5": 0,          # GPU
+                    "model.layers.6": 0,          # GPU
+                    "model.layers.7": 0,          # GPU
+                    "model.layers.8": 0,          # GPU
+                    "model.layers.9": 0,          # GPU
+                    "model.layers.10": 0,         # GPU
+                    "model.layers.11": 0,         # GPU
+                    "model.layers.12": 0,         # GPU
+                    "model.layers.13": 0,         # GPU
+                    "model.layers.14": 0,         # GPU
+                    "model.layers.15": 0,         # GPU
+                    "model.layers.16": 0,         # GPU
+                    "model.layers.17": 0,         # GPU
+                    "model.layers.18": 0,         # GPU
+                    "model.layers.19": 0,         # GPU
+                    "model.layers.20": 0,         # GPU
+                    "model.layers.21": 0,         # GPU
+                    "model.layers.22": 0,         # GPU
+                    "model.layers.23": 0,         # GPU
+                    "model.layers.24": 0,         # GPU
+                    "model.layers.25": 0,         # GPU
+                    "model.layers.26": 0,         # GPU
+                    "model.layers.27": 0,         # GPU
+                    "model.layers.28": 0,         # GPU
+                    "model.layers.29": 0,         # CPU (offload to save VRAM)
+                    "model.layers.30": 0,         # CPU (offload to save VRAM)
+                    "model.layers.31": 0,         # CPU (offload to save VRAM)
+                }
             else:
                 logger.info("🔧 No quantization for CPU")
                 bnb_config = None
