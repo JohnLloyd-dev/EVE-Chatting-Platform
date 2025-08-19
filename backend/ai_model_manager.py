@@ -48,13 +48,36 @@ class AIModelManager:
             # Create offload directory if it doesn't exist
             os.makedirs(settings.ai_offload_folder, exist_ok=True)
             
-            # Load tokenizer with new cache directory
-            logger.info("📥 Loading tokenizer with new cache directory...")
-            self.tokenizer = AutoTokenizer.from_pretrained(
-                settings.ai_model_name,
-                cache_dir=settings.ai_model_cache_dir,
-                trust_remote_code=True
-            )
+            # STEP 1: Progressive Loading - Download weights first (no VRAM usage)
+            logger.info("📥 STEP 1: Progressive loading - downloading weights first...")
+            
+            # Download tokenizer first (no VRAM usage)
+            try:
+                self.tokenizer = AutoTokenizer.from_pretrained(
+                    settings.ai_model_name,
+                    cache_dir=settings.ai_model_cache_dir,
+                    trust_remote_code=True,
+                    local_files_only=False  # Allow download
+                )
+                logger.info("✅ Tokenizer downloaded and cached")
+                
+                # Download model weights progressively (this just downloads, doesn't load into memory)
+                logger.info("📥 Downloading model weights to cache (no VRAM usage)...")
+                from transformers import AutoConfig
+                config = AutoConfig.from_pretrained(
+                    settings.ai_model_name,
+                    cache_dir=settings.ai_model_cache_dir,
+                    local_files_only=False
+                )
+                logger.info("✅ Model config downloaded to cache")
+                
+                # Check cache status
+                cache_files = os.listdir(settings.ai_model_cache_dir)
+                logger.info(f"📁 Cache contents: {len(cache_files)} files")
+                
+            except Exception as e:
+                logger.error(f"❌ Progressive download failed: {e}")
+                raise
             
             # Configure quantization for RTX 4060 (8GB VRAM) with conflict check
             if settings.ai_use_4bit and settings.ai_use_8bit:
@@ -111,14 +134,76 @@ class AIModelManager:
             except Exception as e:
                 logger.warning(f"⚠️ Flash Attention 2 not available, using default: {e}")
             
-            # Use EXACT same pattern as your working script for 4GB VRAM usage
-            logger.info("🚀 Loading model using your working script pattern...")
-            self.model = AutoModelForCausalLM.from_pretrained(
-                settings.ai_model_name,
-                cache_dir=settings.ai_model_cache_dir,  # Use new dedicated cache
-                quantization_config=quantization_config,
-                device_map="auto" if quantization_config else None
-            )
+            # STEP 2: Load model from cache (minimal VRAM usage)
+            logger.info("🚀 STEP 2: Loading model from cache using your working script pattern...")
+            
+            # CRITICAL: Pre-check available VRAM to prevent OOM
+            if self.device == "cuda":
+                total_vram = torch.cuda.get_device_properties(0).total_memory / 1024**3
+                free_vram = (torch.cuda.get_device_properties(0).total_memory - torch.cuda.memory_allocated(0)) / 1024**3
+                logger.info(f"💾 VRAM Status - Total: {total_vram:.1f}GB, Free: {free_vram:.1f}GB")
+                
+                if free_vram < 5.0:  # Need at least 5GB free for 7B model
+                    logger.warning(f"⚠️ Low VRAM available ({free_vram:.1f}GB) - clearing cache...")
+                    torch.cuda.empty_cache()
+                    gc.collect()
+                    free_vram = (torch.cuda.get_device_properties(0).total_memory - torch.cuda.memory_allocated(0)) / 1024**3
+                    logger.info(f"💾 After cleanup - Free VRAM: {free_vram:.1f}GB")
+            
+            # Check if model is fully cached
+            model_cache_path = os.path.join(settings.ai_model_cache_dir, "hub")
+            if os.path.exists(model_cache_path):
+                logger.info(f"📁 Found cached model in: {model_cache_path}")
+                # Use local_files_only=True to force cache usage
+                try:
+                    self.model = AutoModelForCausalLM.from_pretrained(
+                        settings.ai_model_name,
+                        cache_dir=settings.ai_model_cache_dir,
+                        quantization_config=quantization_config,
+                        device_map="auto" if quantization_config else None,
+                        local_files_only=True  # Force cache usage
+                    )
+                    logger.info("✅ Model loaded from cache (fast loading)")
+                except Exception as e:
+                    logger.warning(f"⚠️ 4-bit loading failed, trying 8-bit fallback: {e}")
+                    # Fallback to 8-bit quantization
+                    fallback_config = BitsAndBytesConfig(
+                        load_in_8bit=True,
+                        bnb_8bit_compute_dtype=torch.float16
+                    )
+                    self.model = AutoModelForCausalLM.from_pretrained(
+                        settings.ai_model_name,
+                        cache_dir=settings.ai_model_cache_dir,
+                        quantization_config=fallback_config,
+                        device_map="auto",
+                        local_files_only=True
+                    )
+                    logger.info("✅ Model loaded with 8-bit fallback")
+            else:
+                logger.info("📥 Model not fully cached - downloading first...")
+                # First time download
+                try:
+                    self.model = AutoModelForCausalLM.from_pretrained(
+                        settings.ai_model_name,
+                        cache_dir=settings.ai_model_cache_dir,
+                        quantization_config=quantization_config,
+                        device_map="auto" if quantization_config else None
+                    )
+                    logger.info("✅ Model downloaded and cached for future use")
+                except Exception as e:
+                    logger.warning(f"⚠️ 4-bit download failed, trying 8-bit fallback: {e}")
+                    # Fallback to 8-bit quantization
+                    fallback_config = BitsAndBytesConfig(
+                        load_in_8bit=True,
+                        bnb_8bit_compute_dtype=torch.float16
+                    )
+                    self.model = AutoModelForCausalLM.from_pretrained(
+                        settings.ai_model_name,
+                        cache_dir=settings.ai_model_cache_dir,
+                        quantization_config=fallback_config,
+                        device_map="auto"
+                    )
+                    logger.info("✅ Model downloaded with 8-bit fallback")
             
             # Move to device if not using device_map
             if not quantization_config:
