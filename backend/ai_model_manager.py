@@ -437,7 +437,6 @@ IMPORTANT INSTRUCTIONS:
                         output_hidden_states=False, # Don't output hidden states (save memory)
                         # Additional memory optimizations
                         return_dict_in_generate=False,  # Return tensors instead of dict (save memory)
-                        use_cache=True,           # Enable KV cache for speed
                         # Remove early_stopping flag (causes warnings)
                         # early_stopping=True,      # Stop when EOS is generated
                     )
@@ -610,7 +609,6 @@ IMPORTANT INSTRUCTIONS:
                     no_repeat_ngram_size=2,   # Prevent 2-gram repetition
                     length_penalty=1.05,      # Slightly prefer longer responses
                     # Speed optimizations
-                    use_cache=True,
                     num_beams=1,
                     early_stopping=True,
                     # Memory optimizations
