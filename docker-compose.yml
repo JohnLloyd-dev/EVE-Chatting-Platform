@@ -39,6 +39,7 @@ services:
       - DATABASE_URL=postgresql://adam2025man:adam2025@postgres:5432/chatting_platform
       - REDIS_URL=redis://redis:6379/0
       - HF_HOME=/app/.cache/huggingface
+      - AI_MODEL_CACHE_DIR=/app/.cache/huggingface
       - CUDA_VISIBLE_DEVICES=0
       - PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
       - TOKENIZERS_PARALLELISM=false

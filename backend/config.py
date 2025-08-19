@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     # AI Model Configuration (7B with 4-bit quantization for RTX 4060)
     ai_model_name: str = os.getenv("AI_MODEL_NAME", "teknium/OpenHermes-2.5-Mistral-7B")
     ai_model_file: str = os.getenv("AI_MODEL_FILE", "")  # Not needed for transformers
-    ai_model_cache_dir: str = os.getenv("AI_MODEL_CACHE_DIR", "/app/.cache/huggingface")
+    ai_model_cache_dir: str = os.getenv("AI_MODEL_CACHE_DIR", "/app/.cache/huggingface")  # New dedicated cache directory
     ai_generation_timeout: float = float(os.getenv("AI_GENERATION_TIMEOUT", "30.0"))
     ai_request_timeout: float = float(os.getenv("AI_REQUEST_TIMEOUT", "60.0"))
     ai_use_4bit: bool = os.getenv("AI_USE_4BIT", "true").lower() == "true"

@@ -40,11 +40,16 @@ class AIModelManager:
             logger.info(f"💾 Max memory: {settings.ai_max_memory_gb}GB")
             logger.info(f"📏 Max context: {settings.ai_max_context_length} tokens")
             
+            # Create new dedicated cache directory for model storage
+            logger.info(f"📁 Creating new cache directory: {settings.ai_model_cache_dir}")
+            os.makedirs(settings.ai_model_cache_dir, exist_ok=True)
+            logger.info(f"✅ Cache directory ready: {settings.ai_model_cache_dir}")
+            
             # Create offload directory if it doesn't exist
             os.makedirs(settings.ai_offload_folder, exist_ok=True)
             
-            # Load tokenizer
-            logger.info("📥 Loading tokenizer...")
+            # Load tokenizer with new cache directory
+            logger.info("📥 Loading tokenizer with new cache directory...")
             self.tokenizer = AutoTokenizer.from_pretrained(
                 settings.ai_model_name,
                 cache_dir=settings.ai_model_cache_dir,
@@ -106,9 +111,11 @@ class AIModelManager:
             except Exception as e:
                 logger.warning(f"⚠️ Flash Attention 2 not available, using default: {e}")
             
-            # Use EXACT same pattern as working script - NO EXTRA PARAMETERS
+            # Use EXACT same pattern as your working script for 4GB VRAM usage
+            logger.info("🚀 Loading model using your working script pattern...")
             self.model = AutoModelForCausalLM.from_pretrained(
                 settings.ai_model_name,
+                cache_dir=settings.ai_model_cache_dir,  # Use new dedicated cache
                 quantization_config=quantization_config,
                 device_map="auto" if quantization_config else None
             )
@@ -138,10 +145,15 @@ class AIModelManager:
             self.model_loaded = True
             logger.info("✅ 7B AI Model loaded successfully!")
             
+            # Log cache and memory status
+            logger.info(f"📁 Model cached in: {settings.ai_model_cache_dir}")
+            logger.info(f"🔄 Next startup will use cached model (fast loading)")
+            
             # Simple memory check (like working script)
             if self.device == "cuda":
                 allocated_memory = torch.cuda.memory_allocated(0) / 1024**3
                 logger.info(f"💾 VRAM used: {allocated_memory:.1f} GB")
+                logger.info(f"🎯 Target: 4GB VRAM usage (like your working script)")
             
         except Exception as e:
             logger.error(f"❌ Failed to load AI model: {e}")
