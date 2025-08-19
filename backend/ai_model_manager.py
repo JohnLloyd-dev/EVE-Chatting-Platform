@@ -52,72 +52,42 @@ class AIModelManager:
             
             # Conditional quantization based on device
             if self.device == "cuda":
-                logger.info("🔧 Using 4-bit quantization for CUDA with CPU offloading")
+                logger.info("🔧 Using 8-bit quantization for CUDA (more memory efficient)")
                 bnb_config = BitsAndBytesConfig(
-                    load_in_4bit=True,
-                    bnb_4bit_compute_dtype=torch.float16,
-                    llm_int8_enable_fp32_cpu_offload=True  # Enable CPU offloading
+                    load_in_8bit=True,
+                    bnb_8bit_compute_dtype=torch.float16
                 )
-                # Custom device map to handle memory constraints
-                device_map = {
-                    "model.embed_tokens": 0,      # GPU
-                    "model.norm": 0,              # GPU
-                    "lm_head": 0,                 # GPU
-                    "model.layers.0": 0,          # GPU
-                    "model.layers.1": 0,          # GPU
-                    "model.layers.2": 0,          # GPU
-                    "model.layers.3": 0,          # GPU
-                    "model.layers.4": 0,          # GPU
-                    "model.layers.5": 0,          # GPU
-                    "model.layers.6": 0,          # GPU
-                    "model.layers.7": 0,          # GPU
-                    "model.layers.8": 0,          # GPU
-                    "model.layers.9": 0,          # GPU
-                    "model.layers.10": 0,         # GPU
-                    "model.layers.11": 0,         # GPU
-                    "model.layers.12": 0,         # GPU
-                    "model.layers.13": 0,         # GPU
-                    "model.layers.14": 0,         # GPU
-                    "model.layers.15": 0,         # GPU
-                    "model.layers.16": 0,         # GPU
-                    "model.layers.17": 0,         # GPU
-                    "model.layers.18": 0,         # GPU
-                    "model.layers.19": 0,         # GPU
-                    "model.layers.20": 0,         # GPU
-                    "model.layers.21": 0,         # GPU
-                    "model.layers.22": 0,         # GPU
-                    "model.layers.23": 0,         # GPU
-                    "model.layers.24": 0,         # GPU
-                    "model.layers.25": 0,         # GPU
-                    "model.layers.26": 0,         # GPU
-                    "model.layers.27": 0,         # GPU
-                    "model.layers.28": 0,         # GPU
-                    "model.layers.29": 0,         # CPU (offload to save VRAM)
-                    "model.layers.30": 0,         # CPU (offload to save VRAM)
-                    "model.layers.31": 0,         # CPU (offload to save VRAM)
-                }
             else:
                 logger.info("🔧 No quantization for CPU")
                 bnb_config = None
-                device_map = None
             
             # Load tokenizer and model directly
             self.tokenizer = AutoTokenizer.from_pretrained(settings.ai_model_name)
             self.model = AutoModelForCausalLM.from_pretrained(
                 settings.ai_model_name,
-                device_map=device_map,
                 quantization_config=bnb_config
             )
             
-            # Move to device if not using device_map
-            if device_map is None:
+            # Move to device directly (like your working script)
+            if self.device == "cuda":
+                logger.info("🚀 Moving model to CUDA device...")
                 self.model = self.model.to(self.device)
+            else:
+                logger.info("🚀 Using CPU device...")
             
             # Set to evaluation mode
             self.model.eval()
             self.model_loaded = True
             
             logger.info("✅ AI Model loaded successfully!")
+            
+            # Monitor actual memory usage
+            if self.device == "cuda":
+                allocated = torch.cuda.memory_allocated(0) / 1024**3
+                reserved = torch.cuda.memory_reserved(0) / 1024**3
+                total = torch.cuda.get_device_properties(0).total_memory / 1024**3
+                logger.info(f"💾 Memory Usage - Allocated: {allocated:.2f}GB, Reserved: {reserved:.2f}GB, Total: {total:.2f}GB")
+                logger.info(f"🎯 Target: 4GB VRAM usage (like your working script)")
             
         except Exception as e:
             logger.error(f"❌ Failed to load AI model: {e}")
