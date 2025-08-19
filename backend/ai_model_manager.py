@@ -164,6 +164,64 @@ class AIModelManager:
         """Get an existing session"""
         return self.user_sessions.get(session_id)
     
+    def rebuild_session_from_database(self, session_id: str, db_session, db) -> bool:
+        """Rebuild AI session from database data"""
+        try:
+            # Get the complete system prompt from database
+            from database import SystemPrompt
+            
+            # Get user-specific or global system prompt
+            if db_session.user and db_session.user.id:
+                user_prompt = db.query(SystemPrompt).filter(
+                    SystemPrompt.user_id == str(db_session.user.id),
+                    SystemPrompt.is_active == True
+                ).first()
+                if user_prompt:
+                    system_prompt = f"{user_prompt.head_prompt}\n\n{user_prompt.rule_prompt}"
+                else:
+                    # Fall back to global prompt
+                    global_prompt = db.query(SystemPrompt).filter(
+                        SystemPrompt.user_id.is_(None),
+                        SystemPrompt.is_active == True
+                    ).first()
+                    if global_prompt:
+                        system_prompt = f"{global_prompt.head_prompt}\n\n{global_prompt.rule_prompt}"
+                    else:
+                        system_prompt = "You are a helpful assistant."
+            else:
+                # Get global active prompt
+                active_prompt = db.query(SystemPrompt).filter(
+                    SystemPrompt.user_id.is_(None),
+                    SystemPrompt.is_active == True
+                ).first()
+                if active_prompt:
+                    system_prompt = f"{active_prompt.head_prompt}\n\n{active_prompt.rule_prompt}"
+                else:
+                    system_prompt = "You are a helpful assistant."
+            
+            # Create new AI session with correct system prompt
+            self.create_session(session_id, system_prompt)
+            
+            # Get conversation history from database
+            from database import Message
+            messages = db.query(Message).filter(
+                Message.session_id == db_session.id
+            ).order_by(Message.created_at).all()
+            
+            # Rebuild conversation history
+            for message in messages:
+                if message.is_from_user:
+                    self.add_user_message(session_id, message.content)
+                else:
+                    self.add_assistant_message(session_id, message.content)
+            
+            logger.info(f"🔄 Rebuilt AI session {session_id} from database with {len(messages)} messages")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to rebuild session from database: {e}")
+            return False
+    
     def add_user_message(self, session_id: str, message: str):
         """Add a user message to session history"""
         if session_id in self.user_sessions:
@@ -206,33 +264,41 @@ class AIModelManager:
         prompt += "<|assistant|>\n"
         return prompt
     
-    def generate_response(self, session_id: str, user_message: str, max_tokens: int = 150) -> str:
+    def generate_response(self, session_id: str, user_message: str, session=None, db=None, max_tokens: int = 150) -> str:
         """Generate AI response using the model"""
         if not self.model_loaded:
             raise RuntimeError("AI model not loaded")
         
         # Thread safety for concurrent requests
         with self.generate_lock:
-            # Get session
+            # Get or create session
             if session_id not in self.user_sessions:
-                raise ValueError(f"Session {session_id} not found")
+                # Try to rebuild session from database if available
+                if session and db:
+                    self.rebuild_session_from_database(session_id, session, db)
+                else:
+                    # Fallback to generic prompt if no database access
+                    self.create_session(session_id, "You are a helpful assistant.")
             
-            session = self.user_sessions[session_id]
+            # Get session data
+            ai_session = self.user_sessions[session_id]
+            system_prompt = ai_session["system_prompt"]
+            history = ai_session["history"][:-1]  # Exclude the current user message
             
             # Add user message to history
             self.add_user_message(session_id, user_message)
             
             # Trim history to fit context window
-            session["history"] = self.trim_history(
-                system=session["system_prompt"],
-                history=session["history"],
+            ai_session["history"] = self.trim_history(
+                system=system_prompt,
+                history=ai_session["history"],
                 max_tokens=3500
             )
             
             # Build prompt
             full_prompt = self.build_chatml_prompt(
-                session["system_prompt"],
-                session["history"]
+                system_prompt,
+                ai_session["history"]
             )
             
             # Tokenize with truncation
