@@ -300,20 +300,9 @@ class AIModelManager:
         return list(reversed(keep_messages))
     
     def build_chatml_prompt(self, system: str, history: list) -> str:
-        """Build enhanced ChatML format prompt for OpenHermes model with better accuracy"""
-        # Enhanced system prompt with clear instructions
-        enhanced_system = f"""<|im_start|>system
-{system.strip()}
-
-IMPORTANT INSTRUCTIONS:
-- Stay in character and respond naturally
-- Keep responses conversational and engaging
-- Be helpful, accurate, and relevant
-- Maintain context from the conversation
-- Respond in a way that feels human and authentic
-<|im_end|>"""
-        
-        prompt = enhanced_system + "\n"
+        """Build clean ChatML format prompt for OpenHermes model"""
+        # Use the system prompt exactly as provided (no extra instructions)
+        prompt = f"<|im_start|>system\n{system.strip()}<|im_end|>\n"
         
         # Add conversation history with proper formatting
         for entry in history:
@@ -324,7 +313,7 @@ IMPORTANT INSTRUCTIONS:
                 ai_message = entry[3:].strip()  # Remove "AI: " prefix
                 prompt += f"<|im_start|>assistant\n{ai_message}<|im_end|>\n"
         
-        # Add assistant prompt with generation guidance
+        # Add assistant prompt
         prompt += "<|im_start|>assistant\n"
         return prompt
     
@@ -407,6 +396,13 @@ IMPORTANT INSTRUCTIONS:
                     ai_session["history"]
                 )
                 
+                # DEBUG: Log the actual prompt being sent to the model
+                logger.info(f"🔍 DEBUG: Full prompt being sent to model:")
+                logger.info(f"🔍 System prompt: {system_prompt[:200]}...")
+                logger.info(f"🔍 History length: {len(ai_session['history'])} messages")
+                logger.info(f"🔍 Full prompt length: {len(full_prompt)} characters")
+                logger.info(f"🔍 Prompt preview: {full_prompt[:500]}...")
+                
                 # Tokenize with truncation
                 inputs = self.tokenizer(
                     full_prompt,
@@ -424,25 +420,24 @@ IMPORTANT INSTRUCTIONS:
                 if max_output_tokens <= 0:
                     raise ValueError("Input too long for response generation")
                 
-                # Generate response with ultra-low memory parameters for RTX 4060
+                # Generate response with balanced quality and memory parameters
                 with torch.no_grad():
                     output = self.model.generate(
                         **inputs,
                         max_new_tokens=max_output_tokens,
-                        # Ultra-low memory parameters
-                        temperature=0.7,           # Lower for more focused responses
+                        # Balanced quality and memory parameters
+                        temperature=0.8,           # Slightly higher for better creativity
                         do_sample=True,
-                        top_p=0.9,                # Reduced from 0.92 for lower memory
-                        top_k=30,                 # Reduced from 40 for lower memory
-                        typical_p=0.9,            # Reduced from 0.95 for lower memory
-                        repetition_penalty=1.1,   # Reduced from 1.15 for lower memory
-                        no_repeat_ngram_size=2,   # Reduced from 3 for lower memory
-                        length_penalty=0.95,      # Slightly prefer shorter responses (save memory)
+                        top_p=0.92,               # Optimal for 7B models
+                        top_k=40,                 # Good quality selection
+                        typical_p=0.95,           # Tail-free sampling for consistency
+                        repetition_penalty=1.15,   # Balanced repetition control
+                        no_repeat_ngram_size=3,   # Prevent 3-gram repetition
                         # Memory optimizations
                         use_cache=True,           # Enable KV cache for speed
                         pad_token_id=self.tokenizer.eos_token_id,
                         eos_token_id=self.tokenizer.eos_token_id,
-                        # Ultra-low memory settings
+                        # Quality settings
                         num_beams=1,              # Single beam for speed
                         # Memory optimizations for ultra-low VRAM
                         output_scores=False,      # Don't compute scores (save memory)
@@ -450,8 +445,6 @@ IMPORTANT INSTRUCTIONS:
                         output_hidden_states=False, # Don't output hidden states (save memory)
                         # Additional memory optimizations
                         return_dict_in_generate=False,  # Return tensors instead of dict (save memory)
-                        # Remove early_stopping flag (causes warnings)
-                        # early_stopping=True,      # Stop when EOS is generated
                     )
                 
                 # Extract only new tokens
@@ -460,6 +453,11 @@ IMPORTANT INSTRUCTIONS:
                     response_tokens,
                     skip_special_tokens=True
                 ).strip()
+                
+                # DEBUG: Log the actual response from the model
+                logger.info(f"🔍 DEBUG: Raw model response:")
+                logger.info(f"🔍 Response length: {len(response)} characters")
+                logger.info(f"🔍 Response content: {response}")
                 
                 # Enhanced response validation and quality control
                 response = self._validate_and_enhance_response(response, user_message)
@@ -607,20 +605,20 @@ IMPORTANT INSTRUCTIONS:
         try:
             logger.info("🔄 Regenerating response with enhanced parameters...")
             
-            # Enhanced generation parameters for ultra-low memory
+            # Enhanced generation parameters for better quality
             with torch.no_grad():
                 output = self.model.generate(
                     **inputs,
                     max_new_tokens=max_output_tokens,
-                    # Ultra-low memory parameters
-                    temperature=0.75,          # Balanced creativity and focus
+                    # Enhanced quality parameters
+                    temperature=0.8,          # Balanced creativity and focus
                     do_sample=True,
-                    top_p=0.9,               # Reduced for lower memory
-                    top_k=25,                # Reduced for lower memory
-                    typical_p=0.9,           # Reduced for lower memory
-                    repetition_penalty=1.08,  # Reduced for lower memory
+                    top_p=0.94,              # Optimal for regeneration
+                    top_k=35,                # Balanced quality
+                    typical_p=0.96,          # Better consistency
+                    repetition_penalty=1.12,  # Balanced repetition control
                     no_repeat_ngram_size=2,   # Prevent 2-gram repetition
-                    length_penalty=0.9,      # Prefer shorter responses (save memory)
+                    length_penalty=1.0,      # Neutral length preference
                     # Memory optimizations
                     use_cache=True,
                     num_beams=1,
