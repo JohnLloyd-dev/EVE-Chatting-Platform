@@ -12,7 +12,11 @@ services:
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U adam2025man -d chatting_platform && psql -U adam2025man -d chatting_platform -c 'SELECT 1;'"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U adam2025man -d chatting_platform && psql -U adam2025man -d chatting_platform -c 'SELECT 1;'",
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -41,6 +45,8 @@ services:
       - HF_HOME=/app/.cache/huggingface
       - AI_MODEL_CACHE_DIR=/app/.cache/huggingface
       - CUDA_VISIBLE_DEVICES=0
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       - PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
       - TOKENIZERS_PARALLELISM=false
       - TRANSFORMERS_OFFLINE=0
@@ -53,6 +59,10 @@ services:
           memory: 12G
         reservations:
           memory: 8G
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     runtime: nvidia
     depends_on:
       postgres:
