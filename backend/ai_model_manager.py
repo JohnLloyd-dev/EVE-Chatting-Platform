@@ -50,6 +50,33 @@ class AIModelManager:
             logger.info(f"🚀 Loading AI model: {settings.ai_model_name}")
             logger.info(f"🔧 Device: {self.device}")
             
+            # CRITICAL: Clear GPU memory before loading
+            if self.device == "cuda":
+                logger.info("🧹 Clearing GPU memory before model loading...")
+                torch.cuda.empty_cache()
+                gc.collect()
+                
+                # Check available memory
+                total_vram = torch.cuda.get_device_properties(0).total_memory / 1024**3
+                free_vram = (torch.cuda.get_device_properties(0).total_memory - torch.cuda.memory_allocated(0)) / 1024**3
+                logger.info(f"💾 After cleanup - Total: {total_vram:.2f}GB, Free: {free_vram:.2f}GB")
+                
+                if free_vram < 6.0:  # Need at least 6GB free for 7B model
+                    logger.warning(f"⚠️ Insufficient VRAM ({free_vram:.2f}GB) - trying aggressive cleanup...")
+                    # Force garbage collection
+                    gc.collect()
+                    torch.cuda.empty_cache()
+                    # Wait a moment for cleanup
+                    import time
+                    time.sleep(2)
+                    
+                    free_vram = (torch.cuda.get_device_properties(0).total_memory - torch.cuda.memory_allocated(0)) / 1024**3
+                    logger.info(f"💾 After aggressive cleanup - Free VRAM: {free_vram:.2f}GB")
+                    
+                    if free_vram < 6.0:
+                        logger.error(f"❌ Still insufficient VRAM ({free_vram:.2f}GB) - cannot load 7B model")
+                        raise RuntimeError(f"Insufficient VRAM: {free_vram:.2f}GB free, need 6GB+ for 7B model")
+            
             # Conditional quantization based on device
             if self.device == "cuda":
                 logger.info("🔧 Using 8-bit quantization for CUDA (more memory efficient)")
@@ -63,10 +90,33 @@ class AIModelManager:
             
             # Load tokenizer and model directly
             self.tokenizer = AutoTokenizer.from_pretrained(settings.ai_model_name)
-            self.model = AutoModelForCausalLM.from_pretrained(
-                settings.ai_model_name,
-                quantization_config=bnb_config
-            )
+            
+            # Try loading with quantization first, fallback to no quantization if needed
+            try:
+                logger.info("🚀 Attempting to load model with 8-bit quantization...")
+                self.model = AutoModelForCausalLM.from_pretrained(
+                    settings.ai_model_name,
+                    quantization_config=bnb_config
+                )
+                logger.info("✅ Model loaded with 8-bit quantization")
+            except Exception as e:
+                if self.device == "cuda" and "out of memory" in str(e).lower():
+                    logger.warning(f"⚠️ 8-bit quantization failed due to memory: {e}")
+                    logger.info("🔄 Trying without quantization (will use more memory but should fit)...")
+                    
+                    # Clear memory again
+                    torch.cuda.empty_cache()
+                    gc.collect()
+                    
+                    # Try without quantization
+                    self.model = AutoModelForCausalLM.from_pretrained(
+                        settings.ai_model_name,
+                        torch_dtype=torch.float16  # Use FP16 to save some memory
+                    )
+                    logger.info("✅ Model loaded without quantization (FP16)")
+                else:
+                    # Re-raise if it's not a memory error
+                    raise
             
             # Move to device directly (like your working script)
             if self.device == "cuda":
