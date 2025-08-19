@@ -91,7 +91,9 @@ class AIModelManager:
                 logger.info("🔧 Using 8-bit quantization for CUDA (more memory efficient)")
                 bnb_config = BitsAndBytesConfig(
                     load_in_8bit=True,
-                    bnb_8bit_compute_dtype=torch.float16
+                    bnb_8bit_compute_dtype=torch.float16,
+                    bnb_8bit_use_double_quant=True,  # Enable double quantization for lower memory
+                    bnb_8bit_quant_type="nf8"         # Use NF8 for better memory efficiency
                 )
             else:
                 logger.info("🔧 No quantization for CPU")
@@ -157,6 +159,10 @@ class AIModelManager:
                 # Optimize for inference
                 torch.set_grad_enabled(False)
                 logger.info("✅ Inference optimizations enabled for RTX 4060")
+                
+                # Set memory management environment variables
+                os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:128,expandable_segments:True'
+                logger.info("✅ Memory management environment variables set")
             
             logger.info("✅ AI Model loaded successfully!")
             
@@ -317,6 +323,48 @@ IMPORTANT INSTRUCTIONS:
         # Thread safety for concurrent requests
         with self.generate_lock:
             try:
+                # AGGRESSIVE MEMORY MANAGEMENT BEFORE GENERATION
+                if self.device == "cuda":
+                    logger.info("🧹 Aggressive memory cleanup before generation...")
+                    
+                    # Force garbage collection
+                    gc.collect()
+                    
+                    # Clear PyTorch cache
+                    torch.cuda.empty_cache()
+                    
+                    # Check available memory
+                    free_vram = (torch.cuda.get_device_properties(0).total_memory - torch.cuda.memory_allocated(0)) / 1024**3
+                    logger.info(f"💾 Available VRAM before generation: {free_vram:.2f}GB")
+                    
+                    # If less than 1GB free, force cleanup
+                    if free_vram < 1.0:
+                        logger.warning(f"⚠️ Low VRAM ({free_vram:.2f}GB) - forcing aggressive cleanup...")
+                        
+                        # Clear all sessions to free memory
+                        old_sessions = list(self.user_sessions.keys())
+                        for old_session_id in old_sessions:
+                            del self.user_sessions[old_session_id]
+                        logger.info(f"🗑️ Forced cleanup of {len(old_sessions)} sessions due to low VRAM")
+                        
+                        # Force garbage collection again
+                        gc.collect()
+                        torch.cuda.empty_cache()
+                        
+                        # Check memory again
+                        free_vram = (torch.cuda.get_device_properties(0).total_memory - torch.cuda.memory_allocated(0)) / 1024**3
+                        logger.info(f"💾 VRAM after forced cleanup: {free_vram:.2f}GB")
+                        
+                        if free_vram < 0.5:  # Still very low
+                            logger.error(f"❌ Critically low VRAM ({free_vram:.2f}GB) - attempting emergency recovery...")
+                            
+                            # Try emergency memory recovery
+                            if self._emergency_memory_recovery():
+                                logger.info("✅ Emergency recovery successful, continuing...")
+                            else:
+                                logger.error("❌ Emergency recovery failed - cannot generate response")
+                                return "I'm experiencing critical memory issues. Please try again later."
+                
                 # Get or create session
                 if session_id not in self.user_sessions:
                     # Try to rebuild session from database if available
@@ -383,11 +431,15 @@ IMPORTANT INSTRUCTIONS:
                         eos_token_id=self.tokenizer.eos_token_id,
                         # Advanced sampling for better quality
                         num_beams=1,              # Single beam for speed
-                        early_stopping=True,      # Stop when EOS is generated
-                        # Memory optimizations
+                        # Memory optimizations for low VRAM
                         output_scores=False,      # Don't compute scores (save memory)
                         output_attentions=False,  # Don't output attentions (save memory)
-                        output_hidden_states=False # Don't output hidden states (save memory)
+                        output_hidden_states=False, # Don't output hidden states (save memory)
+                        # Additional memory optimizations
+                        return_dict_in_generate=False,  # Return tensors instead of dict (save memory)
+                        use_cache=True,           # Enable KV cache for speed
+                        # Remove early_stopping flag (causes warnings)
+                        # early_stopping=True,      # Stop when EOS is generated
                     )
                 
                 # Extract only new tokens
@@ -402,6 +454,21 @@ IMPORTANT INSTRUCTIONS:
                 
                 # Save AI response to history
                 self.add_assistant_message(session_id, response)
+                
+                # POST-GENERATION MEMORY CLEANUP
+                if self.device == "cuda":
+                    # Clear generation outputs to free memory
+                    del output
+                    del inputs
+                    
+                    # Force garbage collection
+                    gc.collect()
+                    torch.cuda.empty_cache()
+                    
+                    # Log memory usage after generation
+                    allocated = torch.cuda.memory_allocated(0) / 1024**3
+                    free_vram = (torch.cuda.get_device_properties(0).total_memory - torch.cuda.memory_allocated(0)) / 1024**3
+                    logger.info(f"💾 Post-generation VRAM - Allocated: {allocated:.2f}GB, Free: {free_vram:.2f}GB")
                 
                 # Automatic memory optimization for long conversations
                 if len(ai_session["history"]) > 20:  # After 20 messages
@@ -442,6 +509,35 @@ IMPORTANT INSTRUCTIONS:
                 
         except Exception as e:
             logger.warning(f"⚠️ Auto memory optimization failed: {e}")
+    
+    def _emergency_memory_recovery(self) -> bool:
+        """Emergency memory recovery for critical situations"""
+        try:
+            logger.warning("🚨 EMERGENCY: Critical memory situation detected!")
+            
+            # Clear all sessions immediately
+            session_count = len(self.user_sessions)
+            self.user_sessions.clear()
+            logger.warning(f"🗑️ Emergency cleanup: Cleared {session_count} sessions")
+            
+            # Force garbage collection multiple times
+            for i in range(3):
+                gc.collect()
+                if self.device == "cuda":
+                    torch.cuda.empty_cache()
+                time.sleep(0.5)  # Small delay between collections
+            
+            # Check if recovery was successful
+            if self.device == "cuda":
+                free_vram = (torch.cuda.get_device_properties(0).total_memory - torch.cuda.memory_allocated(0)) / 1024**3
+                logger.warning(f"💾 Emergency recovery completed. Free VRAM: {free_vram:.2f}GB")
+                return free_vram > 1.0  # Return True if we have at least 1GB free
+            else:
+                return True
+                
+        except Exception as e:
+            logger.error(f"❌ Emergency memory recovery failed: {e}")
+            return False
     
     def _validate_and_enhance_response(self, response: str, user_message: str) -> str:
         """Enhanced response validation and quality enhancement"""
