@@ -26,18 +26,18 @@ class Settings(BaseSettings):
     # Tally webhook security
     tally_webhook_secret: Optional[str] = os.getenv("TALLY_WEBHOOK_SECRET")
     
-    # AI Model Configuration (7B with 4-bit quantization for RTX 4060)
+    # AI Model Configuration (7B with 8-bit quantization for RTX 4060 - better instruction following)
     ai_model_name: str = os.getenv("AI_MODEL_NAME", "teknium/OpenHermes-2.5-Mistral-7B")
     ai_model_file: str = os.getenv("AI_MODEL_FILE", "")  # Not needed for transformers
     ai_model_cache_dir: str = os.getenv("AI_MODEL_CACHE_DIR", "/app/.cache/huggingface")  # New dedicated cache directory
     ai_generation_timeout: float = float(os.getenv("AI_GENERATION_TIMEOUT", "30.0"))
     ai_request_timeout: float = float(os.getenv("AI_REQUEST_TIMEOUT", "60.0"))
-    ai_use_4bit: bool = os.getenv("AI_USE_4BIT", "true").lower() == "true"
-    ai_use_8bit: bool = os.getenv("AI_USE_8BIT", "false").lower() == "true"
+    ai_use_4bit: bool = os.getenv("AI_USE_4BIT", "false").lower() == "true"  # Disabled by default
+    ai_use_8bit: bool = os.getenv("AI_USE_8BIT", "true").lower() == "true"   # Enabled by default for better quality
     
-    # RTX 4060 Memory Optimization Settings (Emergency VRAM Mode)
-    ai_max_context_length: int = int(os.getenv("AI_MAX_CONTEXT_LENGTH", "512"))  # CRITICAL: Reduced to 512 for 8GB VRAM
-    ai_max_memory_gb: float = float(os.getenv("AI_MAX_MEMORY_GB", "4.5"))  # CRITICAL: Reduced to 4.5GB for 8GB VRAM
+    # RTX 4060 Memory Optimization Settings (8-bit Quantization Mode)
+    ai_max_context_length: int = int(os.getenv("AI_MAX_CONTEXT_LENGTH", "1024"))  # Increased to 1024 for 8-bit
+    ai_max_memory_gb: float = float(os.getenv("AI_MAX_MEMORY_GB", "6.0"))  # Increased to 6.0GB for 8-bit
     ai_offload_folder: str = os.getenv("AI_OFFLOAD_FOLDER", "/app/offload")  # Disk offloading
     ai_batch_size: int = int(os.getenv("AI_BATCH_SIZE", "1"))  # Single batch for memory efficiency
     

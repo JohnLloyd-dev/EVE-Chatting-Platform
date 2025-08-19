@@ -54,10 +54,21 @@ class AIModelManager:
         self._load_model()
     
     def _load_model(self):
-        """Simple model loading optimized for RTX 4060"""
+        """Load the 7B AI model with optimized quantization for RTX 4060 (8GB VRAM)"""
         try:
-            logger.info(f"🚀 Loading AI model: {settings.ai_model_name}")
+            logger.info(f"🚀 Loading 7B AI model: {settings.ai_model_name}")
             logger.info(f"🔧 Device: {self.device}")
+            logger.info(f"📊 4-bit quantization: {settings.ai_use_4bit}")
+            logger.info(f"📊 8-bit quantization: {settings.ai_use_8bit}")
+            logger.info(f"💾 Max memory: {settings.ai_max_memory_gb}GB")
+            logger.info(f"📏 Max context: {settings.ai_max_context_length} tokens")
+            
+            # Validate quantization settings
+            if settings.ai_use_4bit and settings.ai_use_8bit:
+                raise ValueError("❌ Cannot use both 4-bit and 8-bit quantization simultaneously")
+            
+            # Create offload directory if it doesn't exist
+            os.makedirs(settings.ai_offload_folder, exist_ok=True)
             
             # CRITICAL: Clear GPU memory before loading
             if self.device == "cuda":
@@ -86,47 +97,44 @@ class AIModelManager:
                         logger.error(f"❌ Still insufficient VRAM ({free_vram:.2f}GB) - cannot load 7B model")
                         raise RuntimeError(f"Insufficient VRAM: {free_vram:.2f}GB free, need 6GB+ for 7B model")
             
-            # Conditional quantization based on device
-            if self.device == "cuda":
-                logger.info("🔧 Using 8-bit quantization for CUDA (better instruction-following)")
-                bnb_config = BitsAndBytesConfig(
-                    load_in_8bit=True,                    # Switch back to 8-bit for better quality
-                    bnb_8bit_compute_dtype=torch.float16, # Use FP16 for computation
-                    bnb_8bit_use_double_quant=True,       # Enable double quantization for memory efficiency
-                    bnb_8bit_quant_type="nf8"            # Use NF8 for balanced quality/memory
-                )
-            else:
-                logger.info("🔧 No quantization for CPU")
-                bnb_config = None
-            
-            # Load tokenizer and model directly
-            self.tokenizer = AutoTokenizer.from_pretrained(settings.ai_model_name)
-            
-            # Try loading with 8-bit quantization first, fallback to 4-bit if needed
-            try:
-                logger.info("🚀 Attempting to load model with 8-bit quantization (target: 5-6GB VRAM)...")
-                self.model = AutoModelForCausalLM.from_pretrained(
+            # Configure 8-bit quantization for RTX 4060 (8GB VRAM)
+            if settings.ai_use_8bit and self.device == "cuda":
+                logger.info("🔧 Configuring 8-bit quantization with CPU offload...")
+                
+                # Load tokenizer first
+                self.tokenizer = AutoTokenizer.from_pretrained(
                     settings.ai_model_name,
-                    quantization_config=bnb_config,
-                    device_map="auto",                    # Auto device mapping for memory efficiency
-                    low_cpu_mem_usage=True,               # Reduce CPU memory usage
-                    torch_dtype=torch.float16,            # Use FP16 for lower memory
-                    max_memory={0: "6GB"}                 # Limit GPU memory to 6GB max
+                    cache_dir=settings.ai_model_cache_dir,
+                    trust_remote_code=True
                 )
-                logger.info("✅ Model loaded with 8-bit quantization (better instruction-following)")
-                logger.info("💡 NOTE: 8-bit provides better quality but uses ~1-2GB more VRAM than 4-bit")
-                logger.info("💡 If you need lower memory usage, the system will automatically fallback to 4-bit")
-            except Exception as e:
-                if self.device == "cuda" and "out of memory" in str(e).lower():
-                    logger.warning(f"⚠️ 8-bit quantization failed due to memory: {e}")
-                    logger.info("🔄 Trying 4-bit quantization as fallback (lower quality but fits)...")
+                
+                quantization_config = BitsAndBytesConfig(
+                    load_in_8bit=True,
+                    llm_int8_threshold=6.0,
+                    llm_int8_has_fp16_weight=False,
+                    llm_int8_enable_fp32_cpu_offload=True  # Enable CPU offload
+                )
+                
+                # Load model with 8-bit quantization and CPU offload
+                try:
+                    self.model = AutoModelForCausalLM.from_pretrained(
+                        settings.ai_model_name,
+                        quantization_config=quantization_config,
+                        device_map="auto",  # Let transformers handle device mapping
+                        low_cpu_mem_usage=True,
+                        trust_remote_code=True,
+                        cache_dir=settings.ai_model_cache_dir
+                    )
+                    logger.info("✅ Model loaded with 8-bit quantization and CPU offload")
+                except Exception as e:
+                    logger.warning(f"⚠️ 8-bit quantization failed: {e}")
+                    logger.info("🔄 Trying 4-bit quantization as fallback...")
                     
-                    # Clear memory again
+                    # Clear memory and try 4-bit
                     torch.cuda.empty_cache()
                     gc.collect()
                     
-                    # Try with 4-bit quantization as fallback
-                    bnb_config_4bit = BitsAndBytesConfig(
+                    quantization_config_4bit = BitsAndBytesConfig(
                         load_in_4bit=True,
                         bnb_4bit_compute_dtype=torch.float16,
                         bnb_4bit_use_double_quant=True,
@@ -135,16 +143,63 @@ class AIModelManager:
                     
                     self.model = AutoModelForCausalLM.from_pretrained(
                         settings.ai_model_name,
-                        quantization_config=bnb_config_4bit,
+                        quantization_config=quantization_config_4bit,
                         device_map="auto",
                         low_cpu_mem_usage=True,
-                        torch_dtype=torch.float16,
-                        max_memory={0: "5GB"}
+                        trust_remote_code=True,
+                        cache_dir=settings.ai_model_cache_dir
                     )
-                    logger.info("✅ Model loaded with 4-bit quantization (fallback - lower quality)")
-                else:
-                    # Re-raise if it's not a memory error
-                    raise
+                    logger.info("✅ Model loaded with 4-bit quantization (fallback)")
+            else:
+                logger.info("🔧 No quantization for CPU")
+                quantization_config = None
+                
+                # Load tokenizer and model directly
+                self.tokenizer = AutoTokenizer.from_pretrained(settings.ai_model_name)
+                
+                # Try loading with 8-bit quantization first, fallback to 4-bit if needed
+                try:
+                    logger.info("🚀 Attempting to load model with 8-bit quantization (target: 5-6GB VRAM)...")
+                    self.model = AutoModelForCausalLM.from_pretrained(
+                        settings.ai_model_name,
+                        quantization_config=quantization_config,
+                        device_map="auto",                    # Auto device mapping for memory efficiency
+                        low_cpu_mem_usage=True,               # Reduce CPU memory usage
+                        torch_dtype=torch.float16,            # Use FP16 for lower memory
+                        max_memory={0: "6GB"}                 # Limit GPU memory to 6GB max
+                    )
+                    logger.info("✅ Model loaded with 8-bit quantization (better instruction-following)")
+                    logger.info("💡 NOTE: 8-bit provides better quality but uses ~1-2GB more VRAM than 4-bit")
+                    logger.info("💡 If you need lower memory usage, the system will automatically fallback to 4-bit")
+                except Exception as e:
+                    if self.device == "cuda" and "out of memory" in str(e).lower():
+                        logger.warning(f"⚠️ 8-bit quantization failed due to memory: {e}")
+                        logger.info("🔄 Trying 4-bit quantization as fallback (lower quality but fits)...")
+                        
+                        # Clear memory again
+                        torch.cuda.empty_cache()
+                        gc.collect()
+                        
+                        # Try with 4-bit quantization as fallback
+                        bnb_config_4bit = BitsAndBytesConfig(
+                            load_in_4bit=True,
+                            bnb_4bit_compute_dtype=torch.float16,
+                            bnb_4bit_use_double_quant=True,
+                            bnb_4bit_quant_type="nf4"
+                        )
+                        
+                        self.model = AutoModelForCausalLM.from_pretrained(
+                            settings.ai_model_name,
+                            quantization_config=bnb_config_4bit,
+                            device_map="auto",
+                            low_cpu_mem_usage=True,
+                            torch_dtype=torch.float16,
+                            max_memory={0: "5GB"}
+                        )
+                        logger.info("✅ Model loaded with 4-bit quantization (fallback - lower quality)")
+                    else:
+                        # Re-raise if it's not a memory error
+                        raise
             
             # Device mapping is handled automatically by device_map="auto"
             # No need for manual .to() calls
