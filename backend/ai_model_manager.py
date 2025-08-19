@@ -88,12 +88,12 @@ class AIModelManager:
             
             # Conditional quantization based on device
             if self.device == "cuda":
-                logger.info("🔧 Using 4-bit quantization for CUDA (ultra-low memory)")
+                logger.info("🔧 Using 8-bit quantization for CUDA (better instruction-following)")
                 bnb_config = BitsAndBytesConfig(
-                    load_in_4bit=True,                    # Switch to 4-bit for ultra-low memory
-                    bnb_4bit_compute_dtype=torch.float16, # Use FP16 for computation
-                    bnb_4bit_use_double_quant=True,       # Enable double quantization
-                    bnb_4bit_quant_type="nf4"            # Use NF4 for best memory efficiency
+                    load_in_8bit=True,                    # Switch back to 8-bit for better quality
+                    bnb_8bit_compute_dtype=torch.float16, # Use FP16 for computation
+                    bnb_8bit_use_double_quant=True,       # Enable double quantization for memory efficiency
+                    bnb_8bit_quant_type="nf8"            # Use NF8 for balanced quality/memory
                 )
             else:
                 logger.info("🔧 No quantization for CPU")
@@ -102,42 +102,46 @@ class AIModelManager:
             # Load tokenizer and model directly
             self.tokenizer = AutoTokenizer.from_pretrained(settings.ai_model_name)
             
-            # Try loading with 4-bit quantization first, fallback to 8-bit if needed
+            # Try loading with 8-bit quantization first, fallback to 4-bit if needed
             try:
-                logger.info("🚀 Attempting to load model with 4-bit quantization (target: 4.6GB VRAM)...")
+                logger.info("🚀 Attempting to load model with 8-bit quantization (target: 5-6GB VRAM)...")
                 self.model = AutoModelForCausalLM.from_pretrained(
                     settings.ai_model_name,
                     quantization_config=bnb_config,
                     device_map="auto",                    # Auto device mapping for memory efficiency
                     low_cpu_mem_usage=True,               # Reduce CPU memory usage
                     torch_dtype=torch.float16,            # Use FP16 for lower memory
-                    max_memory={0: "5GB"}                 # Limit GPU memory to 5GB max
+                    max_memory={0: "6GB"}                 # Limit GPU memory to 6GB max
                 )
-                logger.info("✅ Model loaded with 4-bit quantization (ultra-low memory)")
+                logger.info("✅ Model loaded with 8-bit quantization (better instruction-following)")
+                logger.info("💡 NOTE: 8-bit provides better quality but uses ~1-2GB more VRAM than 4-bit")
+                logger.info("💡 If you need lower memory usage, the system will automatically fallback to 4-bit")
             except Exception as e:
                 if self.device == "cuda" and "out of memory" in str(e).lower():
-                    logger.warning(f"⚠️ 4-bit quantization failed due to memory: {e}")
-                    logger.info("🔄 Trying 8-bit quantization (should still fit under 6GB)...")
+                    logger.warning(f"⚠️ 8-bit quantization failed due to memory: {e}")
+                    logger.info("🔄 Trying 4-bit quantization as fallback (lower quality but fits)...")
                     
                     # Clear memory again
                     torch.cuda.empty_cache()
                     gc.collect()
                     
-                    # Try with 8-bit quantization
-                    bnb_config_8bit = BitsAndBytesConfig(
-                        load_in_8bit=True,
-                        bnb_8bit_compute_dtype=torch.float16
+                    # Try with 4-bit quantization as fallback
+                    bnb_config_4bit = BitsAndBytesConfig(
+                        load_in_4bit=True,
+                        bnb_4bit_compute_dtype=torch.float16,
+                        bnb_4bit_use_double_quant=True,
+                        bnb_4bit_quant_type="nf4"
                     )
                     
                     self.model = AutoModelForCausalLM.from_pretrained(
                         settings.ai_model_name,
-                        quantization_config=bnb_config_8bit,
+                        quantization_config=bnb_config_4bit,
                         device_map="auto",
                         low_cpu_mem_usage=True,
                         torch_dtype=torch.float16,
-                        max_memory={0: "6GB"}
+                        max_memory={0: "5GB"}
                     )
-                    logger.info("✅ Model loaded with 8-bit quantization (low memory)")
+                    logger.info("✅ Model loaded with 4-bit quantization (fallback - lower quality)")
                 else:
                     # Re-raise if it's not a memory error
                     raise
@@ -179,13 +183,13 @@ class AIModelManager:
                 reserved = torch.cuda.memory_reserved(0) / 1024**3
                 total = torch.cuda.get_device_properties(0).total_memory / 1024**3
                 logger.info(f"💾 Memory Usage - Allocated: {allocated:.2f}GB, Reserved: {reserved:.2f}GB, Total: {total:.2f}GB")
-                logger.info(f"🎯 TARGET: 4.6GB VRAM usage (exactly like your working script)")
+                logger.info(f"🎯 TARGET: 5-6GB VRAM usage (8-bit quantization for better quality)")
                 
                 # Verify we're within target
-                if allocated > 5.0:  # Should be under 5GB with 4-bit quantization
-                    logger.warning(f"⚠️ VRAM usage ({allocated:.2f}GB) is higher than target (4.6GB)")
+                if allocated > 6.5:  # Should be under 6.5GB with 8-bit quantization
+                    logger.warning(f"⚠️ VRAM usage ({allocated:.2f}GB) is higher than target (5-6GB)")
                 else:
-                    logger.info(f"✅ VRAM usage ({allocated:.2f}GB) is within target (4.6GB)")
+                    logger.info(f"✅ VRAM usage ({allocated:.2f}GB) is within target (5-6GB)")
             
         except Exception as e:
             logger.error(f"❌ Failed to load AI model: {e}")
@@ -398,10 +402,16 @@ class AIModelManager:
                 
                 # DEBUG: Log the actual prompt being sent to the model
                 logger.info(f"🔍 DEBUG: Full prompt being sent to model:")
-                logger.info(f"🔍 System prompt: {system_prompt[:200]}...")
+                logger.info(f"🔍 Current user message: {user_message}")
+                logger.info(f"🔍 System prompt (COMPLETE): {system_prompt}")
                 logger.info(f"🔍 History length: {len(ai_session['history'])} messages")
+                logger.info(f"🔍 COMPLETE CONVERSATION HISTORY:")
+                for i, msg in enumerate(ai_session['history']):
+                    logger.info(f"🔍 Message {i+1}: {msg}")
                 logger.info(f"🔍 Full prompt length: {len(full_prompt)} characters")
-                logger.info(f"🔍 Prompt preview: {full_prompt[:500]}...")
+                logger.info(f"🔍 COMPLETE PROMPT:")
+                logger.info(f"🔍 {full_prompt}")
+                logger.info(f"🔍 END OF PROMPT")
                 
                 # Tokenize with truncation
                 inputs = self.tokenizer(
@@ -457,10 +467,17 @@ class AIModelManager:
                 # DEBUG: Log the actual response from the model
                 logger.info(f"🔍 DEBUG: Raw model response:")
                 logger.info(f"🔍 Response length: {len(response)} characters")
-                logger.info(f"🔍 Response content: {response}")
+                logger.info(f"🔍 COMPLETE RAW RESPONSE:")
+                logger.info(f"🔍 {response}")
                 
                 # Enhanced response validation and quality control
                 response = self._validate_and_enhance_response(response, user_message)
+                
+                # DEBUG: Log the final processed response
+                logger.info(f"🔍 DEBUG: Final processed response:")
+                logger.info(f"🔍 Final response length: {len(response)} characters")
+                logger.info(f"🔍 COMPLETE FINAL RESPONSE:")
+                logger.info(f"🔍 {response}")
                 
                 # Save AI response to history
                 self.add_assistant_message(session_id, response)
