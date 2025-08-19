@@ -23,7 +23,22 @@ class AIModelManager:
         self.tokenizer = None
         self.model_loaded = False
         self.user_sessions: Dict[str, Dict] = {}
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        
+        # Enhanced device detection with logging
+        if torch.cuda.is_available():
+            self.device = "cuda"
+            logger.info(f"✅ CUDA detected: {torch.cuda.get_device_name(0)}")
+            logger.info(f"💾 Total VRAM: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f}GB")
+            logger.info(f"🔧 CUDA version: {torch.version.cuda}")
+        else:
+            self.device = "cpu"
+            logger.warning("⚠️ CUDA not available, using CPU")
+            logger.warning("🔍 Checking CUDA environment...")
+            logger.warning(f"   - CUDA_VISIBLE_DEVICES: {os.getenv('CUDA_VISIBLE_DEVICES', 'Not set')}")
+            logger.warning(f"   - NVIDIA_VISIBLE_DEVICES: {os.getenv('NVIDIA_VISIBLE_DEVICES', 'Not set')}")
+            logger.warning(f"   - PyTorch CUDA available: {torch.cuda.is_available()}")
+            logger.warning(f"   - PyTorch version: {torch.__version__}")
+        
         self.generate_lock = Lock()
         
         # Load model on initialization
@@ -35,19 +50,30 @@ class AIModelManager:
             logger.info(f"🚀 Loading AI model: {settings.ai_model_name}")
             logger.info(f"🔧 Device: {self.device}")
             
-            # Simple quantization config (like your working main.py)
-            bnb_config = BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_compute_dtype=torch.float16
-            )
+            # Conditional quantization based on device
+            if self.device == "cuda":
+                logger.info("🔧 Using 4-bit quantization for CUDA")
+                bnb_config = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_compute_dtype=torch.float16
+                )
+                device_map = "auto"
+            else:
+                logger.info("🔧 No quantization for CPU")
+                bnb_config = None
+                device_map = None
             
             # Load tokenizer and model directly
             self.tokenizer = AutoTokenizer.from_pretrained(settings.ai_model_name)
             self.model = AutoModelForCausalLM.from_pretrained(
                 settings.ai_model_name,
-                device_map="auto",
+                device_map=device_map,
                 quantization_config=bnb_config
             )
+            
+            # Move to device if not using device_map
+            if device_map is None:
+                self.model = self.model.to(self.device)
             
             # Set to evaluation mode
             self.model.eval()
