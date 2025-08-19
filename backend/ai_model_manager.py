@@ -120,8 +120,11 @@ class AIModelManager:
             
             # Move to device directly (like your working script)
             if self.device == "cuda":
-                logger.info("🚀 Moving model to CUDA device...")
-                self.model = self.model.to(self.device)
+                if bnb_config is None:
+                    logger.info("🚀 Moving model to CUDA device...")
+                    self.model = self.model.to(self.device)
+                else:
+                    logger.info("✅ 8-bit model already on correct device (no .to() needed)")
             else:
                 logger.info("🚀 Using CPU device...")
             
