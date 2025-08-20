@@ -30,7 +30,7 @@ error() {
 }
 
 # Model configuration
-MODEL_NAME="openhermes-2.5-mistral-7b.Q5_K_M.gguf"
+MODEL_NAME="openhermes-2.5-mistral-7b.Q6_K.gguf"
 MODEL_URL="https://huggingface.co/TheBloke/OpenHermes-2.5-Mistral-7B-GGUF/resolve/main/${MODEL_NAME}"
 CACHE_DIR="./backend/.cache/huggingface"
 MODEL_PATH="${CACHE_DIR}/${MODEL_NAME}"
