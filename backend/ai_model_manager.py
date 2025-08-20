@@ -162,52 +162,22 @@ class AIModelManager:
                 logger.info("🔧 No quantization for CPU")
                 quantization_config = None
                 
-                # Load tokenizer and model directly
-                self.tokenizer = AutoTokenizer.from_pretrained(settings.ai_model_name)
+                # Load tokenizer and model directly for CPU
+                self.tokenizer = AutoTokenizer.from_pretrained(
+                    settings.ai_model_name,
+                    cache_dir=settings.ai_model_cache_dir,
+                    trust_remote_code=True
+                )
                 
-                # Try loading with 8-bit quantization first, fallback to 4-bit if needed
-                try:
-                    logger.info("🚀 Attempting to load model with 8-bit quantization (target: 5-6GB VRAM)...")
-                    self.model = AutoModelForCausalLM.from_pretrained(
-                        settings.ai_model_name,
-                        quantization_config=quantization_config,
-                        device_map="auto",                    # Auto device mapping for memory efficiency
-                        low_cpu_mem_usage=True,               # Reduce CPU memory usage
-                        torch_dtype=torch.float16,            # Use FP16 for lower memory
-                        max_memory={0: "6GB"}                 # Limit GPU memory to 6GB max
-                    )
-                    logger.info("✅ Model loaded with 8-bit quantization (better instruction-following)")
-                    logger.info("💡 NOTE: 8-bit provides better quality but uses ~1-2GB more VRAM than 4-bit")
-                    logger.info("💡 If you need lower memory usage, the system will automatically fallback to 4-bit")
-                except Exception as e:
-                    if self.device == "cuda" and "out of memory" in str(e).lower():
-                        logger.warning(f"⚠️ 8-bit quantization failed due to memory: {e}")
-                        logger.info("🔄 Trying 4-bit quantization as fallback (lower quality but fits)...")
-                        
-                        # Clear memory again
-                        torch.cuda.empty_cache()
-                        gc.collect()
-                        
-                        # Try with 4-bit quantization as fallback
-                        bnb_config_4bit = BitsAndBytesConfig(
-                            load_in_4bit=True,
-                            bnb_4bit_compute_dtype=torch.float16,
-                            bnb_4bit_use_double_quant=True,
-                            bnb_4bit_quant_type="nf4"
-                        )
-                        
-                        self.model = AutoModelForCausalLM.from_pretrained(
-                            settings.ai_model_name,
-                            quantization_config=bnb_config_4bit,
-                            device_map="auto",
-                            low_cpu_mem_usage=True,
-                            torch_dtype=torch.float16,
-                            max_memory={0: "5GB"}
-                        )
-                        logger.info("✅ Model loaded with 4-bit quantization (fallback - lower quality)")
-                    else:
-                        # Re-raise if it's not a memory error
-                        raise
+                # Load model for CPU (no quantization needed)
+                self.model = AutoModelForCausalLM.from_pretrained(
+                    settings.ai_model_name,
+                    device_map="auto",
+                    low_cpu_mem_usage=True,
+                    trust_remote_code=True,
+                    cache_dir=settings.ai_model_cache_dir
+                )
+                logger.info("✅ Model loaded for CPU (no quantization)")
             
             # Device mapping is handled automatically by device_map="auto"
             # No need for manual .to() calls
@@ -437,15 +407,18 @@ class AIModelManager:
                 )
                 
                 # VERIFY: Check if the scenario is actually included in the final prompt
-                scenario_keywords = ["18 year old", "whitte woman", "uniform", "teasinging", "seductioning"]
+                # Dynamic scenario verification - extract keywords from the actual scenario
+                scenario_keywords = self._extract_scenario_keywords(system_prompt)
                 scenario_found = any(keyword.lower() in full_prompt.lower() for keyword in scenario_keywords)
                 
                 if scenario_found:
                     logger.info("✅ SCENARIO VERIFICATION: Scenario content found in final prompt sent to model")
+                    logger.info(f"✅ Found keywords: {[kw for kw in scenario_keywords if kw.lower() in full_prompt.lower()]}")
                 else:
                     logger.warning("❌ SCENARIO VERIFICATION: Scenario content NOT found in final prompt!")
                     logger.warning("❌ This means the AI model will NOT receive the character instructions!")
-                    logger.warning("❌ Expected scenario keywords: 18 year old, whitte woman, uniform, teasinging, seductioning")
+                    logger.warning(f"❌ Expected scenario keywords: {scenario_keywords}")
+                    logger.warning(f"❌ System prompt preview: {system_prompt[:200]}...")
                 
                 # DEBUG: Log the actual prompt being sent to the model
                 logger.info(f"🔍 DEBUG: Full prompt being sent to model:")
@@ -584,8 +557,8 @@ class AIModelManager:
                         logger.info(f"    * Last updated: {session_data.get('last_updated', 'N/A')}")
                     
                     # Force cleanup if memory is high
-                    if free_vram < 1.0:
-                        logger.warning(f"⚠️ Low VRAM after generation ({free_vram:.2f}GB) - forcing cleanup...")
+                    if free_vram < self.VRAM_CLEANUP_THRESHOLD:
+                        logger.warning(f"⚠️ Low VRAM after generation ({free_vram:.2f}GB < {self.VRAM_CLEANUP_THRESHOLD}GB) - forcing cleanup...")
                         self._aggressive_session_cleanup()
                         
                         # Check memory again after cleanup
@@ -595,6 +568,10 @@ class AIModelManager:
                         logger.info(f"  - Allocated: {allocated_vram_after:.2f}GB")
                         logger.info(f"  - Free: {free_vram_after:.2f}GB")
                         logger.info(f"  - Freed: {allocated_vram - allocated_vram_after:.2f}GB")
+                        
+                        # If still critically low after cleanup, log warning
+                        if free_vram_after < 0.5:
+                            logger.error(f"❌ Critically low VRAM after cleanup ({free_vram_after:.2f}GB) - consider reducing active users")
                 
                 # Automatic memory optimization for long conversations
                 if len(ai_session["history"]) > 20:  # After 20 messages
@@ -725,13 +702,17 @@ class AIModelManager:
             # Check for question-answer relevance
             if "?" in user_message:
                 # User asked a question, check if response addresses it
-                if any(word in response_lower for word in ["answer", "explain", "help", "assist", "guide"]):
+                if any(word in response_lower for word in ["answer", "explain", "help", "assist", "guide", "here", "that", "this"]):
                     return True
-                if len(response) > 20:  # Substantial response
+                if len(response) > 15:  # Reasonable response length
                     return True
             
             # Check for general conversation relevance
-            if len(response) > 10 and not response.startswith("I'm sorry"):
+            if len(response) > 8 and not response.startswith("I'm sorry"):
+                return True
+                
+            # For very short responses, check if they're meaningful
+            if len(response) >= 5 and not response.startswith("I'm sorry"):
                 return True
                 
             return False
@@ -903,6 +884,65 @@ class AIModelManager:
             }
         except Exception as e:
             return {"error": f"Failed to get VRAM stats: {str(e)}"}
+
+    def _extract_scenario_keywords(self, system_prompt: str) -> List[str]:
+        """Extract keywords from the system prompt that indicate a scenario."""
+        keywords = []
+        prompt_lower = system_prompt.lower()
+        
+        # Extract age and gender information
+        age_patterns = ["18 year old", "25 year old", "30 year old", "young", "teen", "adult"]
+        for pattern in age_patterns:
+            if pattern in prompt_lower:
+                keywords.append(pattern)
+                break
+        
+        # Extract appearance/role information
+        appearance_patterns = ["whitte woman", "white woman", "black man", "woman", "man", "girl", "boy"]
+        for pattern in appearance_patterns:
+            if pattern in prompt_lower:
+                keywords.append(pattern)
+                break
+        
+        # Extract location/setting information
+        location_patterns = ["public place", "nature", "home", "office", "club", "park"]
+        for pattern in location_patterns:
+            if pattern in prompt_lower:
+                keywords.append(pattern)
+                break
+        
+        # Extract clothing/uniform information
+        clothing_patterns = ["uniform", "dress", "suit", "casual", "formal"]
+        for pattern in clothing_patterns:
+            if pattern in prompt_lower:
+                keywords.append(pattern)
+                break
+        
+        # Extract activity/mood information
+        activity_patterns = ["teasinging", "seductioning", "flirting", "chatting", "meeting"]
+        for pattern in activity_patterns:
+            if pattern in prompt_lower:
+                keywords.append(pattern)
+                break
+        
+        # If no specific keywords found, extract any unique words that might indicate scenario
+        if not keywords:
+            # Look for words that appear in the scenario section
+            lines = system_prompt.split('\n')
+            for line in lines:
+                if any(indicator in line.lower() for indicator in ["you are", "i am", "we meet", "you are wearing"]):
+                    # Extract meaningful words from this line
+                    words = line.split()
+                    for word in words:
+                        if len(word) > 3 and word.lower() not in ["you", "are", "the", "and", "with", "in", "at", "to", "for"]:
+                            keywords.append(word)
+                    break
+        
+        # Ensure we have at least some keywords
+        if not keywords:
+            keywords = ["scenario", "character", "role"]
+        
+        return keywords
 
 # Global instance
 ai_model_manager = AIModelManager() 
