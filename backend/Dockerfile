@@ -16,13 +16,17 @@ RUN apt-get update && apt-get install -y \
 # Create symlink for python
 RUN ln -s /usr/bin/python3.11 /usr/bin/python
 
-# Set environment variables for CUDA
+# Set environment variables for CUDA with more comprehensive paths
 ENV CMAKE_ARGS="-DGGML_CUDA=on"
 ENV FORCE_CMAKE=1
 ENV CUDA_HOME=/usr/local/cuda
 ENV PATH=/usr/local/cuda/bin:$PATH
-ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
-ENV LIBRARY_PATH=/usr/local/cuda/lib64:$LIBRARY_PATH
+ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH
+ENV LIBRARY_PATH=/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:$LIBRARY_PATH
+ENV CPATH=/usr/local/cuda/include:$CPATH
+
+# Ensure CUDA libraries are available for linking
+RUN ldconfig /usr/local/cuda/lib64
 
 # Install llama-cpp-python with CUDA support
 RUN pip install --no-cache-dir llama-cpp-python[server] --force-reinstall --upgrade
