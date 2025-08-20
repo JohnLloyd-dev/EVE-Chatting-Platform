@@ -542,6 +542,9 @@ async def send_message(
             # AI initiates conversation with "hi" (no user message to respond to)
             ai_response = "hi"
             
+            # Add the AI "hi" message to the AI session history
+            ai_model_manager.add_assistant_message(ai_session_id, ai_response)
+            
             # Save AI response to database
             ai_message = Message(
                 session_id=session_uuid,
@@ -550,6 +553,8 @@ async def send_message(
             )
             db.add(ai_message)
             db.commit()
+            
+            logger.info(f"🎯 AI conversation started with 'hi' for session {session_id}")
             
             return {
                 "message": "AI conversation started",
@@ -564,7 +569,7 @@ async def send_message(
                 "error": "Failed to generate AI response"
             }
     
-    # Save user message
+    # Save user message (only if not START_CONVERSATION)
     user_message = Message(
         session_id=session_uuid,
         content=message_request.message,
