@@ -32,6 +32,14 @@ class AIModelManager:
         self.tokenizer = None
         self.model_loaded = False
         self.user_sessions: Dict[str, Dict] = {}
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        
+        # AGGRESSIVE VRAM OPTIMIZATION SETTINGS
+        self.MAX_ACTIVE_USERS = 3  # Maximum concurrent users
+        self.MAX_CONTEXT_LENGTH = 1024  # Reduced from 2048
+        self.MAX_HISTORY_TOKENS = 800   # Reduced from 2000
+        self.MAX_HISTORY_MESSAGES = 5   # Maximum messages per user
+        self.VRAM_CLEANUP_THRESHOLD = 1.5  # GB - cleanup when below this
         
         # Enhanced device detection with logging
         if torch.cuda.is_available():
@@ -251,18 +259,14 @@ class AIModelManager:
             self.model_loaded = False
             raise
     
-    def create_session(self, session_id: str, system_prompt: str) -> Dict:
-        """Create a new chat session"""
-        session = {
+    def create_session(self, session_id: str, system_prompt: str):
+        """Create a new AI session"""
+        self.user_sessions[session_id] = {
             "system_prompt": system_prompt,
             "history": [],
-            "created_at": time.time(),
-            "last_updated": time.time()
+            "last_updated": time.time()  # Track when session was last updated
         }
-        
-        self.user_sessions[session_id] = session
         logger.info(f"🎯 Created session {session_id}")
-        return session
     
     def get_session(self, session_id: str) -> Optional[Dict]:
         """Get an existing session"""
@@ -330,16 +334,18 @@ class AIModelManager:
     def add_user_message(self, session_id: str, message: str):
         """Add a user message to session history"""
         if session_id in self.user_sessions:
-            session = self.user_sessions[session_id]
-            session["history"].append(f"User: {message}")
-            session["last_updated"] = time.time()
+            self.user_sessions[session_id]["history"].append(f"User: {message}")
+            self.user_sessions[session_id]["last_updated"] = time.time()  # Update timestamp
+        else:
+            logger.warning(f"Session {session_id} not found when adding user message")
     
     def add_assistant_message(self, session_id: str, message: str):
-        """Add an assistant message to session history"""
+        """Add an AI response to session history"""
         if session_id in self.user_sessions:
-            session = self.user_sessions[session_id]
-            session["history"].append(f"AI: {message}")
-            session["last_updated"] = time.time()
+            self.user_sessions[session_id]["history"].append(f"AI: {message}")
+            self.user_sessions[session_id]["last_updated"] = time.time()  # Update timestamp
+        else:
+            logger.warning(f"Session {session_id} not found when adding AI message")
     
     def trim_history(self, system: str, history: list, max_tokens: int = 3500) -> list:
         """Trim conversation history to fit within token budget"""
@@ -398,15 +404,17 @@ class AIModelManager:
                     free_vram = (torch.cuda.get_device_properties(0).total_memory - torch.cuda.memory_allocated(0)) / 1024**3
                     logger.info(f"💾 Available VRAM before generation: {free_vram:.2f}GB")
                     
-                    # If less than 1GB free, force cleanup
-                    if free_vram < 1.0:
-                        logger.warning(f"⚠️ Low VRAM ({free_vram:.2f}GB) - forcing aggressive cleanup...")
+                    # ENFORCE USER LIMITS FIRST
+                    if len(self.user_sessions) > self.MAX_ACTIVE_USERS:
+                        logger.warning(f"⚠️ Too many active users ({len(self.user_sessions)} > {self.MAX_ACTIVE_USERS}) - cleaning up oldest sessions...")
+                        self._enforce_user_limits()
+                    
+                    # If less than threshold, force cleanup
+                    if free_vram < self.VRAM_CLEANUP_THRESHOLD:
+                        logger.warning(f"⚠️ Low VRAM ({free_vram:.2f}GB < {self.VRAM_CLEANUP_THRESHOLD}GB) - forcing aggressive cleanup...")
                         
-                        # Clear all sessions to free memory
-                        old_sessions = list(self.user_sessions.keys())
-                        for old_session_id in old_sessions:
-                            del self.user_sessions[old_session_id]
-                        logger.info(f"🗑️ Forced cleanup of {len(old_sessions)} sessions due to low VRAM")
+                        # Clear oldest sessions to free memory
+                        self._aggressive_session_cleanup()
                         
                         # Force garbage collection again
                         gc.collect()
@@ -443,7 +451,7 @@ class AIModelManager:
                 ai_session["history"] = self.trim_history(
                     system=system_prompt,
                     history=ai_session["history"],
-                    max_tokens=2000  # Reduced from 3500 to save memory
+                    max_tokens=self.MAX_HISTORY_TOKENS  # Use new limit: 800 instead of 2000
                 )
                 
                 # Add user message to history AFTER trimming
@@ -468,18 +476,18 @@ class AIModelManager:
                 logger.info(f"🔍 {full_prompt}")
                 logger.info(f"🔍 END OF PROMPT")
                 
-                # Tokenize with truncation
+                # Tokenize with truncation using new limits
                 inputs = self.tokenizer(
                     full_prompt,
                     return_tensors="pt",
                     truncation=True,
-                    max_length=2048  # Reduced from 4096 to save memory
+                    max_length=self.MAX_CONTEXT_LENGTH  # Use new limit: 1024 instead of 2048
                 ).to(self.model.device)
                 
                 # Adjust max tokens to available space
                 max_output_tokens = min(
                     max_tokens,
-                    2048 - inputs.input_ids.shape[1]  # Reduced from 4096
+                    self.MAX_CONTEXT_LENGTH - inputs.input_ids.shape[1]  # Use new limit: 1024
                 )
                 
                 if max_output_tokens <= 0:
@@ -591,6 +599,30 @@ class AIModelManager:
                 
         except Exception as e:
             logger.warning(f"⚠️ Auto memory optimization failed: {e}")
+    
+    def _enforce_user_limits(self):
+        """Enforce user session limits by removing the oldest sessions."""
+        if self.user_sessions:
+            # Sort sessions by last_updated to find the oldest
+            sorted_sessions = sorted(self.user_sessions.items(), key=lambda item: item[1]["last_updated"])
+            
+            # Remove sessions until we are below the MAX_ACTIVE_USERS limit
+            while len(self.user_sessions) > self.MAX_ACTIVE_USERS:
+                oldest_session_id, _ = sorted_sessions.pop(0)
+                del self.user_sessions[oldest_session_id]
+                logger.info(f"🗑️ Enforced user limit: Removed session {oldest_session_id}")
+    
+    def _aggressive_session_cleanup(self):
+        """Aggressively clean up old sessions to free VRAM."""
+        if self.user_sessions:
+            # Sort sessions by last_updated to find the oldest
+            sorted_sessions = sorted(self.user_sessions.items(), key=lambda item: item[1]["last_updated"])
+            
+            # Remove sessions until we are below the VRAM_CLEANUP_THRESHOLD
+            while len(self.user_sessions) > 0 and (torch.cuda.get_device_properties(0).total_memory - torch.cuda.memory_allocated(0)) / 1024**3 < self.VRAM_CLEANUP_THRESHOLD:
+                oldest_session_id, _ = sorted_sessions.pop(0)
+                del self.user_sessions[oldest_session_id]
+                logger.info(f"🗑️ Aggressive cleanup: Removed session {oldest_session_id} to free VRAM")
     
     def _emergency_memory_recovery(self) -> bool:
         """Emergency memory recovery for critical situations"""
@@ -784,6 +816,57 @@ class AIModelManager:
         except Exception as e:
             logger.error(f"❌ Memory optimization failed: {e}")
             return {"status": "error", "message": str(e)}
+
+    def get_vram_usage_stats(self) -> Dict:
+        """Get detailed VRAM usage statistics"""
+        if self.device != "cuda":
+            return {"error": "CUDA not available"}
+        
+        try:
+            total_vram = torch.cuda.get_device_properties(0).total_memory / 1024**3
+            allocated_vram = torch.cuda.memory_allocated(0) / 1024**3
+            free_vram = total_vram - allocated_vram
+            
+            # Calculate per-user memory usage
+            per_user_stats = {}
+            total_session_memory = 0
+            
+            for session_id, session in self.user_sessions.items():
+                # Estimate memory per session
+                system_tokens = len(self.tokenizer.encode(session["system_prompt"]))
+                history_tokens = sum(len(self.tokenizer.encode(msg)) for msg in session["history"])
+                total_tokens = system_tokens + history_tokens
+                
+                # Memory estimation (rough calculation)
+                session_memory = (total_tokens * 4) / 1024**2  # Convert to MB
+                total_session_memory += session_memory
+                
+                per_user_stats[session_id] = {
+                    "system_tokens": system_tokens,
+                    "history_tokens": history_tokens,
+                    "total_tokens": total_tokens,
+                    "estimated_memory_mb": round(session_memory, 2),
+                    "messages": len(session["history"]),
+                    "last_updated": session["last_updated"]
+                }
+            
+            return {
+                "total_vram_gb": round(total_vram, 2),
+                "allocated_vram_gb": round(allocated_vram, 2),
+                "free_vram_gb": round(free_vram, 2),
+                "vram_usage_percent": round((allocated_vram / total_vram) * 100, 1),
+                "active_users": len(self.user_sessions),
+                "max_active_users": self.MAX_ACTIVE_USERS,
+                "total_session_memory_mb": round(total_session_memory, 2),
+                "per_user_stats": per_user_stats,
+                "context_limits": {
+                    "max_context_length": self.MAX_CONTEXT_LENGTH,
+                    "max_history_tokens": self.MAX_HISTORY_TOKENS,
+                    "max_history_messages": self.MAX_HISTORY_MESSAGES
+                }
+            }
+        except Exception as e:
+            return {"error": f"Failed to get VRAM stats: {str(e)}"}
 
 # Global instance
 ai_model_manager = AIModelManager() 

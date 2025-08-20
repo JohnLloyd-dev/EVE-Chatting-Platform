@@ -1338,6 +1338,26 @@ async def ai_optimize_memory():
         logger.error(f"❌ Memory optimization failed: {e}")
         raise HTTPException(500, f"Memory optimization failed: {str(e)}")
 
+# AI model status endpoint
+@app.get("/ai/status")
+async def get_ai_status():
+    """Get AI model status and health"""
+    try:
+        return ai_model_manager.get_health_status()
+    except Exception as e:
+        logger.error(f"Failed to get AI status: {e}")
+        return {"status": "error", "message": str(e)}
+
+# AI model VRAM usage statistics endpoint
+@app.get("/ai/vram-stats")
+async def get_ai_vram_stats():
+    """Get detailed VRAM usage statistics per user"""
+    try:
+        return ai_model_manager.get_vram_usage_stats()
+    except Exception as e:
+        logger.error(f"Failed to get VRAM stats: {e}")
+        return {"error": str(e)}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
