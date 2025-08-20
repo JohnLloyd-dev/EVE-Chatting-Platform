@@ -128,16 +128,13 @@ If not, adjust your response to match the character exactly.
     
     # Also log the scenario part specifically to verify it's included
     if tally_prompt and tally_prompt.strip():
-        scenario_marker = "**Scenario**:"
-        if scenario_marker in complete_prompt:
-            scenario_start = complete_prompt.find(scenario_marker)
-            scenario_end = complete_prompt.find("\n\n", scenario_start)
-            if scenario_end == -1:
-                scenario_end = len(complete_prompt)
-            scenario_part = complete_prompt[scenario_start:scenario_end]
-            logger.info(f"✅ Scenario found in final prompt: {scenario_part}")
+        # Check if the scenario content is actually included in the final prompt
+        if tally_prompt.strip() in complete_prompt:
+            logger.info(f"✅ Scenario content found in final prompt: {tally_prompt[:100]}...")
         else:
-            logger.warning("❌ Scenario marker not found in final prompt!")
+            logger.warning("❌ Scenario content not found in final prompt!")
+            logger.warning(f"Expected scenario: {tally_prompt[:100]}...")
+            logger.warning(f"Final prompt preview: {complete_prompt[:200]}...")
     
     return complete_prompt
 
@@ -570,8 +567,9 @@ async def send_message(
         
         # Generate AI response directly
         try:
-            # Get system prompt for this session
-            system_prompt = get_complete_system_prompt(db, str(session.user.id), session.scenario_prompt or "")
+            # Use the already combined system prompt from the session
+            system_prompt = session.scenario_prompt or "You are a helpful AI assistant."
+            logger.info(f"Using session scenario prompt: {len(system_prompt)} characters")
             
             # Create AI session if it doesn't exist
             ai_session_id = str(session_uuid)
@@ -619,8 +617,9 @@ async def send_message(
     
     # Generate AI response directly (no more Celery queuing)
     try:
-        # Get system prompt for this session
-        system_prompt = get_complete_system_prompt(db, str(session.user.id), session.scenario_prompt or "")
+        # Use the already combined system prompt from the session
+        system_prompt = session.scenario_prompt or "You are a helpful AI assistant."
+        logger.info(f"Using session scenario prompt: {len(system_prompt)} characters")
         
         # Create AI session if it doesn't exist
         ai_session_id = str(session_uuid)
