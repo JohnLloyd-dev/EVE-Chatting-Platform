@@ -509,6 +509,9 @@ class AIModelManager:
                 # Enhanced response validation and quality control
                 response = self._validate_and_enhance_response(response, user_message)
                 
+                # CRITICAL: Character consistency check
+                response = self._enforce_character_consistency(response, system_prompt)
+                
                 # DEBUG: Log the final processed response
                 logger.info(f"🔍 DEBUG: Final processed response:")
                 logger.info(f"🔍 Final response length: {len(response)} characters")
@@ -667,30 +670,30 @@ class AIModelManager:
             return False
     
     def _validate_and_enhance_response(self, response: str, user_message: str) -> str:
-        """Enhanced response validation and quality enhancement"""
+        """Validate and enhance AI response while maintaining character consistency"""
         try:
-            # Basic validation
-            if not response or len(response.strip()) < 5:
-                logger.warning(f"⚠️ Generated response too short, using fallback...")
-                return "I understand your message. How can I help you further?"
-            
             # Quality checks
             response = response.strip()
             
-            # Remove common generation artifacts
+            # Remove common generation artifacts but maintain character
             if response.startswith("I'm sorry") and "I cannot" in response:
-                response = "I understand your request. Let me help you with that."
+                # Instead of generic response, regenerate in character
+                logger.warning("⚠️ AI tried to break character with 'I cannot' - this should not happen with proper prompting")
+                # Return a character-appropriate response
+                return "I'm not sure what you mean, but I'm here with you in this moment."
             
             # Ensure response is relevant to user message
             if self._is_response_relevant(response, user_message):
                 return response
             else:
                 logger.warning(f"⚠️ Response not relevant to user message, regenerating...")
-                return "I want to make sure I understand correctly. Could you clarify your question?"
+                # Return character-appropriate response instead of generic
+                return "I'm not sure I understand. Can you explain what you mean?"
                 
         except Exception as e:
             logger.error(f"❌ Response validation failed: {e}")
-            return "I'm here to help. What would you like to discuss?"
+            # Return character-appropriate response instead of generic
+            return "I'm having trouble understanding. What are you trying to say?"
     
     def _is_response_relevant(self, response: str, user_message: str) -> bool:
         """Check if AI response is relevant to user message"""
@@ -759,16 +762,17 @@ class AIModelManager:
             
             # Enhanced validation
             if not response or len(response.strip()) < 5:
-                # Final fallback with context
-                response = "I understand your message. How can I help you further?"
+                # Final fallback with character-appropriate response
+                response = "I'm listening. What's on your mind?"
             elif response.startswith("I'm sorry") and "I cannot" in response:
-                response = "I want to help you with that. Could you provide more details?"
+                response = "I want to understand you better. Can you explain?"
             
             return response
             
         except Exception as e:
             logger.error(f"❌ Response regeneration failed: {e}")
-            return "I'm here to help. What would you like to discuss?"
+            # Return character-appropriate response instead of generic
+            return "I'm here with you. What would you like to talk about?"
     
     def get_health_status(self) -> Dict:
         """Get AI model health status for monitoring"""
@@ -943,6 +947,55 @@ class AIModelManager:
             keywords = ["scenario", "character", "role"]
         
         return keywords
+
+    def _enforce_character_consistency(self, response: str, system_prompt: str) -> str:
+        """Enforce character consistency by ensuring the response aligns with the system prompt."""
+        try:
+            # Check if response contains character-specific elements
+            prompt_lower = system_prompt.lower()
+            response_lower = response.lower()
+            
+            # Check for character-breaking phrases
+            breaking_phrases = [
+                "i'm sorry", "i cannot", "i'm an ai", "i'm a language model",
+                "as an ai", "i'm here to help", "how can i help you",
+                "i understand your request", "let me help you"
+            ]
+            
+            for phrase in breaking_phrases:
+                if phrase in response_lower:
+                    logger.warning(f"⚠️ Character consistency check failed: Response contains breaking phrase '{phrase}'")
+                    # Return a character-appropriate response
+                    if "18 year old" in prompt_lower and "woman" in prompt_lower:
+                        return "I'm not sure what you mean, but I'm here with you in this moment."
+                    elif "uniform" in prompt_lower:
+                        return "I'm listening. What's on your mind?"
+                    else:
+                        return "I want to understand you better. Can you explain?"
+            
+            # Check if response is too generic
+            generic_responses = [
+                "hi there", "hello", "how can i help you today",
+                "i'm here to help", "what would you like to discuss"
+            ]
+            
+            for generic in generic_responses:
+                if generic in response_lower and len(response.strip()) < 30:
+                    logger.warning(f"⚠️ Character consistency check failed: Response too generic '{generic}'")
+                    # Return a character-appropriate response
+                    if "18 year old" in prompt_lower and "woman" in prompt_lower:
+                        return "Hi there! I'm here with you. What's happening?"
+                    elif "uniform" in prompt_lower:
+                        return "Hello! I'm listening. What do you want to talk about?"
+                    else:
+                        return "Hey! I'm here. What's on your mind?"
+            
+            logger.info("✅ Character consistency check passed")
+            return response
+            
+        except Exception as e:
+            logger.error(f"❌ Character consistency enforcement failed: {e}")
+            return response  # Fallback to original response on error
 
 # Global instance
 ai_model_manager = AIModelManager() 
