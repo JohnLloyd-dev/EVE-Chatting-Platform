@@ -539,8 +539,8 @@ async def send_message(
             if not ai_model_manager.get_session(ai_session_id):
                 ai_model_manager.create_session(ai_session_id, system_prompt)
             
-            # Generate AI response with database context for session rebuilding
-            ai_response = ai_model_manager.generate_response(ai_session_id, "hi", session, db)
+            # AI initiates conversation with "hi" (no user message to respond to)
+            ai_response = "hi"
             
             # Save AI response to database
             ai_message = Message(
