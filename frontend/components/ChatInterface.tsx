@@ -371,8 +371,8 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
         {session.messages.length === 0 ? (
           <div className="text-center text-gray-300 py-8">
             {hasInitializedAI
-              ? "Waiting for AI response..."
-              : "Initializing conversation..."}
+              ? "Contacting your partner..."
+              : "Connecting to your partner..."}
           </div>
         ) : (
           session.messages.map((msg: ChatMessage) => (
@@ -418,7 +418,7 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
                 <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse"></div>
                 <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse"></div>
                 <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse"></div>
-                <span className="text-sm text-gray-400 ml-2">typing...</span>
+                <span className="text-sm text-gray-400 ml-2">your partner is typing...</span>
               </div>
             </div>
           </div>
