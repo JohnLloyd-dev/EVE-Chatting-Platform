@@ -1,27 +1,27 @@
 FROM python:3.11-slim
 
-WORKDIR /app
-
-# Install system dependencies for AI model loading
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
-    gcc \
-    g++ \
-    curl \
+    build-essential \
+    cmake \
     git \
     wget \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Set environment variables for better AI model loading
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV TRANSFORMERS_CACHE=/app/.cache/huggingface
-ENV HF_HOME=/app/.cache/huggingface
-ENV TOKENIZERS_PARALLELISM=false
-ENV TRANSFORMERS_OFFLINE=0
+# Set environment variables for CUDA
+ENV CMAKE_ARGS="-DLLAMA_CUBLAS=on"
+ENV FORCE_CMAKE=1
 
-# Copy requirements and install Python dependencies
+# Install llama-cpp-python with CUDA support
+RUN pip install --no-cache-dir llama-cpp-python[server] --force-reinstall --upgrade
+
+# Install other Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Set working directory
+WORKDIR /app
 
 # Copy application code
 COPY . .
@@ -29,5 +29,5 @@ COPY . .
 # Expose port
 EXPOSE 8000
 
-# Default command (can be overridden in docker-compose)
+# Run the application
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
