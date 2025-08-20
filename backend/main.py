@@ -19,12 +19,13 @@ from schemas import (
 )
 from auth import authenticate_admin, create_access_token, get_current_admin, create_admin_session
 from ai_tally_extractor import generate_ai_scenario, debug_tally_data
+from config import settings
+
 # Import the appropriate model manager based on configuration
 if settings.ai_use_gguf:
     from ai_model_manager_gguf import gguf_model_manager as ai_model_manager
 else:
     from ai_model_manager import ai_model_manager
-from config import settings
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
