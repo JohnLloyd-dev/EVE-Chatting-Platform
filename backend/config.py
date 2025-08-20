@@ -36,8 +36,8 @@ class Settings(BaseSettings):
     ai_use_8bit: bool = os.getenv("AI_USE_8BIT", "true").lower() == "true"   # Enabled by default for better quality
     
     # RTX 4060 Memory Optimization Settings (8-bit Quantization Mode)
-    ai_max_context_length: int = int(os.getenv("AI_MAX_CONTEXT_LENGTH", "1024"))  # Increased to 1024 for 8-bit
-    ai_max_memory_gb: float = float(os.getenv("AI_MAX_MEMORY_GB", "6.0"))  # Increased to 6.0GB for 8-bit
+    ai_max_context_length: int = int(os.getenv("AI_MAX_CONTEXT_LENGTH", "512"))  # Reduced to 512 for 8GB VRAM
+    ai_max_memory_gb: float = float(os.getenv("AI_MAX_MEMORY_GB", "4.0"))  # Reduced to 4.0GB for 8GB VRAM
     ai_offload_folder: str = os.getenv("AI_OFFLOAD_FOLDER", "/app/offload")  # Disk offloading
     ai_batch_size: int = int(os.getenv("AI_BATCH_SIZE", "1"))  # Single batch for memory efficiency
     

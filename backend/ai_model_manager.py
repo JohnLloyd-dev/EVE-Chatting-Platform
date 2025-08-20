@@ -35,11 +35,11 @@ class AIModelManager:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         
         # AGGRESSIVE VRAM OPTIMIZATION SETTINGS
-        self.MAX_ACTIVE_USERS = 3  # Maximum concurrent users
-        self.MAX_CONTEXT_LENGTH = 2048  # Increased to accommodate full system prompt with scenario
-        self.MAX_HISTORY_TOKENS = 800   # Reduced from 2000
-        self.MAX_HISTORY_MESSAGES = 5   # Maximum messages per user
-        self.VRAM_CLEANUP_THRESHOLD = 1.5  # GB - cleanup when below this
+        self.MAX_ACTIVE_USERS = 2  # Reduced from 3 to 2 for 8GB VRAM
+        self.MAX_CONTEXT_LENGTH = 512  # Reduced from 2048 to 512 for 8GB VRAM
+        self.MAX_HISTORY_TOKENS = 300   # Reduced from 800 to 300 for 8GB VRAM
+        self.MAX_HISTORY_MESSAGES = 3   # Reduced from 5 to 3 for 8GB VRAM
+        self.VRAM_CLEANUP_THRESHOLD = 2.0  # Increased from 1.5 to 2.0GB for 8GB VRAM
         
         # Enhanced device detection with logging
         if torch.cuda.is_available():
@@ -89,7 +89,7 @@ class AIModelManager:
                 free_vram = (torch.cuda.get_device_properties(0).total_memory - torch.cuda.memory_allocated(0)) / 1024**3
                 logger.info(f"💾 After cleanup - Total: {total_vram:.2f}GB, Free: {free_vram:.2f}GB")
                 
-                if free_vram < 6.0:  # Need at least 6GB free for 7B model
+                if free_vram < 4.0:  # Reduced from 6.0 to 4.0GB for 8GB VRAM
                     logger.warning(f"⚠️ Insufficient VRAM ({free_vram:.2f}GB) - trying aggressive cleanup...")
                     # Force garbage collection
                     gc.collect()
@@ -101,9 +101,9 @@ class AIModelManager:
                     free_vram = (torch.cuda.get_device_properties(0).total_memory - torch.cuda.memory_allocated(0)) / 1024**3
                     logger.info(f"💾 After aggressive cleanup - Free VRAM: {free_vram:.2f}GB")
                     
-                    if free_vram < 6.0:
+                    if free_vram < 4.0:  # Reduced from 6.0 to 4.0GB
                         logger.error(f"❌ Still insufficient VRAM ({free_vram:.2f}GB) - cannot load 7B model")
-                        raise RuntimeError(f"Insufficient VRAM: {free_vram:.2f}GB free, need 6GB+ for 7B model")
+                        raise RuntimeError(f"Insufficient VRAM: {free_vram:.2f}GB free, need 4GB+ for 7B model")
             
             # Configure 8-bit quantization for RTX 4060 (8GB VRAM)
             if settings.ai_use_8bit and self.device == "cuda":

@@ -77,46 +77,16 @@ def get_complete_system_prompt(db: Session, user_id: str = None, tally_prompt: s
     # Combine: Head + Tally + Rule with enhanced accuracy instructions
     complete_prompt = head_prompt
     
-    # Add Tally scenario if provided
+    # Add Tally scenario if provided (SIMPLE - no over-engineering)
     if tally_prompt and tally_prompt.strip():
         logger.info(f"Adding Tally scenario: {tally_prompt[:100]}...")
-        
-        # Enhanced scenario with stronger instructions
-        enhanced_scenario = f"""
-**CRITICAL INSTRUCTIONS - YOU MUST FOLLOW THESE EXACTLY:**
-
-{tally_prompt.strip()}
-
-**REMEMBER:**
-- You MUST stay in character as the specified person
-- You MUST respond in first person dialogue only
-- You MUST keep responses under 140 characters
-- You MUST never break character or reveal you are AI
-- You MUST respond to the user's specific questions
-- You MUST maintain the exact personality and role described
-
-**CHARACTER CONSISTENCY CHECK:**
-Before responding, ask yourself: "Am I staying true to my character?"
-If not, adjust your response to match the character exactly.
-"""
-        complete_prompt += enhanced_scenario
+        complete_prompt += "\n\n" + tally_prompt.strip()
     else:
         logger.warning("No Tally scenario provided to combine with system prompt")
     
-    # Add enhanced rule prompt
-    enhanced_rules = f"""
-**ENFORCED RULES:**
-{rule_prompt}
-
-**RESPONSE QUALITY REQUIREMENTS:**
-- Answer the user's specific question directly
-- Stay in character at all times
-- Use first person dialogue only
-- Keep responses concise and focused
-- Never provide generic or off-topic responses
-- Always reference your character's specific traits and situation
-"""
-    complete_prompt += enhanced_rules
+    # Add rule prompt (SIMPLE - no over-engineering)
+    if rule_prompt and rule_prompt.strip():
+        complete_prompt += "\n\n" + rule_prompt.strip()
     
     # Log the combination process
     logger.info(f"Combined prompt breakdown:")
@@ -124,21 +94,6 @@ If not, adjust your response to match the character exactly.
     logger.info(f"  - Tally scenario length: {len(tally_prompt) if tally_prompt else 0} characters")
     logger.info(f"  - Rule prompt length: {len(rule_prompt)} characters")
     logger.info(f"  - Final combined length: {len(complete_prompt)} characters")
-    logger.info(f"Final combined system prompt (COMPLETE - NO TRUNCATION):")
-    logger.info(f"{complete_prompt}")
-    
-    # Also log the scenario part specifically to verify it's included
-    if tally_prompt and tally_prompt.strip():
-        # Check if the scenario content is actually included in the final prompt
-        if tally_prompt.strip() in complete_prompt:
-            logger.info(f"✅ Scenario content found in final prompt (COMPLETE):")
-            logger.info(f"{tally_prompt}")
-        else:
-            logger.warning("❌ Scenario content not found in final prompt!")
-            logger.warning(f"Expected scenario (COMPLETE):")
-            logger.warning(f"{tally_prompt}")
-            logger.warning(f"Final prompt preview (COMPLETE):")
-            logger.warning(f"{complete_prompt}")
     
     return complete_prompt
 
