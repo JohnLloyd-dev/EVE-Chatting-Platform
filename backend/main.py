@@ -124,17 +124,21 @@ If not, adjust your response to match the character exactly.
     logger.info(f"  - Tally scenario length: {len(tally_prompt) if tally_prompt else 0} characters")
     logger.info(f"  - Rule prompt length: {len(rule_prompt)} characters")
     logger.info(f"  - Final combined length: {len(complete_prompt)} characters")
-    logger.info(f"Final combined system prompt preview: {complete_prompt[:300]}...")
+    logger.info(f"Final combined system prompt (COMPLETE - NO TRUNCATION):")
+    logger.info(f"{complete_prompt}")
     
     # Also log the scenario part specifically to verify it's included
     if tally_prompt and tally_prompt.strip():
         # Check if the scenario content is actually included in the final prompt
         if tally_prompt.strip() in complete_prompt:
-            logger.info(f"✅ Scenario content found in final prompt: {tally_prompt[:100]}...")
+            logger.info(f"✅ Scenario content found in final prompt (COMPLETE):")
+            logger.info(f"{tally_prompt}")
         else:
             logger.warning("❌ Scenario content not found in final prompt!")
-            logger.warning(f"Expected scenario: {tally_prompt[:100]}...")
-            logger.warning(f"Final prompt preview: {complete_prompt[:200]}...")
+            logger.warning(f"Expected scenario (COMPLETE):")
+            logger.warning(f"{tally_prompt}")
+            logger.warning(f"Final prompt preview (COMPLETE):")
+            logger.warning(f"{complete_prompt}")
     
     return complete_prompt
 
@@ -219,7 +223,8 @@ async def tally_webhook(webhook_data: dict, db: Session = Depends(get_db)):
         try:
             # Pass the full webhook data structure, not just form_data
             scenario = generate_ai_scenario(webhook_data)
-            logger.info(f"AI-generated scenario for user {user.user_code}: {scenario[:100]}...")
+            logger.info(f"AI-generated scenario for user {user.user_code} (COMPLETE):")
+            logger.info(f"{scenario}")
             logger.info(f"Scenario length: {len(scenario)} characters")
             logger.info(f"Scenario is empty: {not scenario or not scenario.strip()}")
         except Exception as e:
@@ -231,8 +236,9 @@ async def tally_webhook(webhook_data: dict, db: Session = Depends(get_db)):
         try:
             logger.info(f"Calling get_complete_system_prompt with scenario length: {len(scenario)}")
             system_prompt = get_complete_system_prompt(db, tally_prompt=scenario)
-            logger.info(f"Retrieved complete system prompt: {len(system_prompt)} characters")
-            logger.info(f"System prompt preview: {system_prompt[:300]}...")
+            logger.info(f"Retrieved complete system prompt (COMPLETE):")
+            logger.info(f"{system_prompt}")
+            logger.info(f"System prompt length: {len(system_prompt)} characters")
         except Exception as e:
             logger.error(f"Failed to get system prompt: {str(e)}")
             system_prompt = "You are a helpful AI assistant. " + scenario
@@ -569,7 +575,9 @@ async def send_message(
         try:
             # Use the already combined system prompt from the session
             system_prompt = session.scenario_prompt or "You are a helpful AI assistant."
-            logger.info(f"Using session scenario prompt: {len(system_prompt)} characters")
+            logger.info(f"Using session scenario prompt (COMPLETE):")
+            logger.info(f"{system_prompt}")
+            logger.info(f"System prompt length: {len(system_prompt)} characters")
             
             # Create AI session if it doesn't exist
             ai_session_id = str(session_uuid)
@@ -619,7 +627,9 @@ async def send_message(
     try:
         # Use the already combined system prompt from the session
         system_prompt = session.scenario_prompt or "You are a helpful AI assistant."
-        logger.info(f"Using session scenario prompt: {len(system_prompt)} characters")
+        logger.info(f"Using session scenario prompt (COMPLETE):")
+        logger.info(f"{system_prompt}")
+        logger.info(f"System prompt length: {len(system_prompt)} characters")
         
         # Create AI session if it doesn't exist
         ai_session_id = str(session_uuid)

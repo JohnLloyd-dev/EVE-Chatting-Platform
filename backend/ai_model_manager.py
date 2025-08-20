@@ -466,13 +466,14 @@ class AIModelManager:
                 # DEBUG: Log the actual prompt being sent to the model
                 logger.info(f"🔍 DEBUG: Full prompt being sent to model:")
                 logger.info(f"🔍 Current user message: {user_message}")
-                logger.info(f"🔍 System prompt (COMPLETE): {system_prompt}")
+                logger.info(f"🔍 System prompt (COMPLETE - NO TRUNCATION):")
+                logger.info(f"🔍 {system_prompt}")
                 logger.info(f"🔍 History length: {len(ai_session['history'])} messages")
-                logger.info(f"🔍 COMPLETE CONVERSATION HISTORY:")
+                logger.info(f"🔍 COMPLETE CONVERSATION HISTORY (NO TRUNCATION):")
                 for i, msg in enumerate(ai_session['history']):
-                    logger.info(f"🔍 Message {i+1}: {msg}")
+                    logger.info(f"🔍 Message {i+1} (COMPLETE): {msg}")
                 logger.info(f"🔍 Full prompt length: {len(full_prompt)} characters")
-                logger.info(f"🔍 COMPLETE PROMPT:")
+                logger.info(f"🔍 COMPLETE PROMPT (NO TRUNCATION):")
                 logger.info(f"🔍 {full_prompt}")
                 logger.info(f"🔍 END OF PROMPT")
                 
@@ -545,7 +546,7 @@ class AIModelManager:
                 # DEBUG: Log the actual response from the model
                 logger.info(f"🔍 DEBUG: Raw model response:")
                 logger.info(f"🔍 Response length: {len(response)} characters")
-                logger.info(f"🔍 COMPLETE RAW RESPONSE:")
+                logger.info(f"🔍 COMPLETE RAW RESPONSE (NO TRUNCATION):")
                 logger.info(f"🔍 {response}")
                 
                 # Enhanced response validation and quality control
@@ -554,7 +555,7 @@ class AIModelManager:
                 # DEBUG: Log the final processed response
                 logger.info(f"🔍 DEBUG: Final processed response:")
                 logger.info(f"🔍 Final response length: {len(response)} characters")
-                logger.info(f"🔍 COMPLETE FINAL RESPONSE:")
+                logger.info(f"🔍 COMPLETE FINAL RESPONSE (NO TRUNCATION):")
                 logger.info(f"🔍 {response}")
                 
                 # Save AI response to history
@@ -562,18 +563,54 @@ class AIModelManager:
                 
                 # POST-GENERATION MEMORY CLEANUP
                 if self.device == "cuda":
-                    # Clear generation outputs to free memory
-                    del output
-                    del inputs
-                    
-                    # Force garbage collection
-                    gc.collect()
-                    torch.cuda.empty_cache()
-                    
-                    # Log memory usage after generation
-                    allocated = torch.cuda.memory_allocated(0) / 1024**3
+                    # Log detailed VRAM usage after generation
+                    allocated_vram = torch.cuda.memory_allocated(0) / 1024**3
+                    reserved_vram = torch.cuda.memory_reserved(0) / 1024**3
                     free_vram = (torch.cuda.get_device_properties(0).total_memory - torch.cuda.memory_allocated(0)) / 1024**3
-                    logger.info(f"💾 Post-generation VRAM - Allocated: {allocated:.2f}GB, Free: {free_vram:.2f}GB")
+                    total_vram = torch.cuda.get_device_properties(0).total_memory / 1024**3
+                    
+                    logger.info(f"💾 Post-generation VRAM (COMPLETE):")
+                    logger.info(f"  - Total VRAM: {total_vram:.2f}GB")
+                    logger.info(f"  - Allocated: {allocated_vram:.2f}GB")
+                    logger.info(f"  - Reserved: {reserved_vram:.2f}GB")
+                    logger.info(f"  - Free: {free_vram:.2f}GB")
+                    logger.info(f"  - Usage: {(allocated_vram/total_vram)*100:.1f}%")
+                    
+                    # Log session memory usage
+                    active_sessions = len(self.user_sessions)
+                    logger.info(f"📊 Session Memory Usage (COMPLETE):")
+                    logger.info(f"  - Active sessions: {active_sessions}")
+                    logger.info(f"  - Max allowed: {self.MAX_ACTIVE_USERS}")
+                    logger.info(f"  - Context limit: {self.MAX_CONTEXT_LENGTH} tokens")
+                    logger.info(f"  - History limit: {self.MAX_HISTORY_TOKENS} tokens")
+                    
+                    # Log per-session details
+                    for session_id, session_data in self.user_sessions.items():
+                        system_tokens = len(self.tokenizer.encode(session_data["system_prompt"]))
+                        history_tokens = sum(len(self.tokenizer.encode(msg)) for msg in session_data["history"])
+                        total_tokens = system_tokens + history_tokens
+                        estimated_memory = (total_tokens * 4) / 1024**2  # MB
+                        
+                        logger.info(f"  - Session {session_id}:")
+                        logger.info(f"    * System tokens: {system_tokens}")
+                        logger.info(f"    * History tokens: {history_tokens}")
+                        logger.info(f"    * Total tokens: {total_tokens}")
+                        logger.info(f"    * Estimated memory: {estimated_memory:.2f}MB")
+                        logger.info(f"    * Messages: {len(session_data['history'])}")
+                        logger.info(f"    * Last updated: {session_data.get('last_updated', 'N/A')}")
+                    
+                    # Force cleanup if memory is high
+                    if free_vram < 1.0:
+                        logger.warning(f"⚠️ Low VRAM after generation ({free_vram:.2f}GB) - forcing cleanup...")
+                        self._aggressive_session_cleanup()
+                        
+                        # Check memory again after cleanup
+                        allocated_vram_after = torch.cuda.memory_allocated(0) / 1024**3
+                        free_vram_after = (torch.cuda.get_device_properties(0).total_memory - torch.cuda.memory_allocated(0)) / 1024**3
+                        logger.info(f"💾 VRAM after cleanup:")
+                        logger.info(f"  - Allocated: {allocated_vram_after:.2f}GB")
+                        logger.info(f"  - Free: {free_vram_after:.2f}GB")
+                        logger.info(f"  - Freed: {allocated_vram - allocated_vram_after:.2f}GB")
                 
                 # Automatic memory optimization for long conversations
                 if len(ai_session["history"]) > 20:  # After 20 messages
