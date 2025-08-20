@@ -406,33 +406,8 @@ class AIModelManager:
                     ai_session["history"]
                 )
                 
-                # VERIFY: Check if the scenario is actually included in the final prompt
-                # Dynamic scenario verification - extract keywords from the actual scenario
-                scenario_keywords = self._extract_scenario_keywords(system_prompt)
-                scenario_found = any(keyword.lower() in full_prompt.lower() for keyword in scenario_keywords)
-                
-                if scenario_found:
-                    logger.info("✅ SCENARIO VERIFICATION: Scenario content found in final prompt sent to model")
-                    logger.info(f"✅ Found keywords: {[kw for kw in scenario_keywords if kw.lower() in full_prompt.lower()]}")
-                else:
-                    logger.warning("❌ SCENARIO VERIFICATION: Scenario content NOT found in final prompt!")
-                    logger.warning("❌ This means the AI model will NOT receive the character instructions!")
-                    logger.warning(f"❌ Expected scenario keywords: {scenario_keywords}")
-                    logger.warning(f"❌ System prompt preview: {system_prompt[:200]}...")
-                
-                # DEBUG: Log the actual prompt being sent to the model
-                logger.info(f"🔍 DEBUG: Full prompt being sent to model:")
-                logger.info(f"🔍 Current user message: {user_message}")
-                logger.info(f"🔍 System prompt (COMPLETE - NO TRUNCATION):")
-                logger.info(f"🔍 {system_prompt}")
-                logger.info(f"🔍 History length: {len(ai_session['history'])} messages")
-                logger.info(f"🔍 COMPLETE CONVERSATION HISTORY (NO TRUNCATION):")
-                for i, msg in enumerate(ai_session['history']):
-                    logger.info(f"🔍 Message {i+1} (COMPLETE): {msg}")
-                logger.info(f"🔍 Full prompt length: {len(full_prompt)} characters")
-                logger.info(f"🔍 COMPLETE PROMPT (NO TRUNCATION):")
-                logger.info(f"🔍 {full_prompt}")
-                logger.info(f"🔍 END OF PROMPT")
+                # Simple debug logging
+                logger.info(f"🔍 AI Generation: User message: '{user_message}' | System prompt: {len(system_prompt)} chars | History: {len(ai_session['history'])} messages")
                 
                 # Tokenize with truncation using new limits
                 # Use much higher max_length to avoid truncating the system prompt
@@ -715,114 +690,6 @@ class AIModelManager:
             }
         except Exception as e:
             return {"error": f"Failed to get VRAM stats: {str(e)}"}
-
-    def _extract_scenario_keywords(self, system_prompt: str) -> List[str]:
-        """Extract keywords from the system prompt that indicate a scenario."""
-        keywords = []
-        prompt_lower = system_prompt.lower()
-        
-        # Extract age and gender information
-        age_patterns = ["18 year old", "25 year old", "30 year old", "young", "teen", "adult"]
-        for pattern in age_patterns:
-            if pattern in prompt_lower:
-                keywords.append(pattern)
-                break
-        
-        # Extract appearance/role information
-        appearance_patterns = ["whitte woman", "white woman", "black man", "woman", "man", "girl", "boy"]
-        for pattern in appearance_patterns:
-            if pattern in prompt_lower:
-                keywords.append(pattern)
-                break
-        
-        # Extract location/setting information
-        location_patterns = ["public place", "nature", "home", "office", "club", "park"]
-        for pattern in location_patterns:
-            if pattern in prompt_lower:
-                keywords.append(pattern)
-                break
-        
-        # Extract clothing/uniform information
-        clothing_patterns = ["uniform", "dress", "suit", "casual", "formal"]
-        for pattern in clothing_patterns:
-            if pattern in prompt_lower:
-                keywords.append(pattern)
-                break
-        
-        # Extract activity/mood information
-        activity_patterns = ["teasinging", "seductioning", "flirting", "chatting", "meeting"]
-        for pattern in activity_patterns:
-            if pattern in prompt_lower:
-                keywords.append(pattern)
-                break
-        
-        # If no specific keywords found, extract any unique words that might indicate scenario
-        if not keywords:
-            # Look for words that appear in the scenario section
-            lines = system_prompt.split('\n')
-            for line in lines:
-                if any(indicator in line.lower() for indicator in ["you are", "i am", "we meet", "you are wearing"]):
-                    # Extract meaningful words from this line
-                    words = line.split()
-                    for word in words:
-                        if len(word) > 3 and word.lower() not in ["you", "are", "the", "and", "with", "in", "at", "to", "for"]:
-                            keywords.append(word)
-                    break
-        
-        # Ensure we have at least some keywords
-        if not keywords:
-            keywords = ["scenario", "character", "role"]
-        
-        return keywords
-
-    def _enforce_character_consistency(self, response: str, system_prompt: str) -> str:
-        """Enforce character consistency by ensuring the response aligns with the system prompt."""
-        try:
-            # Check if response contains character-specific elements
-            prompt_lower = system_prompt.lower()
-            response_lower = response.lower()
-            
-            # Check for character-breaking phrases
-            breaking_phrases = [
-                "i'm sorry", "i cannot", "i'm an ai", "i'm a language model",
-                "as an ai", "i'm here to help", "how can i help you",
-                "i understand your request", "let me help you"
-            ]
-            
-            for phrase in breaking_phrases:
-                if phrase in response_lower:
-                    logger.warning(f"⚠️ Character consistency check failed: Response contains breaking phrase '{phrase}'")
-                    # Return a character-appropriate response
-                    if "18 year old" in prompt_lower and "woman" in prompt_lower:
-                        return "I'm not sure what you mean, but I'm here with you in this moment."
-                    elif "uniform" in prompt_lower:
-                        return "I'm listening. What's on your mind?"
-                    else:
-                        return "I want to understand you better. Can you explain?"
-            
-            # Check if response is too generic
-            generic_responses = [
-                "hi there", "hello", "how can i help you today",
-                "i'm here to help", "what would you like to discuss"
-            ]
-            
-            for generic in generic_responses:
-                if generic in response_lower and len(response.strip()) < 30:
-                    logger.warning(f"⚠️ Character consistency check failed: Response too generic '{generic}'")
-                    # Return a character-appropriate response
-                    if "18 year old" in prompt_lower and "woman" in prompt_lower:
-                        return "Hi there! I'm here with you. What's happening?"
-                    elif "uniform" in prompt_lower:
-                        return "Hello! I'm listening. What do you want to talk about?"
-                    else:
-                        return "Hey! I'm here. What's on your mind?"
-            
-            logger.info("✅ Character consistency check passed")
-            return response
-            
-        except Exception as e:
-            logger.error(f"❌ Character consistency enforcement failed: {e}")
-            return response  # Fallback to original response on error
 
 # Global instance
 ai_model_manager = AIModelManager() 
