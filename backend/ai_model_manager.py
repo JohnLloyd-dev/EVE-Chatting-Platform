@@ -250,7 +250,8 @@ class AIModelManager:
             system_prompt = db_session.scenario_prompt or "You are a helpful assistant."
             
             logger.info(f"🔄 Rebuilding AI session {session_id} with system prompt length: {len(system_prompt)} characters")
-            logger.info(f"🔄 System prompt preview: {system_prompt[:200]}...")
+            logger.info(f"🔄 FULL SYSTEM PROMPT:")
+            logger.info(f"🔄 {system_prompt}")
             
             # Create new AI session with correct system prompt
             self.create_session(session_id, system_prompt)
@@ -408,6 +409,15 @@ class AIModelManager:
                 
                 # Simple debug logging
                 logger.info(f"🔍 AI Generation: User message: '{user_message}' | System prompt: {len(system_prompt)} chars | History: {len(ai_session['history'])} messages")
+                
+                # Show FULL conversation history for debugging
+                logger.info(f"🔍 FULL CONVERSATION HISTORY:")
+                for i, msg in enumerate(ai_session['history']):
+                    logger.info(f"🔍 Message {i+1}: {msg}")
+                
+                # Show FULL system prompt for debugging
+                logger.info(f"🔍 FULL SYSTEM PROMPT:")
+                logger.info(f"🔍 {system_prompt}")
                 
                 # Tokenize with truncation using new limits
                 # Use much higher max_length to avoid truncating the system prompt
