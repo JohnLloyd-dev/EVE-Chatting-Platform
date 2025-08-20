@@ -547,7 +547,7 @@ class AIModelManager:
                 
         except Exception as e:
             logger.warning(f"⚠️ Auto memory optimization failed: {e}")
-    
+
     def _enforce_user_limits(self):
         """Enforce user session limits by removing the oldest sessions."""
         if self.user_sessions:
@@ -559,7 +559,7 @@ class AIModelManager:
                 oldest_session_id, _ = sorted_sessions.pop(0)
                 del self.user_sessions[oldest_session_id]
                 logger.info(f"🗑️ Enforced user limit: Removed session {oldest_session_id}")
-    
+
     def _aggressive_session_cleanup(self):
         """Aggressively clean up old sessions to free VRAM."""
         if self.user_sessions:
@@ -571,7 +571,7 @@ class AIModelManager:
                 oldest_session_id, _ = sorted_sessions.pop(0)
                 del self.user_sessions[oldest_session_id]
                 logger.info(f"🗑️ Aggressive cleanup: Removed session {oldest_session_id} to free VRAM")
-    
+
     def _emergency_memory_recovery(self) -> bool:
         """Emergency memory recovery for critical situations"""
         try:
@@ -600,112 +600,7 @@ class AIModelManager:
         except Exception as e:
             logger.error(f"❌ Emergency memory recovery failed: {e}")
             return False
-    
-    def _validate_and_enhance_response(self, response: str, user_message: str) -> str:
-        """Validate and enhance AI response while maintaining character consistency"""
-        try:
-            # Quality checks
-            response = response.strip()
-            
-            # Remove common generation artifacts but maintain character
-            if response.startswith("I'm sorry") and "I cannot" in response:
-                # Instead of generic response, regenerate in character
-                logger.warning("⚠️ AI tried to break character with 'I cannot' - this should not happen with proper prompting")
-                # Return a character-appropriate response
-                return "I'm not sure what you mean, but I'm here with you in this moment."
-            
-            # Ensure response is relevant to user message
-            if self._is_response_relevant(response, user_message):
-                return response
-            else:
-                logger.warning(f"⚠️ Response not relevant to user message, regenerating...")
-                # Return character-appropriate response instead of generic
-                return "I'm not sure I understand. Can you explain what you mean?"
-                
-        except Exception as e:
-            logger.error(f"❌ Response validation failed: {e}")
-            # Return character-appropriate response instead of generic
-            return "I'm having trouble understanding. What are you trying to say?"
-    
-    def _is_response_relevant(self, response: str, user_message: str) -> bool:
-        """Check if AI response is relevant to user message"""
-        try:
-            # Simple relevance check based on content
-            user_lower = user_message.lower()
-            response_lower = response.lower()
-            
-            # Check for question-answer relevance
-            if "?" in user_message:
-                # User asked a question, check if response addresses it
-                if any(word in response_lower for word in ["answer", "explain", "help", "assist", "guide", "here", "that", "this"]):
-                    return True
-                if len(response) > 15:  # Reasonable response length
-                    return True
-            
-            # Check for general conversation relevance
-            if len(response) > 8 and not response.startswith("I'm sorry"):
-                return True
-                
-            # For very short responses, check if they're meaningful
-            if len(response) >= 5 and not response.startswith("I'm sorry"):
-                return True
-                
-            return False
-            
-        except Exception as e:
-            logger.warning(f"⚠️ Relevance check failed: {e}")
-            return True  # Default to accepting response
-    
-    def _regenerate_response(self, inputs, max_output_tokens: int) -> str:
-        """Regenerate response with enhanced parameters for better accuracy"""
-        try:
-            logger.info("🔄 Regenerating response with enhanced parameters...")
-            
-            # Enhanced generation parameters for better quality
-            with torch.no_grad():
-                output = self.model.generate(
-                    **inputs,
-                    max_new_tokens=max_output_tokens,
-                    # Enhanced quality parameters
-                    temperature=0.8,          # Balanced creativity and focus
-                    do_sample=True,
-                    top_p=0.94,              # Optimal for regeneration
-                    top_k=35,                # Balanced quality
-                    typical_p=0.96,          # Better consistency
-                    repetition_penalty=1.12,  # Balanced repetition control
-                    no_repeat_ngram_size=2,   # Prevent 2-gram repetition
-                    length_penalty=1.0,      # Neutral length preference
-                    # Memory optimizations
-                    use_cache=True,
-                    num_beams=1,
-                    early_stopping=True,
-                    # Memory optimizations
-                    output_scores=False,
-                    output_attentions=False,
-                    output_hidden_states=False
-                )
-            
-            # Extract and validate response
-            response_tokens = output[0][inputs.input_ids.shape[1]:]
-            response = self.tokenizer.decode(
-                response_tokens,
-                skip_special_tokens=True
-            ).strip()
-            
-            # Enhanced validation
-            if not response or len(response.strip()) < 5:
-                # Final fallback with character-appropriate response
-                response = "I'm listening. What's on your mind?"
-            elif response.startswith("I'm sorry") and "I cannot" in response:
-                response = "I want to understand you better. Can you explain?"
-            
-            return response
-            
-        except Exception as e:
-            logger.error(f"❌ Response regeneration failed: {e}")
-            # Return character-appropriate response instead of generic
-            return "I'm here with you. What would you like to talk about?"
-    
+
     def get_health_status(self) -> Dict:
         """Get AI model health status for monitoring"""
         try:
