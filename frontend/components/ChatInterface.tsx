@@ -114,10 +114,7 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
 
   // Re-focus after sending a message
   useEffect(() => {
-    if (
-      !sendMessageMutation.isLoading &&
-      textareaRef.current
-    ) {
+    if (!sendMessageMutation.isLoading && textareaRef.current) {
       textareaRef.current.focus();
     }
   }, [sendMessageMutation.isLoading]);
@@ -163,14 +160,11 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
       const initializeAI = async () => {
         try {
           // AI is now integrated - no need to initialize separately
-          // Just send the first message to start conversation
-          sendMessageMutation.mutate({
-            sessionId: session.id,
-            message: "Hello",
-          });
+          // User will start conversation manually - no auto-message
+          console.log("AI system ready - waiting for user to start conversation");
         } catch (error) {
-          console.error("Failed to start AI conversation:", error);
-          toast.error("Failed to start AI conversation");
+          console.error("Failed to initialize AI system:", error);
+          toast.error("Failed to initialize AI system");
         }
       };
 
