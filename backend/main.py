@@ -69,10 +69,10 @@ def get_complete_system_prompt(db: Session, user_id: str = None, tally_prompt: s
             rule_prompt = active_prompt.rule_prompt
             logger.info(f"Using active system prompt: {active_prompt.name}")
         else:
-            # Default prompts
-            head_prompt = "You are a sexual fantasy assistant."
-            rule_prompt = "Always speak in the first person and stay in character. Indulge sexual fantasies in detail by dominating. Be sexually explicit with your replies. Never reveal that you are an AI. Keep your answers to two sentences or less. Do not provide scene descriptions outside of dialogue. Stay in the present tense."
-            logger.warning("No active system prompt found, using default prompts")
+            # Default prompts (more generic - Tally scenarios will provide specifics)
+            head_prompt = "You are a helpful AI assistant."
+            rule_prompt = "Always speak in the first person and stay in character. Never reveal that you are an AI. Keep your responses concise and focused."
+            logger.warning("No active system prompt found, using generic fallback prompts")
     
     # Combine: Head + Tally + Rule with enhanced accuracy instructions
     complete_prompt = head_prompt
