@@ -80,7 +80,7 @@ def get_complete_system_prompt(db: Session, user_id: str = None, tally_prompt: s
     # Add Tally scenario if provided (SIMPLE - no over-engineering)
     if tally_prompt and tally_prompt.strip():
         logger.info(f"Adding Tally scenario: {tally_prompt[:100]}...")
-        complete_prompt += "\n\n" + tally_prompt.strip()
+        complete_prompt += "\n\n**scenario**\n" + tally_prompt.strip()
     else:
         logger.warning("No Tally scenario provided to combine with system prompt")
     
@@ -540,7 +540,7 @@ async def send_message(
                 ai_model_manager.create_session(ai_session_id, system_prompt)
             
             # Generate AI response with database context for session rebuilding
-            ai_response = ai_model_manager.generate_response(ai_session_id, "Hello", session, db)
+            ai_response = ai_model_manager.generate_response(ai_session_id, "hi", session, db)
             
             # Save AI response to database
             ai_message = Message(
