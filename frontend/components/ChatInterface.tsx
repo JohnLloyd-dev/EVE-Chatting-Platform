@@ -152,16 +152,32 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
     if (
       session &&
       !hasInitializedAI &&
-      session.messages.length === 0 &&
-      !showLoadingAnimation
+      !showLoadingAnimation &&
+      session.messages.length === 0
     ) {
       setHasInitializedAI(true);
-      // Initialize AI session and trigger first message
+      // Initialize AI session and show "hi" message
       const initializeAI = async () => {
         try {
           // AI is now integrated - no need to initialize separately
-          // User will start conversation manually - no auto-message
-          console.log("AI system ready - waiting for user to start conversation");
+          // Show AI "hi" message automatically
+          console.log("AI system ready - showing initial 'hi' message");
+          
+          // Add AI "hi" message to the display
+          const aiHiMessage = {
+            id: "ai-init",
+            content: "hi",
+            is_from_user: false,
+            is_admin_intervention: false,
+            created_at: new Date().toISOString(),
+          };
+          
+          // Update session messages to include AI "hi"
+          if (session.messages.length === 0) {
+            session.messages = [aiHiMessage];
+            // Force re-render
+            queryClient.invalidateQueries(["chatSession", userId]);
+          }
         } catch (error) {
           console.error("Failed to initialize AI system:", error);
           toast.error("Failed to initialize AI system");
@@ -361,17 +377,10 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
           <div className="flex justify-start">
             <div className="chat-message chat-message-ai">
               <div className="flex items-center space-x-2">
-                <div className="flex space-x-1">
-                  <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"></div>
-                  <div
-                    className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"
-                    style={{ animationDelay: "0.1s" }}
-                  ></div>
-                  <div
-                    className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"
-                    style={{ animationDelay: "0.2s" }}
-                  ></div>
-                </div>
+                <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse"></div>
+                <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse"></div>
+                <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse"></div>
+                <span className="text-sm text-gray-400 ml-2">typing...</span>
               </div>
             </div>
           </div>
