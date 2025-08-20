@@ -1,13 +1,19 @@
-FROM python:3.11-slim
+FROM nvidia/cuda:12.1-devel-ubuntu22.04
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
+    python3.11 \
+    python3.11-dev \
+    python3-pip \
     build-essential \
     cmake \
     git \
     wget \
     curl \
     && rm -rf /var/lib/apt/lists/*
+
+# Create symlink for python
+RUN ln -s /usr/bin/python3.11 /usr/bin/python
 
 # Set environment variables for CUDA
 ENV CMAKE_ARGS="-DGGML_CUDA=on"
