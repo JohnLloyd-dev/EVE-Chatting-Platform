@@ -274,40 +274,13 @@ class AIModelManager:
     
     def rebuild_session_from_database(self, session_id: str, db_session, db) -> bool:
         """Rebuild AI session from database data"""
-        if not DATABASE_AVAILABLE:
-            logger.warning("⚠️ Database not available - cannot rebuild session")
-            return False
-            
         try:
-            # Get the complete system prompt from database
-            # Get user-specific or global system prompt
-            if db_session.user and db_session.user.id:
-                user_prompt = db.query(SystemPrompt).filter(
-                    SystemPrompt.user_id == str(db_session.user.id),
-                    SystemPrompt.is_active == True
-                ).first()
-                if user_prompt:
-                    system_prompt = f"{user_prompt.head_prompt}\n\n{user_prompt.rule_prompt}"
-                else:
-                    # Fall back to global prompt
-                    global_prompt = db.query(SystemPrompt).filter(
-                        SystemPrompt.user_id.is_(None),
-                        SystemPrompt.is_active == True
-                    ).first()
-                    if global_prompt:
-                        system_prompt = f"{global_prompt.head_prompt}\n\n{global_prompt.rule_prompt}"
-                    else:
-                        system_prompt = "You are a helpful assistant."
-            else:
-                # Get global active prompt
-                active_prompt = db.query(SystemPrompt).filter(
-                    SystemPrompt.user_id.is_(None),
-                    SystemPrompt.is_active == True
-                ).first()
-                if active_prompt:
-                    system_prompt = f"{active_prompt.head_prompt}\n\n{active_prompt.rule_prompt}"
-                else:
-                    system_prompt = "You are a helpful assistant."
+            # Use the complete system prompt from the database session
+            # This includes the Head + Tally Scenario + Rule combination
+            system_prompt = db_session.scenario_prompt or "You are a helpful assistant."
+            
+            logger.info(f"🔄 Rebuilding AI session {session_id} with system prompt length: {len(system_prompt)} characters")
+            logger.info(f"🔄 System prompt preview: {system_prompt[:200]}...")
             
             # Create new AI session with correct system prompt
             self.create_session(session_id, system_prompt)
@@ -462,6 +435,17 @@ class AIModelManager:
                     system_prompt,
                     ai_session["history"]
                 )
+                
+                # VERIFY: Check if the scenario is actually included in the final prompt
+                scenario_keywords = ["18 year old", "whitte woman", "uniform", "teasinging", "seductioning"]
+                scenario_found = any(keyword.lower() in full_prompt.lower() for keyword in scenario_keywords)
+                
+                if scenario_found:
+                    logger.info("✅ SCENARIO VERIFICATION: Scenario content found in final prompt sent to model")
+                else:
+                    logger.warning("❌ SCENARIO VERIFICATION: Scenario content NOT found in final prompt!")
+                    logger.warning("❌ This means the AI model will NOT receive the character instructions!")
+                    logger.warning("❌ Expected scenario keywords: 18 year old, whitte woman, uniform, teasinging, seductioning")
                 
                 # DEBUG: Log the actual prompt being sent to the model
                 logger.info(f"🔍 DEBUG: Full prompt being sent to model:")
