@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Set environment variables for CUDA
-ENV CMAKE_ARGS="-DLLAMA_CUBLAS=on"
+ENV CMAKE_ARGS="-DGGML_CUDA=on"
 ENV FORCE_CMAKE=1
 
 # Install llama-cpp-python with CUDA support
