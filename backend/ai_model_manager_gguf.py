@@ -194,21 +194,24 @@ class GGUFModelManager:
                 raise
     
     def _build_prompt(self, session: Dict) -> str:
-        """Build prompt from system prompt and conversation history"""
+        """Build prompt from system prompt and conversation history with accuracy enhancements"""
         system_prompt = session["system_prompt"]
         messages = session["messages"]
         
-        # Start with system prompt
-        prompt = f"<|im_start|>system\n{system_prompt}<|im_end|>\n"
+        # Enhanced system prompt with accuracy instructions
+        enhanced_system = f"{system_prompt}\n\nIMPORTANT: Provide accurate, helpful, and well-reasoned responses. Think step by step and ensure your answers are correct and relevant."
         
-        # Add conversation history
+        # Start with enhanced system prompt
+        prompt = f"<|im_start|>system\n{enhanced_system}<|im_end|>\n"
+        
+        # Add conversation history with context preservation
         for msg in messages:
             role = msg["role"]
             content = msg["content"]
             prompt += f"<|im_start|>{role}\n{content}<|im_end|>\n"
         
-        # Add assistant prefix for response generation
-        prompt += "<|im_start|>assistant\n"
+        # Add assistant prefix with accuracy reminder
+        prompt += "<|im_start|>assistant\nLet me provide you with an accurate and helpful response:\n"
         
         return prompt
     
