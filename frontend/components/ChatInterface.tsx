@@ -162,20 +162,14 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
       // Initialize AI session and trigger first message
       const initializeAI = async () => {
         try {
-          // Get the system prompt from the session
-          const systemPrompt =
-            session.scenario_prompt || "You are a helpful AI assistant.";
-
-          // Initialize AI session
-          await chatApi.initAISession(session.id, systemPrompt);
-
-          // Send a simple message to start conversation
+          // AI is now integrated - no need to initialize separately
+          // Just send the first message to start conversation
           sendMessageMutation.mutate({
             sessionId: session.id,
             message: "Hello",
           });
         } catch (error) {
-          console.error("Failed to initialize AI session:", error);
+          console.error("Failed to start AI conversation:", error);
           toast.error("Failed to start AI conversation");
         }
       };

@@ -36,7 +36,7 @@ class AIModelManager:
         
         # AGGRESSIVE VRAM OPTIMIZATION SETTINGS
         self.MAX_ACTIVE_USERS = 3  # Maximum concurrent users
-        self.MAX_CONTEXT_LENGTH = 1024  # Reduced from 2048
+        self.MAX_CONTEXT_LENGTH = 2048  # Increased to accommodate full system prompt with scenario
         self.MAX_HISTORY_TOKENS = 800   # Reduced from 2000
         self.MAX_HISTORY_MESSAGES = 5   # Maximum messages per user
         self.VRAM_CLEANUP_THRESHOLD = 1.5  # GB - cleanup when below this
@@ -477,17 +477,32 @@ class AIModelManager:
                 logger.info(f"🔍 END OF PROMPT")
                 
                 # Tokenize with truncation using new limits
+                # Use much higher max_length to avoid truncating the system prompt
+                # The actual context limit will be enforced during generation
                 inputs = self.tokenizer(
                     full_prompt,
                     return_tensors="pt",
-                    truncation=True,
-                    max_length=self.MAX_CONTEXT_LENGTH  # Use new limit: 1024 instead of 2048
+                    truncation=False,  # Don't truncate - let generation handle context limits
+                    max_length=None    # No truncation - preserve full system prompt
                 ).to(self.model.device)
+                
+                # Check if input is too long for our context window
+                input_tokens = inputs.input_ids.shape[1]
+                if input_tokens > self.MAX_CONTEXT_LENGTH:
+                    logger.warning(f"⚠️ Input too long ({input_tokens} tokens > {self.MAX_CONTEXT_LENGTH}) - truncating to fit context window")
+                    # Truncate from the beginning (keep system prompt, truncate history)
+                    inputs = self.tokenizer(
+                        full_prompt,
+                        return_tensors="pt",
+                        truncation=True,
+                        max_length=self.MAX_CONTEXT_LENGTH,
+                        truncation_side="left"  # Truncate from left (history) not right (system prompt)
+                    ).to(self.model.device)
                 
                 # Adjust max tokens to available space
                 max_output_tokens = min(
                     max_tokens,
-                    self.MAX_CONTEXT_LENGTH - inputs.input_ids.shape[1]  # Use new limit: 1024
+                    self.MAX_CONTEXT_LENGTH - inputs.input_ids.shape[1]
                 )
                 
                 if max_output_tokens <= 0:
