@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     build-essential \
     cmake \
+    ninja-build \
     git \
     wget \
     curl \
