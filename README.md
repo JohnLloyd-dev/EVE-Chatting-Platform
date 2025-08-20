@@ -24,22 +24,24 @@ chmod +x deploy.sh
 
 ## 🔧 AI Integration
 
-The platform includes a custom AI server running the OpenHermes-2.5-Mistral-7B model with:
+The platform includes an integrated AI system running the OpenHermes-2.5-Mistral-7B model in GGUF format with:
 
-- 4-bit quantization for memory efficiency
+- GGUF format for optimal performance and memory efficiency
+- llama-cpp-python backend for fast inference
+- GPU acceleration with configurable layers
 - ChatML format support
 - Session-based conversation history
 - Token-based history trimming
-- HTTP Basic authentication
+- Automatic fallback to transformers if needed
 
 ## 📁 Project Structure
 
 ```
 ├── frontend/          # Next.js frontend application
-├── backend/           # FastAPI backend API
-├── ai_server/         # Custom AI model server
+├── backend/           # FastAPI backend API with integrated GGUF AI
 ├── docs/              # Documentation and deployment files
-├── deploy.sh          # Main deployment script
+├── deploy_eve_gpu.sh  # GPU deployment script
+├── download_gguf_model.sh # GGUF model download script
 ├── troubleshoot.sh    # Troubleshooting script
 └── docker-compose.yml # Docker services configuration
 ```

@@ -159,11 +159,52 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
       // Initialize AI session and show "hi" message
       const initializeAI = async () => {
         try {
-          // AI is now integrated - no need to initialize separately
-          // Show AI "hi" message automatically
-          console.log("AI system ready - showing initial 'hi' message");
-          
-          // Add AI "hi" message to the display
+          // Call the backend START_CONVERSATION endpoint to get a proper AI response
+          console.log("Initializing AI conversation with backend...");
+
+          const response = await fetch(
+            `${process.env.NEXT_PUBLIC_API_URL}/chat/message/${session.id}`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                message: "START_CONVERSATION",
+              }),
+            }
+          );
+
+          if (response.ok) {
+            const data = (await response.json()) as {
+              message: string;
+              ai_response: string;
+              ai_message_id: string;
+            };
+            console.log("AI conversation started:", data);
+            // The backend will have stored the "hi" message, so we just need to refetch the session
+            queryClient.invalidateQueries(["chatSession", userId]);
+          } else {
+            console.error("Failed to start AI conversation");
+            // Fallback: show local "hi" message if backend call fails
+            const aiHiMessage = {
+              id: "ai-init",
+              content: "hi",
+              is_from_user: false,
+              is_admin_intervention: false,
+              created_at: new Date().toISOString(),
+            };
+
+            // Update session messages to include AI "hi"
+            if (session.messages.length === 0) {
+              session.messages = [aiHiMessage];
+              // Force re-render
+              queryClient.invalidateQueries(["chatSession", userId]);
+            }
+          }
+        } catch (error) {
+          console.error("Failed to initialize AI system:", error);
+          // Fallback: show local "hi" message if there's an error
           const aiHiMessage = {
             id: "ai-init",
             content: "hi",
@@ -171,22 +212,19 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
             is_admin_intervention: false,
             created_at: new Date().toISOString(),
           };
-          
+
           // Update session messages to include AI "hi"
           if (session.messages.length === 0) {
             session.messages = [aiHiMessage];
             // Force re-render
             queryClient.invalidateQueries(["chatSession", userId]);
           }
-        } catch (error) {
-          console.error("Failed to initialize AI system:", error);
-          toast.error("Failed to initialize AI system");
         }
       };
 
       initializeAI();
     }
-  }, [session, hasInitializedAI, showLoadingAnimation]);
+  }, [session, hasInitializedAI, showLoadingAnimation, queryClient, userId]);
 
   // Auto-scroll to bottom
   useEffect(() => {

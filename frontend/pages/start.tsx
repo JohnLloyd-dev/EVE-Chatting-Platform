@@ -121,7 +121,7 @@ export default function StartChat() {
                 Starting Your Chat Session...
               </h1>
               <p className="text-gray-300 text-lg">
-                Please wait while we prepare your personalized experience
+                Please wait while we contact your partner
               </p>
 
               {/* Progress dots */}

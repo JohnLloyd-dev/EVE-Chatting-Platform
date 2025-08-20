@@ -26,18 +26,26 @@ class Settings(BaseSettings):
     # Tally webhook security
     tally_webhook_secret: Optional[str] = os.getenv("TALLY_WEBHOOK_SECRET")
     
-    # AI Model Configuration (7B with 8-bit quantization for RTX 4060 - better instruction following)
-    ai_model_name: str = os.getenv("AI_MODEL_NAME", "teknium/OpenHermes-2.5-Mistral-7B")
-    ai_model_file: str = os.getenv("AI_MODEL_FILE", "")  # Not needed for transformers
-    ai_model_cache_dir: str = os.getenv("AI_MODEL_CACHE_DIR", "/app/.cache/huggingface")  # New dedicated cache directory
+    # AI Model Configuration (GGUF format for better performance and memory efficiency)
+    ai_model_name: str = os.getenv("AI_MODEL_NAME", "TheBloke/OpenHermes-2.5-Mistral-7B-GGUF")
+    ai_model_file: str = os.getenv("AI_MODEL_FILE", "openhermes-2.5-mistral-7b.Q5_K_M.gguf")
+    ai_model_cache_dir: str = os.getenv("AI_MODEL_CACHE_DIR", "/app/.cache/huggingface")
     ai_generation_timeout: float = float(os.getenv("AI_GENERATION_TIMEOUT", "30.0"))
     ai_request_timeout: float = float(os.getenv("AI_REQUEST_TIMEOUT", "60.0"))
-    ai_use_4bit: bool = os.getenv("AI_USE_4BIT", "false").lower() == "true"  # Disabled by default
-    ai_use_8bit: bool = os.getenv("AI_USE_8BIT", "true").lower() == "true"   # Enabled by default for better quality
     
-    # RTX 4060 Memory Optimization Settings (8-bit Quantization Mode)
-    ai_max_context_length: int = int(os.getenv("AI_MAX_CONTEXT_LENGTH", "512"))  # Reduced to 512 for 8GB VRAM
-    ai_max_memory_gb: float = float(os.getenv("AI_MAX_MEMORY_GB", "4.0"))  # Reduced to 4.0GB for 8GB VRAM
+    # GGUF Model Settings (optimized for RTX 4060 with 8GB VRAM)
+    ai_use_gguf: bool = os.getenv("AI_USE_GGUF", "true").lower() == "true"  # Enable GGUF by default
+    ai_gguf_n_gpu_layers: int = int(os.getenv("AI_GGUF_N_GPU_LAYERS", "35"))  # GPU layers for 8GB VRAM
+    ai_gguf_n_ctx: int = int(os.getenv("AI_GGUF_N_CTX", "2048"))  # Context window
+    ai_gguf_n_batch: int = int(os.getenv("AI_GGUF_N_BATCH", "512"))  # Batch size for prompt processing
+    
+    # Legacy Transformers Settings (fallback)
+    ai_use_4bit: bool = os.getenv("AI_USE_4BIT", "false").lower() == "true"  # Disabled by default
+    ai_use_8bit: bool = os.getenv("AI_USE_8BIT", "false").lower() == "true"   # Disabled by default for GGUF
+    
+    # Memory Optimization Settings
+    ai_max_context_length: int = int(os.getenv("AI_MAX_CONTEXT_LENGTH", "2048"))  # Increased for GGUF
+    ai_max_memory_gb: float = float(os.getenv("AI_MAX_MEMORY_GB", "6.0"))  # Increased for GGUF efficiency
     ai_offload_folder: str = os.getenv("AI_OFFLOAD_FOLDER", "/app/offload")  # Disk offloading
     ai_batch_size: int = int(os.getenv("AI_BATCH_SIZE", "1"))  # Single batch for memory efficiency
     
