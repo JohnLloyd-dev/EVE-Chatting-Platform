@@ -331,11 +331,11 @@ class AITallyExtractor:
         # Control dynamic (from the user's perspective in the form)
         if control:
             if "you will be in control" in control.lower():
-                # User said "you will be in control of me" - so AI is dominant
-                template_parts.append("You are in control of me.")
-            elif "i will be in control" in control.lower():
-                # User said "I will be in control" - so user is dominant
+                # User said "you will be in control of me" - so HUMAN is dominant
                 template_parts.append("I am in control of you.")
+            elif "i will be in control" in control.lower():
+                # User said "I will be in control" - so AI is dominant
+                template_parts.append("You are in control of me.")
             else:
                 template_parts.append("We share control equally.")
         
@@ -501,11 +501,11 @@ class AITallyExtractor:
             if any(phrase in control_lower for phrase in [
                 "you will be in control", "you are in control of me", "they are in control"
             ]):
-                scenario_parts.append("You are in control of me.")
+                scenario_parts.append("I am in control of you.")
             elif any(phrase in control_lower for phrase in [
                 "i will be in control", "i am in control of you", "i am in control"
             ]):
-                scenario_parts.append("I am in control of you.")
+                scenario_parts.append("You are in control of me.")
         
         # Activities (handle both single and multiple selections)
         if activities:
@@ -529,7 +529,7 @@ class AITallyExtractor:
                 if control:
                     control_lower = control.lower()
                     if any(phrase in control_lower for phrase in [
-                        "i will be in control", "i am in control of you", "i am in control"
+                        "you will be in control", "you are in control of me", "they are in control"
                     ]):
                         user_controls = True
                     elif any(phrase in control_lower for phrase in [
