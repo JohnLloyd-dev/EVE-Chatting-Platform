@@ -418,7 +418,9 @@ export default function ChatInterface({ userId }: ChatInterfaceProps) {
                 <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse"></div>
                 <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse"></div>
                 <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse"></div>
-                <span className="text-sm text-gray-400 ml-2">your partner is typing...</span>
+                <span className="text-sm text-gray-400 ml-2">
+                  your partner is typing...
+                </span>
               </div>
             </div>
           </div>

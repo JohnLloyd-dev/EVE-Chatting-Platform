@@ -543,17 +543,17 @@ class AITallyExtractor:
                 
                 # Convert activities based on control dynamic
                 if user_controls:
-                    # User controls AI, so AI performs activities on User (following user's commands)
-                    continuous_activities = self.convert_to_present_continuous_reverse(fixed_activity_text)
-                    scenario_parts.append(f"You are {continuous_activities}.")
+                    # User controls AI, so User performs activities on AI
+                    continuous_activities = self.convert_to_present_continuous(fixed_activity_text)
+                    scenario_parts.append(f"I am {continuous_activities}.")
                 elif equal_control:
                     # Equal control, so both participate together
                     continuous_activities = self.convert_to_present_continuous_mutual(fixed_activity_text)
                     scenario_parts.append(f"We are {continuous_activities}.")
                 else:
-                    # AI controls User, so User performs activities on AI
-                    continuous_activities = self.convert_to_present_continuous(fixed_activity_text)
-                    scenario_parts.append(f"I am {continuous_activities}.")
+                    # AI controls User, so AI performs activities on User
+                    continuous_activities = self.convert_to_present_continuous_reverse(fixed_activity_text)
+                    scenario_parts.append(f"You are {continuous_activities}.")
         
         final_scenario = " ".join(scenario_parts)
         logger.info(f"🎯 Final scenario generated: {final_scenario}")
